@@ -19,6 +19,7 @@
 <div style="text-align: left;">
   <img src="./velock_qrcode.png" alt="App QR Code" width="160">
 </div>
+
 ## Getting Started
 
 Keep going!
