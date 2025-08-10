@@ -35,6 +35,32 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # https://riverpod.dev/zh-hans/docs/introduction/getting_started
+  hooks_riverpod: ^3.0.0-dev.16
+  flutter_hooks:
+  riverpod_annotation: ^3.0.0-dev.16
+
+  # https://pub.dev/packages/freezed
+  json_annotation: ^4.9.0
+  freezed_annotation: ^3.1.0
+
+  dio: ^5.8.0+1
+
+  # https://pub.dev/packages/webdav_client_plus
+  webdav_client_plus: ^1.0.2
+
+  # https://pub.dev/packages/flutter_platform_widgets
+  flutter_platform_widgets: ^9.0.0
+
+  # https://pub.dev/packages/go_router
+  go_router: ^16.1.0
+
+  # https://pub.dev/packages/shared_preferences
+  shared_preferences: ^2.5.3
+
+  # https://pub.dev/packages/logger
+  logger: ^2.6.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -45,6 +71,16 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+
+  # https://riverpod.dev/zh-hans/docs/introduction/getting_started
+  build_runner: ^2.5.4
+  custom_lint:
+  riverpod_generator: ^3.0.0-dev.16
+  riverpod_lint: ^3.0.0-dev.16
+
+  # https://pub.dev/packages/freezed
+  json_serializable: ^6.9.5
+  freezed: ^3.1.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

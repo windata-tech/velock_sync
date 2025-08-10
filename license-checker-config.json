@@ -1,0 +1,5 @@
+{
+  "license": "Apache-2.0",
+  "copyright": "Copyright (c) 2025 windata-tech",
+  "glob": "lib/**/*.dart"
+}
