@@ -4,6 +4,7 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/features/dashboard/state/dashboard_provider.dart';
+import 'package:velock_sync/widgets/common_widgets.dart';
 
 class Dashboard extends HookConsumerWidget {
   const Dashboard({super.key});
@@ -15,17 +16,7 @@ class Dashboard extends HookConsumerWidget {
     final syncTasks = ref.watch(syncTasksProvider);
 
     return PlatformScaffold(
-      appBar: PlatformAppBar(
-        title: Text('Dashboard'),
-        material: (_, __) => MaterialAppBarData(
-          backgroundColor: const Color(0xFF2d2d2d),
-          titleTextStyle: const TextStyle(color: Color(0xFFe7e8eb)),
-        ),
-        cupertino: (_, __) => CupertinoNavigationBarData(
-          backgroundColor: const Color(0xFF2d2d2d),
-          // middleTextStyle: const TextStyle(color: Color(0xFFe7e8eb)),
-        ),
-      ),
+      appBar: WDAppBar(title: Text('Dashboard'),),
       body: syncTasks.when(
         data: (value) => value.isEmpty
             ? const Center(child: Text('No sync tasks found'))

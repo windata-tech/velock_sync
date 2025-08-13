@@ -5,7 +5,7 @@ class TimestampParser implements JsonConverter<DateTime, int> {
 
   @override
   DateTime fromJson(int json) {
-    return DateTime.fromMillisecondsSinceEpoch(json * 1000, isUtc: true);
+    return DateTime.fromMillisecondsSinceEpoch(json, isUtc: true);
   }
 
   @override

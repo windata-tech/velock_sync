@@ -38,10 +38,22 @@ extension AppTheme on BuildContext {
     cupertino: (theme) => CupertinoColors.secondaryLabel.resolveFrom(this),
   );
 
+  Color get groupedBackgroundColor =>
+      _resolvePlatformValue(material: (theme) => theme.colorScheme.surface, cupertino: (theme) => CupertinoColors.systemGroupedBackground.resolveFrom(this));
+
   /// 获取分割线颜色
   Color get dividerColor => _resolvePlatformValue(material: (theme) => theme.dividerColor, cupertino: (theme) => CupertinoColors.separator.resolveFrom(this));
 
   /// 获取页面大标题的样式
   TextStyle? get headlineStyle =>
       _resolvePlatformValue(material: (theme) => theme.textTheme.headlineSmall, cupertino: (theme) => theme.textTheme.navLargeTitleTextStyle);
+
+  /// 获取标题样式
+  TextStyle? get titleStyle => _resolvePlatformValue(material: (theme) => theme.textTheme.titleLarge, cupertino: (theme) => theme.textTheme.navTitleTextStyle);
+
+  /// 获取正文样式
+  TextStyle? get bodyStyle => _resolvePlatformValue(material: (theme) => theme.textTheme.bodyLarge, cupertino: (theme) => theme.textTheme.textStyle);
+
+  /// 获取小标题样式
+  TextStyle? get subtitleStyle => _resolvePlatformValue(material: (theme) => theme.textTheme.bodyMedium, cupertino: (theme) => theme.textTheme.textStyle);
 }

@@ -6,6 +6,8 @@ abstract class AppKeys {
   static const String languageCode = 'app_language_code';
   static const String isShowPinnedOfDashboardPage = 'is_show_pinned_of_dashboard_page';
   static const String syncTask = 'sync_task';
+  static const String connections = 'connections';
+  static const String protocols = 'protocols';
 }
 
 class AppSetting {

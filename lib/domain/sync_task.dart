@@ -7,7 +7,6 @@ part '../generated/domain/sync_task.freezed.dart';
 
 @freezed
 sealed class SyncTask with _$SyncTask {
-  @JsonSerializable(fieldRename: FieldRename.snake)
   factory SyncTask({
     required String id,
     required String name,

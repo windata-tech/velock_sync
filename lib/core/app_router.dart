@@ -5,6 +5,10 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:velock_sync/core/extensions.dart';
 import 'package:velock_sync/core/wd_routes.dart';
+import 'package:velock_sync/features/connection/ui/connection.dart';
+import 'package:velock_sync/features/connection/ui/new_connection.dart';
+import 'package:velock_sync/features/connection/ui/new_webdav.dart';
+import 'package:velock_sync/features/connection/ui/protocol_list.dart';
 import 'package:velock_sync/features/dashboard/ui/dashboard.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -32,6 +36,10 @@ class AppRoutes {
   static const ({String name, String path}) settings = (name: 'settings', path: '/settings');
 
   static const ({String name, String path}) about = (name: 'about', path: '/about');
+
+  static const ({String name, String path}) newConnection = (name: 'newConnection', path: '/connection/new');
+  static const ({String name, String path}) protocols = (name: 'protocols', path: '/protocol/list');
+  static const ({String name, String path}) newWebDav = (name: 'newWebDav', path: '/protocol/new/webdav');
 }
 
 final goRouter = GoRouter(
@@ -53,7 +61,7 @@ final goRouter = GoRouter(
         ),
         StatefulShellBranch(
           routes: <RouteBase>[
-            WdRoute(name: AppRoutes.connection.name, path: AppRoutes.connection.path, builder: (BuildContext context, GoRouterState state) => Container()),
+            WdRoute(name: AppRoutes.connection.name, path: AppRoutes.connection.path, builder: (BuildContext context, GoRouterState state) => Connection()),
           ],
         ),
         StatefulShellBranch(
@@ -64,6 +72,9 @@ final goRouter = GoRouter(
       ],
     ),
     WdRoute(name: AppRoutes.about.name, path: AppRoutes.about.path, builder: (context, state) => Container()),
+    WdRoute(name: AppRoutes.newConnection.name, path: AppRoutes.newConnection.path, builder: (context, state) => NewConnection()),
+    WdRoute(name: AppRoutes.protocols.name, path: AppRoutes.protocols.path, builder: (context, state) => Protocols()),
+    WdRoute(name: AppRoutes.newWebDav.name, path: AppRoutes.newWebDav.path, builder: (context, state) => NewWebDav()),
   ],
 );
 
@@ -76,7 +87,7 @@ class WDShellPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return PlatformScaffold(
       body: navigationShell,
-      widgetKey: Platform.isIOS ? ValueKey(navigationShell.currentIndex) : null,
+      widgetKey: (Platform.isIOS || Platform.isMacOS) ? ValueKey(navigationShell.currentIndex) : null,
       bottomNavBar: PlatformNavBar(
         backgroundColor: context.backgroundColor,
         items: [
