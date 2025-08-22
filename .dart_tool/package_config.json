@@ -266,6 +266,12 @@
       "languageVersion": "3.7"
     },
     {
+      "name": "fluttertoast",
+      "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/fluttertoast-8.2.12",
+      "packageUri": "lib/",
+      "languageVersion": "2.12"
+    },
+    {
       "name": "freezed",
       "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/freezed-3.2.0",
       "packageUri": "lib/",

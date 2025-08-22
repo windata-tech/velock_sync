@@ -4,11 +4,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/core/extensions.dart';
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/core/utils.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/protocol_provider.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
@@ -81,6 +85,22 @@ class NewWebDav extends HookConsumerWidget {
                         final checkProvider = protocolConnectCheckerProvider(protocolModel);
                         isLoading.value = true;
                         final isConnected = await ref.read(checkProvider.future);
+                        if (isConnected) {
+                          if (context.mounted) {
+                            // context.pop(protocolModel);
+                            // context.pushReplacementNamed(AppRoutes.connection.name, extra: protocolModel);
+                            // context.goNamed(AppRoutes.connection.name, extra: protocolModel);
+                            // final protocol = ref.read(protocolProvider.notifier);
+                            // protocol.setProtocol(protocolModel);
+                            final connectionCreation = ref.read(connectionCreationProvider.notifier);
+                            await connectionCreation.setProtocolAndFinalize(protocolModel: protocolModel);
+                            if (context.mounted) {
+                              context.goNamed(AppRoutes.connection.name);
+                            } else {
+                              Fluttertoast.showToast(msg: 'context is not mounted, cannot navigate to connection page');
+                            }
+                          }
+                        }
                         // if (isConnected) {
                         //   if (context.mounted) {
                         //     ScaffoldMessenger.of(context).showSnackBar(
@@ -94,8 +114,8 @@ class NewWebDav extends HookConsumerWidget {
                         //     );
                         //   }
                         // }
-                      } catch (e) {
-                        loge('连接失败: $e');
+                      } catch (e,stackTrace) {
+                        loge('连接失败: $e', stackTrace: stackTrace);
                         return;
                       } finally {
                         isLoading.value = false;

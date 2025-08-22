@@ -8,8 +8,18 @@ part '../../../generated/features/connection/model/connection_model.g.dart';
 
 @freezed
 sealed class CreateConnectionDto with _$CreateConnectionDto {
-  factory CreateConnectionDto({required String name, String? description, required String source, required String target, required ProtocolModel protocol}) =
+  factory CreateConnectionDto({required String name, String? description, required String? source, String? sourceDescription, required String? target, String? targetDescription, required ProtocolModel? protocol}) =
       _CreateConnectionDto;
+
+  factory CreateConnectionDto.empty({required String name}) => CreateConnectionDto(
+        name: name,
+        description: null,
+        source: null,
+        sourceDescription: null,
+        target: null,
+        targetDescription: null,
+        protocol: null,
+      );
 
   factory CreateConnectionDto.fromJson(Map<String, dynamic> json) => _$CreateConnectionDtoFromJson(json);
 }
@@ -29,6 +39,20 @@ sealed class ConnectionModel with _$ConnectionModel {
     @TimestampParser() required DateTime updatedAt,
     required ConnectionStatus status,
   }) = _ConnectionModel;
+
+  factory ConnectionModel.fromCreateDto(CreateConnectionDto dto) => ConnectionModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: dto.name,
+        description: dto.description,
+        source: dto.source!,
+        target: dto.target!,
+        sourceDescription: dto.sourceDescription,
+        targetDescription: dto.targetDescription,
+        protocol: dto.protocol!,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        status: ConnectionStatus.pending,
+      );
 
   factory ConnectionModel.fromJson(Map<String, Object?> json) => _$ConnectionModelFromJson(json);
 }

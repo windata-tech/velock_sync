@@ -5,10 +5,10 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:velock_sync/core/extensions.dart';
 import 'package:velock_sync/core/wd_routes.dart';
-import 'package:velock_sync/features/connection/ui/connection.dart';
+import 'package:velock_sync/features/connection/ui/connections.dart';
 import 'package:velock_sync/features/connection/ui/new_connection.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
-import 'package:velock_sync/features/connection/ui/protocol_list.dart';
+import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/features/dashboard/ui/dashboard.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -61,7 +61,7 @@ final goRouter = GoRouter(
         ),
         StatefulShellBranch(
           routes: <RouteBase>[
-            WdRoute(name: AppRoutes.connection.name, path: AppRoutes.connection.path, builder: (BuildContext context, GoRouterState state) => Connection()),
+            WdRoute(name: AppRoutes.connection.name, path: AppRoutes.connection.path, builder: (BuildContext context, GoRouterState state) => Connections()),
           ],
         ),
         StatefulShellBranch(
