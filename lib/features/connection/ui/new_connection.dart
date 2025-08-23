@@ -4,9 +4,9 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
-
 
 class NewConnection extends HookConsumerWidget {
   const NewConnection({super.key});
@@ -16,24 +16,25 @@ class NewConnection extends HookConsumerWidget {
     final connectionData = ref.watch(connectionCreationProvider);
 
     useEffect(() {
+      final connectionCreationNotifier = ref.read(connectionCreationProvider.notifier);
+
       if (connectionData == null) {
         Future.microtask(() {
-          ref.read(connectionCreationProvider.notifier).prepareNewConnection(
-            name: '新建连接',
-            source: '格间',
-            target: null,
-          );
+          connectionCreationNotifier.prepareNewConnection(name: '新建连接', source: '格间', target: null);
         });
       }
-      return null;
+      return () {
+        Future.microtask(() {
+          logi('dispose NewConnection, cancel creation');
+          connectionCreationNotifier.cancelCreation();
+        });
+      };
     }, const []);
 
     if (connectionData == null) {
       return PlatformScaffold(
-        appBar: WDAppBar(title: Text('新建连接')),
-        body: const Center(
-          child: PlatformCircularProgressIndicator(),
-        ),
+        appBar: WDAppBar(title: Text(connectionData?.name ?? '')),
+        body: const Center(child: PlatformCircularProgressIndicator()),
       );
     }
 
@@ -48,9 +49,7 @@ class NewConnection extends HookConsumerWidget {
           ),
           SliverPadding(
             padding: EdgeInsets.all(16),
-            sliver: SliverToBoxAdapter(
-              child: Row(children: [FlutterLogo(), Text(connectionData.source ?? '选择源')]),
-            ),
+            sliver: SliverToBoxAdapter(child: Row(children: [FlutterLogo(), Text(connectionData.source ?? '选择源')])),
           ),
           SliverPadding(
             padding: EdgeInsets.all(16),
@@ -64,10 +63,12 @@ class NewConnection extends HookConsumerWidget {
                 cupertino: (context, platform) {
                   return CupertinoTextButtonData(padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4));
                 },
-                child: Row(children: [
-                  Icon(PlatformIcons(context).add),
-                  Text(connectionData.target ?? '选择协议') // 读取数据
-                ]),
+                child: Row(
+                  children: [
+                    Icon(PlatformIcons(context).add),
+                    Text(connectionData.target ?? '选择协议'), // 读取数据
+                  ],
+                ),
                 onPressed: () {
                   context.pushNamed(AppRoutes.protocols.name);
                 },

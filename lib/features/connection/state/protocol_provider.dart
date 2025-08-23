@@ -11,37 +11,21 @@ List<ProtocolModel> supportedProtocols(Ref ref) {
   return [ProtocolModel.webDav(protocolType: WebDavProtocolType.http, address: '', port: '')];
 }
 
-// @riverpod
-// class Protocols extends _$Protocols {
-//   @override
-//   FutureOr<List<ProtocolModel>> build() async {
-//     final appSetting = ref.watch(appSettingProvider);
-//     return appSetting.setLanguageCode(value);
-//   }
-// }
-
-// @riverpod
-// class Protocol extends _$Protocol {
-//   @override
-//   FutureOr<ProtocolModel?> build() async {
-//     return state.value;
-//   }
-//
-//   Future<void> setProtocol(ProtocolModel protocol) async {
-//     state = AsyncValue.data(protocol);
-//   }
-//
-//   Future<void> clearProtocol() async {
-//     state = const AsyncValue.data(null);
-//   }
-//
-//   ProtocolModel? get protocol => state.value;
-//
-//   bool get isProtocolSet => state.value != null;
-// }
-
 @riverpod
 Future<bool> protocolConnectChecker(Ref ref, ProtocolModel protocol) async {
+  // final dio = Dio();
+  // dio.httpClientAdapter = IOHttpClientAdapter(createHttpClient: (){
+  //   final client = HttpClient();
+  //   client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+  //   return client;
+  // });
+  // or
+  // (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+  //   final client = HttpClient();
+  //   client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+  //   return client;
+  // };
+
   switch (protocol) {
     case WebDavProtocolModel():
       WebdavClient client;

@@ -22,28 +22,12 @@ class Connections extends HookConsumerWidget {
         title: Text('连接服务'),
         trailingActions: [
           PlatformIconButton(
-            icon: const Icon(Icons.add,),
+            icon: const Icon(Icons.add),
             cupertino: (context, platform) {
-              return CupertinoIconButtonData(
-                padding: EdgeInsets.zero,
-              );
+              return CupertinoIconButtonData(padding: EdgeInsets.zero);
             },
             onPressed: () {
               context.pushNamed(AppRoutes.newConnection.name);
-              // final connection = ConnectionModel(
-              //   id: (DateTime.now().millisecondsSinceEpoch).toString(),
-              //   name: '格间同步到我的NAS',
-              //   description: '这是一个新的连接',
-              //   source: 'app',
-              //   sourceDescription: '格间',
-              //   target: 'http://192.168.31.168:5005',
-              //   targetDescription: '我的NAS',
-              //   createdAt: DateTime.now(),
-              //   updatedAt: DateTime.now(),
-              //   status: ConnectionStatus.pending,
-              // );
-              // ref.read(connectionsProvider.notifier).addSyncTask(connection);
-              // logd('connections.length=${connections.value?.length}');
             },
           ),
         ],
