@@ -8,7 +8,7 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/protocol_provider.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
-
+import 'package:collection/collection.dart';
 class ConnectionRepository {
   ConnectionRepository(this._localDataManager);
 
@@ -23,6 +23,12 @@ class ConnectionRepository {
   Future<void> setConnections(List<ConnectionModel> value) {
     final json = value.map((e) => jsonEncode(e.toJson())).toList();
     return _localDataManager.setStringList(AppKeys.connections, json);
+  }
+
+  Future<ConnectionModel?> getConnectionById(String id) async {
+    final conns = connections;
+    if (conns == null) return null;
+    return conns.firstWhereOrNull((conn) => conn.id == id);
   }
 
   // List<ProtocolModel>? get protocols {

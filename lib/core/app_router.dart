@@ -5,6 +5,7 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:velock_sync/core/extensions.dart';
 import 'package:velock_sync/core/wd_routes.dart';
+import 'package:velock_sync/features/connection/ui/connection.dart';
 import 'package:velock_sync/features/connection/ui/connections.dart';
 import 'package:velock_sync/features/connection/ui/new_connection.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
@@ -32,14 +33,15 @@ class AppRoutes {
   static const ({String name, String path}) home = (name: 'home', path: '/');
 
   static const ({String name, String path}) dashboard = (name: 'dashboard', path: '/dashboard');
-  static const ({String name, String path}) connection = (name: 'connection', path: '/connection');
+  static const ({String name, String path}) connections = (name: 'connections', path: '/connections');
   static const ({String name, String path}) settings = (name: 'settings', path: '/settings');
 
   static const ({String name, String path}) about = (name: 'about', path: '/about');
 
   static const ({String name, String path}) newConnection = (name: 'newConnection', path: '/connection/new');
-  static const ({String name, String path}) protocols = (name: 'protocols', path: '/protocol/list');
-  static const ({String name, String path}) newWebDav = (name: 'newWebDav', path: '/protocol/new/webdav');
+  static const ({String name, String path}) protocols = (name: 'protocols', path: '/protocols');
+  static const ({String name, String path}) newWebDav = (name: 'newWebDav', path: '/protocol/webdav/new');
+  static const ({String name, String path}) connection = (name: 'connectionDetail', path: '/connections/connection/:id');
 }
 
 final goRouter = GoRouter(
@@ -61,7 +63,7 @@ final goRouter = GoRouter(
         ),
         StatefulShellBranch(
           routes: <RouteBase>[
-            WdRoute(name: AppRoutes.connection.name, path: AppRoutes.connection.path, builder: (BuildContext context, GoRouterState state) => Connections()),
+            WdRoute(name: AppRoutes.connections.name, path: AppRoutes.connections.path, builder: (BuildContext context, GoRouterState state) => Connections()),
           ],
         ),
         StatefulShellBranch(
@@ -75,6 +77,13 @@ final goRouter = GoRouter(
     WdRoute(name: AppRoutes.newConnection.name, path: AppRoutes.newConnection.path, builder: (context, state) => NewConnection()),
     WdRoute(name: AppRoutes.protocols.name, path: AppRoutes.protocols.path, builder: (context, state) => Protocols()),
     WdRoute(name: AppRoutes.newWebDav.name, path: AppRoutes.newWebDav.path, builder: (context, state) => NewWebDav()),
+    WdRoute(name: AppRoutes.connection.name, path: AppRoutes.connection.path, builder: (context, state) {
+      final String? id = state.pathParameters['id'];
+      if (id == null) {
+        return Center(child: Text('404! no id parameter.'),);
+      }
+      return Connection(id);
+    }),
   ],
 );
 

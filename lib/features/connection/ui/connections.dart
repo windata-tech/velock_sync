@@ -47,15 +47,23 @@ class Connections extends HookConsumerWidget {
                   SliverList(
                     delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
                       final connection = connections[index];
-                      return Material(
-                        child: ListTile(
-                          title: Text(connection.name),
-                          subtitle: Text('状态: ${connection.status}'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () {
-                              ref.read(connectionsProvider.notifier).removeConnection(connection);
-                            },
+                      return GestureDetector(
+                        onTap: () {
+                          context.pushNamed(
+                            AppRoutes.connection.name,
+                            pathParameters: {'id': connection.id},
+                          );
+                        },
+                        child: Material(
+                          child: ListTile(
+                            title: Text(connection.name),
+                            subtitle: Text('状态: ${connection.status}'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete),
+                              onPressed: () {
+                                ref.read(connectionsProvider.notifier).removeConnection(connection);
+                              },
+                            ),
                           ),
                         ),
                       );

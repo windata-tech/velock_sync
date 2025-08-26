@@ -127,3 +127,13 @@ class ConnectionCreation extends _$ConnectionCreation {
     state = null; // Clear the state to cancel the creation
   }
 }
+
+@riverpod
+class ConnectionDetail extends _$ConnectionDetail {
+  @override
+  FutureOr<ConnectionModel?> build(String id) async {
+    final provider = ref.watch(connectionRepositoryProvider);
+    final connectionModel = await provider.getConnectionById(id);
+    return connectionModel;
+  }
+}

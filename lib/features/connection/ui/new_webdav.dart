@@ -95,7 +95,7 @@ class NewWebDav extends HookConsumerWidget {
                             final connectionCreation = ref.read(connectionCreationProvider.notifier);
                             await connectionCreation.setProtocolAndFinalize(protocolModel: protocolModel);
                             if (context.mounted) {
-                              context.goNamed(AppRoutes.connection.name);
+                              context.goNamed(AppRoutes.connections.name);
                             } else {
                               Fluttertoast.showToast(msg: 'context is not mounted, cannot navigate to connection page');
                             }
