@@ -4,14 +4,36 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part '../generated/appearance/theme.g.dart';
 
-final materialLightTheme = ThemeData.light().copyWith(
-  cupertinoOverrideTheme: const CupertinoThemeData(primaryColor: Colors.purple, primaryContrastingColor: Colors.green),
+final materialLightTheme =
+    ThemeData.from(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.purple,
+        brightness: Brightness.light,
+      ),
+    ).copyWith(
+      cupertinoOverrideTheme: const CupertinoThemeData(
+        primaryColor: Colors.purple,
+        primaryContrastingColor: Colors.green,
+      ),
+    );
+final materialDarkTheme =
+    ThemeData.from(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.purple,
+        brightness: Brightness.light,
+      ),
+    ).copyWith(
+      cupertinoOverrideTheme: const CupertinoThemeData(
+        primaryColor: Colors.red,
+        primaryContrastingColor: Colors.green,
+      ),
+    );
+final cupertinoLightTheme = MaterialBasedCupertinoThemeData(
+  materialTheme: materialLightTheme,
 );
-final materialDarkTheme = ThemeData.dark().copyWith(
-  cupertinoOverrideTheme: const CupertinoThemeData(primaryColor: Colors.red, primaryContrastingColor: Colors.green),
+final cupertinoDarkTheme = MaterialBasedCupertinoThemeData(
+  materialTheme: materialDarkTheme,
 );
-final cupertinoLightTheme = MaterialBasedCupertinoThemeData(materialTheme: materialLightTheme);
-final cupertinoDarkTheme = MaterialBasedCupertinoThemeData(materialTheme: materialDarkTheme);
 
 @Riverpod(dependencies: [])
 ThemeData theme(Ref ref) {

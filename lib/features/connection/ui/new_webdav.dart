@@ -24,7 +24,9 @@ class NewWebDav extends HookConsumerWidget {
     final formKey = useMemoized(() => GlobalKey<FormState>());
 
     final enableHTTPS = useState(false);
-    final addressController = useTextEditingController(text: enableHTTPS.value ? 'https://' : 'http://');
+    final addressController = useTextEditingController(
+      text: enableHTTPS.value ? 'https://' : 'http://',
+    );
     final portController = useTextEditingController();
     final userController = useTextEditingController();
     final passwordController = useTextEditingController();
@@ -54,10 +56,19 @@ class NewWebDav extends HookConsumerWidget {
       final oldSelection = oldValue.selection;
       final lengthDifference = newText.length - oldValue.text.length;
 
-      final newOffset = (oldSelection.baseOffset + lengthDifference).clamp(0, newText.length);
-      final newSelection = TextSelection.fromPosition(TextPosition(offset: newOffset));
+      final newOffset = (oldSelection.baseOffset + lengthDifference).clamp(
+        0,
+        newText.length,
+      );
+      final newSelection = TextSelection.fromPosition(
+        TextPosition(offset: newOffset),
+      );
 
-      addressController.value = TextEditingValue(text: newText, selection: newSelection, composing: TextRange.empty);
+      addressController.value = TextEditingValue(
+        text: newText,
+        selection: newSelection,
+        composing: TextRange.empty,
+      );
 
       return null;
     }, [enableHTTPS.value]);
@@ -74,17 +85,29 @@ class NewWebDav extends HookConsumerWidget {
                     final isValidate = formKey.currentState?.validate();
                     if (isValidate == true) {
                       final protocolModel = ProtocolModel.webDav(
-                        protocolType: enableHTTPS.value ? WebDavProtocolType.https : WebDavProtocolType.http,
+                        protocolType: enableHTTPS.value
+                            ? WebDavProtocolType.https
+                            : WebDavProtocolType.http,
                         address: addressController.text,
                         port: portController.text,
-                        username: userController.text.isNotEmpty ? userController.text : null,
-                        password: passwordController.text.isNotEmpty ? passwordController.text : null,
-                        path: pathController.text.isNotEmpty ? pathController.text : null,
+                        username: userController.text.isNotEmpty
+                            ? userController.text
+                            : null,
+                        password: passwordController.text.isNotEmpty
+                            ? passwordController.text
+                            : null,
+                        path: pathController.text.isNotEmpty
+                            ? pathController.text
+                            : null,
                       );
                       try {
-                        final checkProvider = protocolConnectCheckerProvider(protocolModel);
+                        final checkProvider = protocolConnectCheckerProvider(
+                          protocolModel,
+                        );
                         isLoading.value = true;
-                        final isConnected = await ref.read(checkProvider.future);
+                        final isConnected = await ref.read(
+                          checkProvider.future,
+                        );
                         if (isConnected) {
                           if (context.mounted) {
                             // context.pop(protocolModel);
@@ -92,12 +115,19 @@ class NewWebDav extends HookConsumerWidget {
                             // context.goNamed(AppRoutes.connection.name, extra: protocolModel);
                             // final protocol = ref.read(protocolProvider.notifier);
                             // protocol.setProtocol(protocolModel);
-                            final connectionCreation = ref.read(connectionCreationProvider.notifier);
-                            await connectionCreation.setProtocolAndFinalize(protocolModel: protocolModel);
+                            final connectionCreation = ref.read(
+                              connectionCreationProvider.notifier,
+                            );
+                            await connectionCreation.setProtocolAndFinalize(
+                              protocolModel: protocolModel,
+                            );
                             if (context.mounted) {
                               context.goNamed(AppRoutes.connections.name);
                             } else {
-                              Fluttertoast.showToast(msg: 'context is not mounted, cannot navigate to connection page');
+                              Fluttertoast.showToast(
+                                msg:
+                                    'context is not mounted, cannot navigate to connection page',
+                              );
                             }
                           }
                         }
@@ -114,7 +144,7 @@ class NewWebDav extends HookConsumerWidget {
                         //     );
                         //   }
                         // }
-                      } catch (e,stackTrace) {
+                      } catch (e, stackTrace) {
                         loge('连接失败: $e', stackTrace: stackTrace);
                         return;
                       } finally {
@@ -127,7 +157,11 @@ class NewWebDav extends HookConsumerWidget {
                     }
                   },
             child: isLoading.value
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : Text('保存'),
           ),
         ],
@@ -210,7 +244,9 @@ class _WebDavFormFields extends StatelessWidget {
         },
         hintText: '例如：https://example.com/webdav',
         material: (context, platform) {
-          return MaterialTextFormFieldData(decoration: InputDecoration(labelText: '服务器地址'));
+          return MaterialTextFormFieldData(
+            decoration: InputDecoration(labelText: '服务器地址'),
+          );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
@@ -233,7 +269,9 @@ class _WebDavFormFields extends StatelessWidget {
         },
         hintText: '例如：8888',
         material: (context, platform) {
-          return MaterialTextFormFieldData(decoration: InputDecoration(labelText: '端口'));
+          return MaterialTextFormFieldData(
+            decoration: InputDecoration(labelText: '端口'),
+          );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
@@ -257,7 +295,9 @@ class _WebDavFormFields extends StatelessWidget {
         maxLines: 1,
         hintText: '例如：/ 或者 /path/to/webdav',
         material: (context, platform) {
-          return MaterialTextFormFieldData(decoration: InputDecoration(labelText: '子路径'));
+          return MaterialTextFormFieldData(
+            decoration: InputDecoration(labelText: '子路径'),
+          );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
@@ -273,14 +313,17 @@ class _WebDavFormFields extends StatelessWidget {
       PlatformTextFormField(
         controller: userController,
         validator: (value) {
-          if (passwordController.text.isNotEmpty && (value == null || value.isEmpty)) {
+          if (passwordController.text.isNotEmpty &&
+              (value == null || value.isEmpty)) {
             return '请输入用户名';
           }
           return null;
         },
         hintText: '请输入用户名',
         material: (context, platform) {
-          return MaterialTextFormFieldData(decoration: InputDecoration(labelText: '用户名'));
+          return MaterialTextFormFieldData(
+            decoration: InputDecoration(labelText: '用户名'),
+          );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
@@ -296,14 +339,17 @@ class _WebDavFormFields extends StatelessWidget {
       PlatformTextFormField(
         controller: passwordController,
         validator: (value) {
-          if (userController.text.isNotEmpty && (value == null || value.isEmpty)) {
+          if (userController.text.isNotEmpty &&
+              (value == null || value.isEmpty)) {
             return '请输入密码';
           }
           return null;
         },
         hintText: '请输入密码',
         material: (context, platform) {
-          return MaterialTextFormFieldData(decoration: InputDecoration(labelText: '密码'));
+          return MaterialTextFormFieldData(
+            decoration: InputDecoration(labelText: '密码'),
+          );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
@@ -333,6 +379,6 @@ class _WebDavFormFields extends StatelessWidget {
               ),
             ],
           )
-        : Column(children: formChildren);
+        : Column(children: [...formChildren, ...formOptionalChildren]);
   }
 }
