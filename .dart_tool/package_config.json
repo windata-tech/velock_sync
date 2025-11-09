@@ -243,9 +243,9 @@
     },
     {
       "name": "flutter_lints",
-      "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/flutter_lints-5.0.0",
+      "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/flutter_lints-6.0.0",
       "packageUri": "lib/",
-      "languageVersion": "3.5"
+      "languageVersion": "3.8"
     },
     {
       "name": "flutter_platform_widgets",
@@ -381,9 +381,9 @@
     },
     {
       "name": "lints",
-      "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/lints-5.1.1",
+      "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/lints-6.0.0",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.8"
     },
     {
       "name": "logger",
