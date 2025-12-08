@@ -74,6 +74,7 @@ class NewWebDav extends HookConsumerWidget {
     }, [enableHTTPS.value]);
 
     return PlatformScaffold(
+      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
       appBar: WDAppBar(
         title: Text('新建 WebDAV 连接'),
         trailingActions: [
@@ -364,7 +365,7 @@ class _WebDavFormFields extends StatelessWidget {
       ),
     ];
 
-    return Platform.isIOS
+    return Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS
         ? Column(
             children: [
               CupertinoFormSection.insetGrouped(

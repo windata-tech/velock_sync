@@ -18,6 +18,7 @@ class Connections extends HookConsumerWidget {
     final connections = ref.watch(connectionsProvider);
 
     return PlatformScaffold(
+      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
       appBar: WDAppBar(
         title: Text('连接服务'),
         trailingActions: [

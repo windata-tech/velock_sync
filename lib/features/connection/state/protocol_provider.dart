@@ -46,7 +46,11 @@ Future<bool> protocolConnectChecker(Ref ref, ProtocolModel protocol) async {
         return true;
       } catch (e, s) {
         if (e is WebdavException) {
-          Fluttertoast.showToast(msg: 'WebDav发生错误: ${e.message}');
+          if (e.statusCode == 401) {
+            Fluttertoast.showToast(msg: 'WebDav认证失败: ${e.message}');
+          } else {
+            Fluttertoast.showToast(msg: 'WebDav发生错误: ${e.message}');
+          }
         } else {
           Fluttertoast.showToast(msg: 'WebDav连接发生错误: $e');
         }

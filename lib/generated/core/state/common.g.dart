@@ -6,6 +6,9 @@ part of '../../../core/state/common.dart';
 // RiverpodGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+
 @ProviderFor(localDataManager)
 const localDataManagerProvider = LocalDataManagerProvider._();
 
@@ -188,6 +191,3 @@ final class ConnectionRepositoryProvider
 
 String _$connectionRepositoryHash() =>
     r'c24bd89bb2f3a4e68f7405f74426a2fa71e15294';
-
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

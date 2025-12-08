@@ -6,6 +6,9 @@ part of '../../../../features/connection/state/protocol_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+
 @ProviderFor(supportedProtocols)
 const supportedProtocolsProvider = SupportedProtocolsProvider._();
 
@@ -105,7 +108,7 @@ final class ProtocolConnectCheckerProvider
 }
 
 String _$protocolConnectCheckerHash() =>
-    r'915750694de1f32add8de557010da9ab3e25bcdc';
+    r'199e3cf1e2698dd2e4543dde4a6139a959794840';
 
 final class ProtocolConnectCheckerFamily extends $Family
     with $FunctionalFamilyOverride<FutureOr<bool>, ProtocolModel> {
@@ -124,6 +127,3 @@ final class ProtocolConnectCheckerFamily extends $Family
   @override
   String toString() => r'protocolConnectCheckerProvider';
 }
-
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

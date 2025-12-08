@@ -16,6 +16,7 @@ class Dashboard extends HookConsumerWidget {
     final syncTasks = ref.watch(syncTasksProvider);
 
     return PlatformScaffold(
+      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
       appBar: WDAppBar(title: Text('Dashboard'),),
       body: syncTasks.when(
         data: (value) => value.isEmpty

@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -9,6 +10,7 @@ import 'package:velock_sync/core/local_data_manager.dart';
 import 'core/app_router.dart';
 
 void main() async {
+  // debugDefaultTargetPlatformOverride = TargetPlatform.android;
   WidgetsFlutterBinding.ensureInitialized();
   await LocalDataManager.instance.init();
   runApp(

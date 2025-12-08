@@ -23,3 +23,8 @@
 ## Getting Started
 
 Keep going!
+
+## 启动build_runner
+```shell
+dart run build_runner watch --delete-conflicting-outputs
+```

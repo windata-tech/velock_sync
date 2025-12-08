@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +18,7 @@ class Protocols extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final supportProtocols = ref.watch(supportedProtocolsProvider);
     return PlatformScaffold(
+      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
       appBar: WDAppBar(title: Text('协议列表')),
       body: ListView.separated(
         padding: EdgeInsets.all(16),

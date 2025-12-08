@@ -32,16 +32,40 @@ class AppRouteInfo {
 class AppRoutes {
   static const ({String name, String path}) home = (name: 'home', path: '/');
 
-  static const ({String name, String path}) dashboard = (name: 'dashboard', path: '/dashboard');
-  static const ({String name, String path}) connections = (name: 'connections', path: '/connections');
-  static const ({String name, String path}) settings = (name: 'settings', path: '/settings');
+  static const ({String name, String path}) dashboard = (
+    name: 'dashboard',
+    path: '/dashboard',
+  );
+  static const ({String name, String path}) connections = (
+    name: 'connections',
+    path: '/connections',
+  );
+  static const ({String name, String path}) settings = (
+    name: 'settings',
+    path: '/settings',
+  );
 
-  static const ({String name, String path}) about = (name: 'about', path: '/about');
+  static const ({String name, String path}) about = (
+    name: 'about',
+    path: '/about',
+  );
 
-  static const ({String name, String path}) newConnection = (name: 'newConnection', path: '/connection/new');
-  static const ({String name, String path}) protocols = (name: 'protocols', path: '/protocols');
-  static const ({String name, String path}) newWebDav = (name: 'newWebDav', path: '/protocol/webdav/new');
-  static const ({String name, String path}) connection = (name: 'connectionDetail', path: '/connections/connection/:id');
+  static const ({String name, String path}) newConnection = (
+    name: 'newConnection',
+    path: '/connection/new',
+  );
+  static const ({String name, String path}) protocols = (
+    name: 'protocols',
+    path: '/protocols',
+  );
+  static const ({String name, String path}) newWebDav = (
+    name: 'newWebDav',
+    path: '/protocol/webdav/new',
+  );
+  static const ({String name, String path}) connection = (
+    name: 'connectionDetail',
+    path: '/connections/connection/:id',
+  );
 }
 
 final goRouter = GoRouter(
@@ -58,32 +82,67 @@ final goRouter = GoRouter(
       branches: <StatefulShellBranch>[
         StatefulShellBranch(
           routes: <RouteBase>[
-            WdRoute(name: AppRoutes.dashboard.name, path: AppRoutes.dashboard.path, builder: (BuildContext context, GoRouterState state) => Dashboard()),
+            WdRoute(
+              name: AppRoutes.dashboard.name,
+              path: AppRoutes.dashboard.path,
+              builder: (BuildContext context, GoRouterState state) =>
+                  Dashboard(),
+            ),
           ],
         ),
         StatefulShellBranch(
           routes: <RouteBase>[
-            WdRoute(name: AppRoutes.connections.name, path: AppRoutes.connections.path, builder: (BuildContext context, GoRouterState state) => Connections()),
+            WdRoute(
+              name: AppRoutes.connections.name,
+              path: AppRoutes.connections.path,
+              builder: (BuildContext context, GoRouterState state) =>
+                  Connections(),
+            ),
           ],
         ),
         StatefulShellBranch(
           routes: <RouteBase>[
-            WdRoute(name: AppRoutes.settings.name, path: AppRoutes.settings.path, builder: (BuildContext context, GoRouterState state) => Container()),
+            WdRoute(
+              name: AppRoutes.settings.name,
+              path: AppRoutes.settings.path,
+              builder: (BuildContext context, GoRouterState state) =>
+                  Container(),
+            ),
           ],
         ),
       ],
     ),
-    WdRoute(name: AppRoutes.about.name, path: AppRoutes.about.path, builder: (context, state) => Container()),
-    WdRoute(name: AppRoutes.newConnection.name, path: AppRoutes.newConnection.path, builder: (context, state) => NewConnection()),
-    WdRoute(name: AppRoutes.protocols.name, path: AppRoutes.protocols.path, builder: (context, state) => Protocols()),
-    WdRoute(name: AppRoutes.newWebDav.name, path: AppRoutes.newWebDav.path, builder: (context, state) => NewWebDav()),
-    WdRoute(name: AppRoutes.connection.name, path: AppRoutes.connection.path, builder: (context, state) {
-      final String? id = state.pathParameters['id'];
-      if (id == null) {
-        return Center(child: Text('404! no id parameter.'),);
-      }
-      return Connection(id);
-    }),
+    WdRoute(
+      name: AppRoutes.about.name,
+      path: AppRoutes.about.path,
+      builder: (context, state) => Container(),
+    ),
+    WdRoute(
+      name: AppRoutes.newConnection.name,
+      path: AppRoutes.newConnection.path,
+      builder: (context, state) => NewConnection(),
+    ),
+    WdRoute(
+      name: AppRoutes.protocols.name,
+      path: AppRoutes.protocols.path,
+      builder: (context, state) => Protocols(),
+    ),
+    WdRoute(
+      name: AppRoutes.newWebDav.name,
+      path: AppRoutes.newWebDav.path,
+      builder: (context, state) => NewWebDav(),
+    ),
+    WdRoute(
+      name: AppRoutes.connection.name,
+      path: AppRoutes.connection.path,
+      builder: (context, state) {
+        final String? id = state.pathParameters['id'];
+        if (id == null) {
+          return Center(child: Text('404! no id parameter.'));
+        }
+        return Connection(id);
+      },
+    ),
   ],
 );
 
@@ -96,7 +155,11 @@ class WDShellPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return PlatformScaffold(
       body: navigationShell,
-      widgetKey: (Platform.isIOS || Platform.isMacOS) ? ValueKey(navigationShell.currentIndex) : null,
+      widgetKey:
+          (Theme.of(context).platform == TargetPlatform.iOS ||
+              Theme.of(context).platform == TargetPlatform.macOS)
+          ? ValueKey(navigationShell.currentIndex)
+          : null,
       bottomNavBar: PlatformNavBar(
         backgroundColor: context.backgroundColor,
         items: [
@@ -111,12 +174,24 @@ class WDShellPage extends StatelessWidget {
         material: (context, platform) {
           // TODO：Material颜色需要后面的theme覆盖或在theme中设置。
           return MaterialNavBarData(
-            selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500) /*文字style，颜色被selectedItemColor覆盖，所以设置后无效。*/,
-            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
+            selectedLabelStyle: const TextStyle(
+              fontWeight: FontWeight.w500,
+            ) /*文字style，颜色被selectedItemColor覆盖，所以设置后无效。*/,
+            unselectedLabelStyle: const TextStyle(
+              fontWeight: FontWeight.normal,
+            ),
             selectedFontSize: 14.0,
             unselectedFontSize: 13.0,
-            selectedIconTheme: IconThemeData(color: Colors.grey[700], opacity: 1, size: 21),
-            unselectedIconTheme: IconThemeData(color: Colors.grey[500], opacity: 0.9, size: 20),
+            selectedIconTheme: IconThemeData(
+              color: Colors.grey[700],
+              opacity: 1,
+              size: 21,
+            ),
+            unselectedIconTheme: IconThemeData(
+              color: Colors.grey[500],
+              opacity: 0.9,
+              size: 20,
+            ),
             selectedItemColor: Colors.grey[700],
             unselectedItemColor: Colors.grey[500],
             showSelectedLabels: true,

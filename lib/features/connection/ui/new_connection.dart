@@ -33,6 +33,7 @@ class NewConnection extends HookConsumerWidget {
 
     if (connectionData == null) {
       return PlatformScaffold(
+        iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
         appBar: WDAppBar(title: Text(connectionData?.name ?? '')),
         body: const Center(child: PlatformCircularProgressIndicator()),
       );
@@ -40,6 +41,7 @@ class NewConnection extends HookConsumerWidget {
 
     // 4. 当 connectionData 不为 null 时 (第二帧)，显示真实的 UI
     return PlatformScaffold(
+      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
       appBar: WDAppBar(title: Text(connectionData.name)),
       body: CustomScrollView(
         slivers: [
