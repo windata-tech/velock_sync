@@ -57,8 +57,13 @@ class Connections extends HookConsumerWidget {
                         },
                         child: Material(
                           child: ListTile(
-                            title: Text(connection.name),
-                            subtitle: Text('状态: ${connection.status}'),
+                            title: Row(
+                              children: [
+                                ConnectStatusIndicator(status: connection.status, pendingProgressSize: 12),
+                                SizedBox(width: 8),
+                                Text(connection.name),
+                              ],
+                            ),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete),
                               onPressed: () {

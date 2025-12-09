@@ -1,61 +1,83 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/core/logger.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
 import '../model/connection_model.dart';
 
-
 part '../../../generated/features/connection/state/files_provider.g.dart';
 
 @riverpod
-class RemoteFiles extends _$RemoteFiles {
-  WebdavClient? client;
+class RemoteFileBrowser extends _$RemoteFileBrowser {
+  String _currentPath = '/';
 
-  void _ensureClient({required ProtocolModel protocol}) {
-    if (client != null) {
-      return;
-    }
+  bool get canGoBack => _currentPath != '/' && _currentPath != '\\';
+
+  CancelToken? cancelToken;
+
+  // 去掉 _ensureClient 的缓存逻辑，直接获取 client
+  // 或者将其提取为一个单独的 getter 或 provider
+  WebdavClient get _client {
     final protocol = connectionModel.protocol;
-    if (protocol.username != null &&
-        protocol.username!.isNotEmpty &&
-        protocol.password != null &&
-        protocol.password!.isNotEmpty) {
-      client = WebdavClient.basicAuth(
+    if (protocol.username?.isNotEmpty == true && protocol.password?.isNotEmpty == true) {
+      return WebdavClient.basicAuth(
         url: '${protocol.address}:${protocol.port}',
         user: protocol.username!,
         pwd: protocol.password!,
       );
-    } else {
-      client = WebdavClient.noAuth(url: '${protocol.address}:${protocol.port}');
     }
+    return WebdavClient.noAuth(url: '${protocol.address}:${protocol.port}');
   }
 
   @override
-  FutureOr<List<WebdavFile>> build({
-    required ConnectionModel connectionModel,
-  }) async {
-    _ensureClient(protocol: connectionModel.protocol);
-    final theClient = client!;
-    final ret = await theClient.readDir('');
-    return ret;
+  FutureOr<FileBrowserState> build({required ConnectionModel connectionModel}) async {
+    _currentPath = connectionModel.protocol.path ?? '/';
+    return _fetchState(_currentPath);
   }
 
+  /// 获取文件列表
+  Future<FileBrowserState> _fetchState(String path) async {
+    final files = await _client.readDir(path);
+    return FileBrowserState(path: path, files: files);
+  }
+
+  /// 去到具体的页面
   Future<void> go(String path) async {
-    state = AsyncValue.loading();
-    final ret = await client?.readDir(path);
-    if (ret != null) {
-      state = AsyncValue.data(ret);
-    } else {
-      state = AsyncValue.error("Error", StackTrace.current);
-    }
+    state = const AsyncValue.loading();
+
+    // 2. 执行请求并更新状态
+    state = await AsyncValue.guard(() async {
+      final newState = await _fetchState(path);
+      logger.d("已跳转到: ${newState.path}");
+      return newState;
+    });
   }
 
-  Future<File> downloadFile(String path, {required String ext}) async {
+  /// 返回上一级目录
+  Future<void> goBack() async {
+    final currentState = state.value;
+    if (currentState == null || currentState.isRoot) return;
+
+    final parentPath = p.dirname(currentState.path);
+    await go(parentPath);
+  }
+
+  /// 下载文件，因为文件在服务器呢，本地要打开只能先下载
+  /// 不过，这里没处理大文件情况（目前来说，UI也还没有下载进度的回调）
+  Future<File> downloadFile(
+    String path, {
+    required String ext,
+    void Function(int count, int total)? onProgress,
+  }) async {
     File tempFile = await createTempFile(fileExtension: ext);
-    await client?.readFile(path, tempFile.path);
+    cancelToken?.cancel();
+    cancelToken = CancelToken();
+    await _client.readFile(path, tempFile.path, onProgress: onProgress, cancelToken: cancelToken);
     if (tempFile.existsSync()) {
       return tempFile;
     } else {
@@ -63,33 +85,68 @@ class RemoteFiles extends _$RemoteFiles {
     }
   }
 
+  /// 处理文件点击事件
+  /// [file] : 点击的文件。这里还没有处理抽象，暂时全都是WebdavFile
+  Future<void> onRemoteFileItemTapped(WebdavFile file) async {
+    cancelToken?.cancel();
+    logger.d("处理文件点击: ${file.path}");
+    try {
+      if (file.isDir) {
+        await go(file.path);
+      } else {
+        final ext = p.extension(file.path);
+        final downloadedFile = await downloadFile(file.path, ext: ext, onProgress: (a, b) {});
+        final result = await OpenFilex.open(downloadedFile.path);
+        if (result.type != ResultType.done) {
+          logger.w("打开失败: ${result.message}");
+        } else {
+          logger.d("成功调用外部 App");
+        }
+      }
+    } catch (e, stack) {
+      logger.e("操作失败", error: e, stackTrace: stack);
+      // 这里可以统一处理错误，比如更新 state 为 AsyncError
+    }
+  }
+
   /// 创建一个临时文件
   /// [fileExtension] : 文件后缀，比如 '.txt', '.jpg', '.pdf'
   Future<File> createTempFile({String fileExtension = '.tmp'}) async {
     try {
-      // 1. 获取临时目录 (在 Android 上是 cache 目录，iOS 上是 tmp 目录)
-      // 系统可能会在磁盘空间不足时自动清理这个目录
       final Directory tempDir = await getTemporaryDirectory();
-
-      // 2. 生成一个唯一的文件名
-      // 这里使用 "毫秒时间戳" 简单防冲突，要求更高可以用 UUID
-      final String uniqueName = DateTime.now().millisecondsSinceEpoch
-          .toString();
+      final String uniqueName = DateTime.now().millisecondsSinceEpoch.toString();
       final String fileName = 'temp_$uniqueName$fileExtension';
-
-      // 3. 拼接完整路径
-      // 专家提示：永远不要用字符串拼接路径 (dir + "/" + name)，要用 FileSystemEntity (或者 path 库)
       final File tempFile = File('${tempDir.path}/$fileName');
-
-      // 4. 创建文件
-      // create(recursive: true) 意味着如果中间目录不存在，会自动创建
       await tempFile.create(recursive: true);
-
-      print('✅ 临时文件已创建: ${tempFile.path}');
+      logger.d('✅ 临时文件已创建: ${tempFile.path}');
       return tempFile;
     } catch (e) {
-      print('❌ 创建临时文件失败: $e');
+      logger.d('❌ 创建临时文件失败: $e');
       rethrow;
     }
   }
+}
+
+class FileBrowserState {
+  final String path;
+  final List<WebdavFile> files;
+
+  const FileBrowserState({required this.path, required this.files});
+
+  // 根目录的初始状态
+  factory FileBrowserState.root() => const FileBrowserState(path: '/', files: []);
+
+  // 辅助判断
+  bool get isRoot => path == '/' || path == '\\';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FileBrowserState &&
+          runtimeType == other.runtimeType &&
+          path == other.path &&
+          files == other.files; // 注意：List 比较通常需要 listEquals，这里简化处理
+
+  @override
+  int get hashCode => path.hashCode ^ files.hashCode;
 }
