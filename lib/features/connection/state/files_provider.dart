@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:logger/logger.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -20,8 +22,8 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
 
   CancelToken? cancelToken;
 
-  // 去掉 _ensureClient 的缓存逻辑，直接获取 client
-  // 或者将其提取为一个单独的 getter 或 provider
+  final List<FileBrowserState> _unstableStack = List.empty(growable: true);
+
   WebdavClient get _client {
     final protocol = connectionModel.protocol;
     if (protocol.username?.isNotEmpty == true && protocol.password?.isNotEmpty == true) {
@@ -42,15 +44,23 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
 
   /// 获取文件列表
   Future<FileBrowserState> _fetchState(String path) async {
+    // 规范化输入路径
+    path = p.canonicalize(path);
     final files = await _client.readDir(path);
-    return FileBrowserState(path: path, files: files);
+    final fileBrowserState = FileBrowserState(path: path, files: files);
+
+    // 只保留当前路径和父路径之上的
+    _unstableStack.removeWhere((e) => path == e.path || p.isWithin(path, e.path));
+    // 缓存到stack里，方便返回
+    _unstableStack.add(fileBrowserState);
+    printCurrentStack();
+    return fileBrowserState;
   }
 
   /// 去到具体的页面
   Future<void> go(String path) async {
     state = const AsyncValue.loading();
 
-    // 2. 执行请求并更新状态
     state = await AsyncValue.guard(() async {
       final newState = await _fetchState(path);
       logger.d("已跳转到: ${newState.path}");
@@ -64,7 +74,17 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     if (currentState == null || currentState.isRoot) return;
 
     final parentPath = p.dirname(currentState.path);
-    await go(parentPath);
+    // 优先从历史里取数据，而不是重新请求
+    final stackState = _unstableStack.where((e) => e.path == parentPath).singleOrNull;
+    if (stackState != null) {
+      state = AsyncValue.data(stackState);
+      // 从历史栈移除当前这个没用的
+      _unstableStack.removeLast();
+    } else {
+      logger.w("返回了，但是没在历史栈里找到: $parentPath");
+      await go(parentPath);
+    }
+    printCurrentStack();
   }
 
   /// 下载文件，因为文件在服务器呢，本地要打开只能先下载
@@ -89,13 +109,13 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
   /// [file] : 点击的文件。这里还没有处理抽象，暂时全都是WebdavFile
   Future<void> onRemoteFileItemTapped(WebdavFile file) async {
     cancelToken?.cancel();
-    logger.d("处理文件点击: ${file.path}");
+    final path = p.canonicalize(file.path);
     try {
       if (file.isDir) {
-        await go(file.path);
+        await go(path);
       } else {
-        final ext = p.extension(file.path);
-        final downloadedFile = await downloadFile(file.path, ext: ext, onProgress: (a, b) {});
+        final ext = p.extension(path);
+        final downloadedFile = await downloadFile(path, ext: ext, onProgress: (a, b) {});
         final result = await OpenFilex.open(downloadedFile.path);
         if (result.type != ResultType.done) {
           logger.w("打开失败: ${result.message}");
@@ -124,6 +144,18 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
       logger.d('❌ 创建临时文件失败: $e');
       rethrow;
     }
+  }
+
+  void printCurrentStack() {
+    // 直接构造一个你想要展示的数据结构列表
+    final logList = _unstableStack
+        .asMap()
+        .entries
+        .map((e) => "Index[${e.key}] -> ${e.value.path}")
+        .toList();
+
+    // Logger 会自动把 List 格式化得很漂亮，带边框
+    logger.i(logList);
   }
 }
 
