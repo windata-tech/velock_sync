@@ -43,7 +43,7 @@ class Connection extends HookConsumerWidget {
               ),
               trailingActions: [
                 PlatformIconButton(
-                   padding: EdgeInsets.zero,
+                  padding: EdgeInsets.zero,
                   cupertino: (context, platform) {
                     return CupertinoIconButtonData(minSize: 0, icon: Icon(CupertinoIcons.ellipsis_circle));
                   },
@@ -61,12 +61,21 @@ class Connection extends HookConsumerWidget {
                     SliverGrid(
                       delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
                         final file = fileBrowserState.files[index];
-                        return CupertinoButton(
-                          minSize: 0,
-                          padding: EdgeInsets.zero,
-                          child: RemoteFileItem(file: file),
-                          onPressed: () async {
-                            notifier.onRemoteFileItemTapped(file);
+                        double? progress;
+                        return StatefulBuilder(
+                          builder: (BuildContext context, StateSetter setState) {
+                            return CupertinoButton(
+                              minSize: 0,
+                              padding: EdgeInsets.zero,
+                              child: RemoteFileItem(file: file, progress: progress),
+                              onPressed: () async {
+                                notifier.onRemoteFileItemTapped(file, (a, b) {
+                                  setState(() {
+                                    progress = a.toDouble() / b.toDouble();
+                                  });
+                                });
+                              },
+                            );
                           },
                         );
                       }, childCount: fileBrowserState.files.length),
@@ -110,8 +119,9 @@ class Connection extends HookConsumerWidget {
 
 class RemoteFileItem extends StatelessWidget {
   final WebdavFile file;
+  final double? progress;
 
-  const RemoteFileItem({super.key, required this.file});
+  const RemoteFileItem({super.key, required this.file, this.progress});
 
   @override
   Widget build(BuildContext context) {
@@ -120,14 +130,38 @@ class RemoteFileItem extends StatelessWidget {
 
     return Container(
       padding: EdgeInsets.all(4),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      child: Stack(
         children: [
-          if (file.isDir)
-            Icon(isApple ? CupertinoIcons.folder_solid : Icons.folder, size: 32)
-          else
-            Icon(isApple ? CupertinoIcons.doc_text_fill : Icons.description, size: 32),
-          Text(file.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              if (file.isDir)
+                Icon(isApple ? CupertinoIcons.folder_solid : Icons.folder, size: 32)
+              else
+                Icon(isApple ? CupertinoIcons.doc_text_fill : Icons.description, size: 32),
+              Text(file.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+            ],
+          ),
+          if (progress != null && progress! < 1.0)
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.all(Radius.circular(4)),
+                color: Colors.grey.withAlpha(187),
+              ),
+              child: Center(
+                child: Stack(
+                  fit: StackFit.loose,
+                  alignment: Alignment.center,
+                  children: [
+                    CircularProgressIndicator(value: progress, color: Colors.white),
+                    Text(
+                      "${(progress! * 100).toInt()}%",
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

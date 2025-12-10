@@ -1,8 +1,6 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
-import 'package:logger/logger.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -107,7 +105,10 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
 
   /// 处理文件点击事件
   /// [file] : 点击的文件。这里还没有处理抽象，暂时全都是WebdavFile
-  Future<void> onRemoteFileItemTapped(WebdavFile file) async {
+  Future<void> onRemoteFileItemTapped(
+    WebdavFile file,
+    void Function(int count, int total)? onProgress,
+  ) async {
     cancelToken?.cancel();
     final path = p.canonicalize(file.path);
     try {
@@ -115,7 +116,7 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
         await go(path);
       } else {
         final ext = p.extension(path);
-        final downloadedFile = await downloadFile(path, ext: ext, onProgress: (a, b) {});
+        final downloadedFile = await downloadFile(path, ext: ext, onProgress: onProgress);
         final result = await OpenFilex.open(downloadedFile.path);
         if (result.type != ResultType.done) {
           logger.w("打开失败: ${result.message}");
@@ -138,23 +139,17 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
       final String fileName = 'temp_$uniqueName$fileExtension';
       final File tempFile = File('${tempDir.path}/$fileName');
       await tempFile.create(recursive: true);
-      logger.d('✅ 临时文件已创建: ${tempFile.path}');
+      logger.d('临时文件已创建: ${tempFile.path}');
       return tempFile;
     } catch (e) {
-      logger.d('❌ 创建临时文件失败: $e');
+      logger.d('创建临时文件失败: $e');
       rethrow;
     }
   }
 
   void printCurrentStack() {
-    // 直接构造一个你想要展示的数据结构列表
-    final logList = _unstableStack
-        .asMap()
-        .entries
-        .map((e) => "Index[${e.key}] -> ${e.value.path}")
-        .toList();
+    final logList = _unstableStack.asMap().entries.map((e) => "Index[${e.key}] -> ${e.value.path}").toList();
 
-    // Logger 会自动把 List 格式化得很漂亮，带边框
     logger.i(logList);
   }
 }
