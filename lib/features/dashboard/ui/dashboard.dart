@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/logger.dart';
@@ -11,13 +10,13 @@ class Dashboard extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scrollController = useScrollController();
-
     final syncTasks = ref.watch(syncTasksProvider);
 
     return PlatformScaffold(
-      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
-      appBar: WDAppBar(title: Text('Dashboard'),),
+      iosContentPadding:
+          Theme.of(context).platform == TargetPlatform.iOS ||
+          Theme.of(context).platform == TargetPlatform.macOS,
+      appBar: WDAppBar(title: Text('Dashboard')),
       body: syncTasks.when(
         data: (value) => value.isEmpty
             ? const Center(child: Text('No sync tasks found'))
@@ -30,7 +29,9 @@ class Dashboard extends HookConsumerWidget {
                     trailing: IconButton(
                       icon: const Icon(Icons.delete),
                       onPressed: () {
-                        ref.read(syncTasksProvider.notifier).removeSyncTask(task);
+                        ref
+                            .read(syncTasksProvider.notifier)
+                            .removeSyncTask(task);
                       },
                     ),
                   );
@@ -40,9 +41,11 @@ class Dashboard extends HookConsumerWidget {
                 },
                 itemCount: value.length,
               ),
-        error: (e, s) {
-          loge(e, stackTrace: s);
-          return Text('Error! e=$e');
+        error: (error, _) {
+          logw(
+            'Dashboard task list could not be loaded: ${error.runtimeType}.',
+          );
+          return const Text('无法读取同步任务。');
         },
         loading: () => const CircularProgressIndicator(),
       ),

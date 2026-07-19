@@ -6,9 +6,11 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:velock_sync/core/logger.dart';
+import 'package:velock_sync/core/state/common.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
 import '../model/connection_model.dart';
+import '../model/protocol_model.dart';
 
 part '../../../generated/features/connection/state/files_provider.g.dart';
 
@@ -22,21 +24,33 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
 
   final List<FileBrowserState> _unstableStack = List.empty(growable: true);
 
-  WebdavClient get _client {
+  Future<WebdavClient> _client() async {
     final protocol = connectionModel.protocol;
-    if (protocol.username?.isNotEmpty == true && protocol.password?.isNotEmpty == true) {
+    if (protocol is! WebDavProtocolModel) {
+      throw UnsupportedError('Remote file browsing is currently WebDAV-only.');
+    }
+    final password = await ref
+        .read(connectionRepositoryProvider)
+        .readWebDavPassword(protocol.credentialRef);
+    if (protocol.username?.isNotEmpty == true && password?.isNotEmpty == true) {
       return WebdavClient.basicAuth(
         url: '${protocol.address}:${protocol.port}',
         user: protocol.username!,
-        pwd: protocol.password!,
+        pwd: password!,
       );
     }
     return WebdavClient.noAuth(url: '${protocol.address}:${protocol.port}');
   }
 
   @override
-  FutureOr<FileBrowserState> build({required ConnectionModel connectionModel}) async {
-    _currentPath = connectionModel.protocol.path ?? '/';
+  FutureOr<FileBrowserState> build({
+    required ConnectionModel connectionModel,
+  }) async {
+    final protocol = connectionModel.protocol;
+    if (protocol is! WebDavProtocolModel) {
+      throw UnsupportedError('Remote file browsing is currently WebDAV-only.');
+    }
+    _currentPath = protocol.path ?? '/';
     return _fetchState(_currentPath);
   }
 
@@ -44,11 +58,13 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
   Future<FileBrowserState> _fetchState(String path) async {
     // 规范化输入路径
     path = p.canonicalize(path);
-    final files = await _client.readDir(path);
+    final files = await (await _client()).readDir(path);
     final fileBrowserState = FileBrowserState(path: path, files: files);
 
     // 只保留当前路径和父路径之上的
-    _unstableStack.removeWhere((e) => path == e.path || p.isWithin(path, e.path));
+    _unstableStack.removeWhere(
+      (e) => path == e.path || p.isWithin(path, e.path),
+    );
     // 缓存到stack里，方便返回
     _unstableStack.add(fileBrowserState);
     printCurrentStack();
@@ -61,7 +77,7 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
 
     state = await AsyncValue.guard(() async {
       final newState = await _fetchState(path);
-      logger.d("已跳转到: ${newState.path}");
+      logger.d('Remote browser navigated.');
       return newState;
     });
   }
@@ -73,13 +89,15 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
 
     final parentPath = p.dirname(currentState.path);
     // 优先从历史里取数据，而不是重新请求
-    final stackState = _unstableStack.where((e) => e.path == parentPath).singleOrNull;
+    final stackState = _unstableStack
+        .where((e) => e.path == parentPath)
+        .singleOrNull;
     if (stackState != null) {
       state = AsyncValue.data(stackState);
       // 从历史栈移除当前这个没用的
       _unstableStack.removeLast();
     } else {
-      logger.w("返回了，但是没在历史栈里找到: $parentPath");
+      logger.w('Remote browser history did not contain the parent directory.');
       await go(parentPath);
     }
     printCurrentStack();
@@ -95,7 +113,12 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     File tempFile = await createTempFile(fileExtension: ext);
     cancelToken?.cancel();
     cancelToken = CancelToken();
-    await _client.readFile(path, tempFile.path, onProgress: onProgress, cancelToken: cancelToken);
+    await (await _client()).readFile(
+      path,
+      tempFile.path,
+      onProgress: onProgress,
+      cancelToken: cancelToken,
+    );
     if (tempFile.existsSync()) {
       return tempFile;
     } else {
@@ -116,16 +139,20 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
         await go(path);
       } else {
         final ext = p.extension(path);
-        final downloadedFile = await downloadFile(path, ext: ext, onProgress: onProgress);
+        final downloadedFile = await downloadFile(
+          path,
+          ext: ext,
+          onProgress: onProgress,
+        );
         final result = await OpenFilex.open(downloadedFile.path);
         if (result.type != ResultType.done) {
-          logger.w("打开失败: ${result.message}");
+          logger.w('External file-open request did not complete.');
         } else {
           logger.d("成功调用外部 App");
         }
       }
-    } catch (e, stack) {
-      logger.e("操作失败", error: e, stackTrace: stack);
+    } on Object {
+      logger.e('Remote file browser operation failed.');
       // 这里可以统一处理错误，比如更新 state 为 AsyncError
     }
   }
@@ -135,22 +162,21 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
   Future<File> createTempFile({String fileExtension = '.tmp'}) async {
     try {
       final Directory tempDir = await getTemporaryDirectory();
-      final String uniqueName = DateTime.now().millisecondsSinceEpoch.toString();
+      final String uniqueName = DateTime.now().millisecondsSinceEpoch
+          .toString();
       final String fileName = 'temp_$uniqueName$fileExtension';
       final File tempFile = File('${tempDir.path}/$fileName');
       await tempFile.create(recursive: true);
-      logger.d('临时文件已创建: ${tempFile.path}');
+      logger.d('Temporary download file created.');
       return tempFile;
-    } catch (e) {
-      logger.d('创建临时文件失败: $e');
+    } on Object {
+      logger.d('Temporary download file creation failed.');
       rethrow;
     }
   }
 
   void printCurrentStack() {
-    final logList = _unstableStack.asMap().entries.map((e) => "Index[${e.key}] -> ${e.value.path}").toList();
-
-    logger.i(logList);
+    logger.i('Remote browser history depth: ${_unstableStack.length}.');
   }
 }
 
@@ -161,7 +187,8 @@ class FileBrowserState {
   const FileBrowserState({required this.path, required this.files});
 
   // 根目录的初始状态
-  factory FileBrowserState.root() => const FileBrowserState(path: '/', files: []);
+  factory FileBrowserState.root() =>
+      const FileBrowserState(path: '/', files: []);
 
   // 辅助判断
   bool get isRoot => path == '/' || path == '\\';

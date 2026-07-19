@@ -8,5 +8,11 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.tech.windata.velock.sync.exchange</string>
+	</array>
 </dict>
 </plist>

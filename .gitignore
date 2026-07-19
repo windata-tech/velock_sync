@@ -117,3 +117,13 @@ app.*.symbols
 !**/ios/**/default.perspectivev3
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock.DS_Store
+
+# Local IDE, generated metadata, and UI test artifacts
+.DS_Store
+.idea/
+*.iml
+ui_test_harness/DerivedData/
+ui_test_results/
+
+# CodeGraph local index (local-only)
+.codegraph/

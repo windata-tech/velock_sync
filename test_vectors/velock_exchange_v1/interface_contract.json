@@ -1,0 +1,239 @@
+{
+  "contractId": "velock-exchange-v1",
+  "contractRevision": "2026-07-18-conflict-control-v1",
+  "exchangeVersion": 1,
+  "protocol": {
+    "name": "velock-sync",
+    "version": 1,
+    "signatureAlgorithm": "Ed25519",
+    "batchKind": "incremental"
+  },
+  "artifacts": {
+    "required": ["envelope.json", "operations.enc", "READY"],
+    "blobPattern": "blobs/<blobId>.blob",
+    "ackPattern": "ack/<deviceId>.ack",
+    "maxEnvelopeBytes": 4194304,
+    "maxOperationsCipherBytes": 67108864,
+    "maxOperationsPerBatch": 500,
+    "maxBlobsPerBatch": 500,
+    "maxBlobCipherBytes": null,
+    "blobRequirement": "unbounded-replayable-stream"
+  },
+  "envelope": {
+    "requiredFields": [
+      "batchId",
+      "batchKind",
+      "blobs",
+      "createdAt",
+      "keyId",
+      "operations",
+      "previousBatchId",
+      "previousSequence",
+      "protocol",
+      "protocolVersion",
+      "sequence",
+      "signature",
+      "signatureAlgorithm",
+      "sourceDeviceId",
+      "vaultId"
+    ],
+    "operationsFields": [
+      "cipherSha256",
+      "cipherSize",
+      "compression",
+      "logicalName",
+      "operationCount"
+    ],
+    "blobFields": [
+      "blobId",
+      "chunkSize",
+      "cipherSha256",
+      "cipherSize",
+      "logicalKey",
+      "protection"
+    ]
+  },
+  "identity": {
+    "producerFields": ["sourceDeviceId", "keyId", "signature"],
+    "trustedPublicKeyReference": "paired-member/sourceDeviceId",
+    "syncMayDecryptPayload": false,
+    "syncMaySignVelockAck": false
+  },
+  "pairingControlPlane": {
+    "controlVersion": 1,
+    "transportTrust": "platform-signature-and-configured-package-certificate",
+    "descriptorFields": [
+      "controlVersion",
+      "exchangeBindingId",
+      "exchangeVersion",
+      "producerId",
+      "producerPublicKeyId",
+      "producerSigningPublicKey",
+      "protocol",
+      "protocolVersion",
+      "publishedAt",
+      "signatureAlgorithm"
+    ],
+    "requestFields": [
+      "challenge",
+      "createdAt",
+      "exchangeBindingId",
+      "expiresAt",
+      "producerId",
+      "producerPublicKeyId",
+      "requestId",
+      "syncAppInstanceId"
+    ],
+    "responseFields": [
+      "approvedAt",
+      "challenge",
+      "deviceDisplayName",
+      "exchangeBindingId",
+      "expiresAt",
+      "producerId",
+      "producerPublicKeyId",
+      "producerSigningPublicKey",
+      "requestId",
+      "signature",
+      "vaultDisplayName",
+      "vaultId"
+    ],
+    "responseSignaturePayload": "UTF-8 JSON with responseFields except signature, keys in lexicographic order, no whitespace",
+    "signatureAlgorithm": "Ed25519",
+    "requestTtlSeconds": 300,
+    "statusValues": ["pending", "approved", "denied", "expired", "revoked"],
+    "userAuthorization": "required-in-unlocked-velock-app",
+    "producerKeyOwnership": "existing-velock-device-key-only",
+    "syncMayCreateProducerIdentityOrKey": false,
+    "remoteMembersAutoTrusted": false,
+    "replayBehavior": "requestId-and-challenge-single-use"
+  },
+  "sequence": {
+    "firstSequence": 1,
+    "firstHasPrevious": false,
+    "laterRequiresPrevious": true,
+    "previousSequenceDelta": 1,
+    "duplicateBehavior": "idempotent",
+    "gapBehavior": "defer",
+    "forkBehavior": "reject"
+  },
+  "states": {
+    "outbox": ["Building", "Ready", "Claimed", "Published", "Receipt", "Cleaned", "Quarantine"],
+    "inbox": ["Staging", "Ready", "Imported", "Receipt", "Quarantine"],
+    "directories": [
+      "Outbox/Ready",
+      "Outbox/Claimed",
+      "Outbox/Receipts",
+      "Inbox/Staging",
+      "Inbox/Ready",
+      "Inbox/Receipts",
+      "Quarantine"
+    ]
+  },
+  "readyMarker": {
+    "requiredFields": ["batchId", "envelopeSha256", "exchangeVersion", "publishedAt"],
+    "publishedAt": "UTC ISO-8601",
+    "publishedLast": true
+  },
+  "receipts": {
+    "outboxStatus": "published",
+    "inboxStatus": "imported",
+    "protocolVersion": 1,
+    "inboxRequiredFields": [
+      "ackArtifactRelativePath",
+      "batchId",
+      "protocolVersion",
+      "sequence",
+      "sourceDeviceId",
+      "status"
+    ]
+  },
+  "errors": [
+    "NOT_FOUND",
+    "LEASE_CONFLICT",
+    "LEASE_EXPIRED",
+    "INVALID_PACKAGE",
+    "ACCESS_DENIED",
+    "TEMPORARY_UNAVAILABLE",
+    "UNSUPPORTED_VERSION",
+    "UNSUPPORTED_OPERATION",
+    "AUTHORIZATION_REQUIRED",
+    "AUTHORIZATION_DENIED",
+    "PAIRING_EXPIRED",
+    "PAIRING_REPLAYED",
+    "INVALID_PAIRING_RESPONSE"
+  ],
+  "platform": {
+    "android": {
+      "authority": "tech.windata.velock.sync.exchange",
+      "companionPackage": "tech.windata.velock",
+      "syncPackage": "tech.windata.velock.sync.velock_sync",
+      "permission": "tech.windata.velock.permission.SYNC_EXCHANGE",
+      "protectionLevel": "signature",
+      "flutterChannel": "tech.windata.velock.sync/velock_exchange",
+      "inboundArtifactTransport": "content-provider-staging-file-descriptor",
+      "methodChannelPayload": "opaque-metadata-and-private-cache-path-only",
+      "releaseConfigKeys": [
+        "VELOCK_EXCHANGE_AUTHORITY",
+        "VELOCK_COMPANION_PACKAGE",
+        "VELOCK_COMPANION_CERT_SHA256"
+      ],
+      "certificateDigest": "release-configured-lowercase-sha256"
+    },
+    "apple": {
+      "appGroup": "group.tech.windata.velock.sync.exchange",
+      "syncFlutterChannel": "tech.windata.velock.sync/exchange",
+      "syncRootMethod": "exchangeRoot",
+      "companionFlutterChannel": "tech.windata.velock/method_channel",
+      "companionRootMethod": "getSyncExchangeRoot",
+      "exchangeSubdirectory": "SyncExchange"
+    }
+  },
+  "conflictResolution": {
+    "controlVersion": 1,
+    "transport": "apple-app-group-control-files-and-velock-deep-link",
+    "requestDirectory": "Control/ConflictRequests",
+    "receiptDirectory": "Control/ConflictReceipts",
+    "consumedDirectory": "Control/ConflictConsumed",
+    "deepLink": "velock://sync-conflict?requestId=<opaque>",
+    "requestFields": [
+      "challenge",
+      "conflictId",
+      "controlVersion",
+      "createdAt",
+      "exchangeBindingId",
+      "expiresAt",
+      "producerId",
+      "producerPublicKeyId",
+      "requestId",
+      "syncAppInstanceId",
+      "vaultId"
+    ],
+    "receiptFields": [
+      "challenge",
+      "conflictId",
+      "controlVersion",
+      "exchangeBindingId",
+      "expiresAt",
+      "producerId",
+      "producerPublicKeyId",
+      "requestId",
+      "resolutionArtifactId",
+      "resolvedAt",
+      "signature",
+      "signatureAlgorithm",
+      "status",
+      "syncAppInstanceId",
+      "vaultId"
+    ],
+    "receiptSignaturePayload": "UTF-8 JSON with receiptFields except signature, keys in lexicographic order, no whitespace",
+    "signatureAlgorithm": "Ed25519",
+    "status": "resolved",
+    "requestTtlSeconds": 86400,
+    "businessProof": "receipt-may-be-signed-only-after-velock-durably-resolves-the-matching-local-conflict",
+    "syncCompletion": "only-after-exact-binding-expiry-and-paired-producer-signature-verification",
+    "syncMayResolveVelockBusinessData": false,
+    "replayBehavior": "requestId-and-challenge-single-use",
+    "unsupportedPlatforms": "fail-closed"
+  }
+}

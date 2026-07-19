@@ -9,54 +9,6 @@ part of '../../../../features/connection/state/protocol_provider.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 
-@ProviderFor(supportedProtocols)
-const supportedProtocolsProvider = SupportedProtocolsProvider._();
-
-final class SupportedProtocolsProvider
-    extends
-        $FunctionalProvider<
-          List<ProtocolModel>,
-          List<ProtocolModel>,
-          List<ProtocolModel>
-        >
-    with $Provider<List<ProtocolModel>> {
-  const SupportedProtocolsProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'supportedProtocolsProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
-
-  @override
-  String debugGetCreateSourceHash() => _$supportedProtocolsHash();
-
-  @$internal
-  @override
-  $ProviderElement<List<ProtocolModel>> $createElement(
-    $ProviderPointer pointer,
-  ) => $ProviderElement(pointer);
-
-  @override
-  List<ProtocolModel> create(Ref ref) {
-    return supportedProtocols(ref);
-  }
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(List<ProtocolModel> value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<List<ProtocolModel>>(value),
-    );
-  }
-}
-
-String _$supportedProtocolsHash() =>
-    r'4e48ca9b9955fb02cb9017b548f8e652017c05cc';
-
 @ProviderFor(protocolConnectChecker)
 const protocolConnectCheckerProvider = ProtocolConnectCheckerFamily._();
 
@@ -108,7 +60,7 @@ final class ProtocolConnectCheckerProvider
 }
 
 String _$protocolConnectCheckerHash() =>
-    r'199e3cf1e2698dd2e4543dde4a6139a959794840';
+    r'39c24db3bf158399f80fd681cb104fe31f1c565e';
 
 final class ProtocolConnectCheckerFamily extends $Family
     with $FunctionalFamilyOverride<FutureOr<bool>, ProtocolModel> {

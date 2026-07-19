@@ -1,21 +1,37 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
+
+/// Shows transient operation feedback without assuming a Material widget tree.
+///
+/// [PlatformApp] builds a Cupertino tree on Apple platforms, where a
+/// [ScaffoldMessenger] is intentionally absent. Material pages retain the
+/// standard SnackBar while Cupertino pages use the platform toast channel.
+void showPlatformMessage(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger != null) {
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+    return;
+  }
+  unawaited(Fluttertoast.showToast(msg: message));
+}
 
 class WDAppBar extends PlatformAppBar {
   WDAppBar({super.key, super.title, super.trailingActions, super.leading})
     : super(
         // backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        material: (_, __) => MaterialAppBarData(
+        material: (_, _) => MaterialAppBarData(
           centerTitle: true,
           titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20), //
         ),
-        cupertino: (_, __) => CupertinoNavigationBarData(
+        cupertino: (_, _) => CupertinoNavigationBarData(
           // padding: EdgeInsetsDirectional.zero
         ),
       );
 }
-
 
 /// 连接状态指示器
 class ConnectStatusIndicator extends StatelessWidget {
@@ -40,11 +56,20 @@ class ConnectStatusIndicator extends StatelessWidget {
     }
     return switch (status!) {
       ConnectionStatus.pending => SizedBox.fromSize(
-        size: Size(pendingProgressSize ?? dotSize * 2, pendingProgressSize ?? dotSize * 2),
-        child: CircularProgressIndicator(padding: EdgeInsets.all(0), strokeWidth: strokeWidth),
+        size: Size(
+          pendingProgressSize ?? dotSize * 2,
+          pendingProgressSize ?? dotSize * 2,
+        ),
+        child: CircularProgressIndicator(
+          padding: EdgeInsets.all(0),
+          strokeWidth: strokeWidth,
+        ),
       ),
       ConnectionStatus.active => ColoredDot(size: dotSize, color: Colors.green),
-      ConnectionStatus.inactive => ColoredDot(size: dotSize, color: Colors.grey),
+      ConnectionStatus.inactive => ColoredDot(
+        size: dotSize,
+        color: Colors.grey,
+      ),
       ConnectionStatus.failed => ColoredDot(size: dotSize, color: Colors.red),
     };
   }

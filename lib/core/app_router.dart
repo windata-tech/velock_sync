@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
@@ -8,9 +6,13 @@ import 'package:velock_sync/core/wd_routes.dart';
 import 'package:velock_sync/features/connection/ui/connection.dart';
 import 'package:velock_sync/features/connection/ui/connections.dart';
 import 'package:velock_sync/features/connection/ui/new_connection.dart';
+import 'package:velock_sync/features/connection/ui/new_oauth.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
-import 'package:velock_sync/features/dashboard/ui/dashboard.dart';
+import 'package:velock_sync/features/activity/ui/sync_activity.dart';
+import 'package:velock_sync/features/selected_folder/ui/selected_folder_profiles.dart';
+import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace.dart';
+import 'package:velock_sync/sync_core/model/sync_models.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
@@ -44,6 +46,22 @@ class AppRoutes {
     name: 'settings',
     path: '/settings',
   );
+  static const ({String name, String path}) activity = (
+    name: 'activity',
+    path: '/activity',
+  );
+  static const ({String name, String path}) syncProfilesNew = (
+    name: 'syncProfilesNew',
+    path: '/sync-profiles/new',
+  );
+  static const ({String name, String path}) syncProfileDetail = (
+    name: 'syncProfileDetail',
+    path: '/sync-profiles/:profileId',
+  );
+  static const ({String name, String path}) selectedFolderProfiles = (
+    name: 'selectedFolderProfiles',
+    path: '/selected-folder-profiles',
+  );
 
   static const ({String name, String path}) about = (
     name: 'about',
@@ -61,6 +79,10 @@ class AppRoutes {
   static const ({String name, String path}) newWebDav = (
     name: 'newWebDav',
     path: '/protocol/webdav/new',
+  );
+  static const ({String name, String path}) newOAuth = (
+    name: 'newOAuth',
+    path: '/protocol/oauth/:provider',
   );
   static const ({String name, String path}) connection = (
     name: 'connectionDetail',
@@ -86,7 +108,7 @@ final goRouter = GoRouter(
               name: AppRoutes.dashboard.name,
               path: AppRoutes.dashboard.path,
               builder: (BuildContext context, GoRouterState state) =>
-                  Dashboard(),
+                  const SyncProfilesHome(),
             ),
           ],
         ),
@@ -103,14 +125,45 @@ final goRouter = GoRouter(
         StatefulShellBranch(
           routes: <RouteBase>[
             WdRoute(
+              name: AppRoutes.activity.name,
+              path: AppRoutes.activity.path,
+              builder: (BuildContext context, GoRouterState state) =>
+                  const SyncActivity(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: <RouteBase>[
+            WdRoute(
               name: AppRoutes.settings.name,
               path: AppRoutes.settings.path,
               builder: (BuildContext context, GoRouterState state) =>
-                  Container(),
+                  const SyncSettings(),
             ),
           ],
         ),
       ],
+    ),
+    WdRoute(
+      name: AppRoutes.syncProfilesNew.name,
+      path: AppRoutes.syncProfilesNew.path,
+      builder: (context, state) => const SyncProfileWizard(),
+    ),
+    WdRoute(
+      name: AppRoutes.syncProfileDetail.name,
+      path: AppRoutes.syncProfileDetail.path,
+      builder: (context, state) {
+        final profileId = state.pathParameters['profileId'];
+        if (profileId == null || profileId.isEmpty) {
+          return const Scaffold(body: Center(child: Text('找不到该同步配置。')));
+        }
+        return SyncProfileDetail(profileId: profileId);
+      },
+    ),
+    WdRoute(
+      name: AppRoutes.selectedFolderProfiles.name,
+      path: AppRoutes.selectedFolderProfiles.path,
+      builder: (context, state) => const SelectedFolderProfiles(),
     ),
     WdRoute(
       name: AppRoutes.about.name,
@@ -130,7 +183,28 @@ final goRouter = GoRouter(
     WdRoute(
       name: AppRoutes.newWebDav.name,
       path: AppRoutes.newWebDav.path,
-      builder: (context, state) => NewWebDav(),
+      builder: (context, state) => NewWebDav(
+        replacementConnectionId: state.uri.queryParameters['replace'],
+      ),
+    ),
+    WdRoute(
+      name: AppRoutes.newOAuth.name,
+      path: AppRoutes.newOAuth.path,
+      builder: (context, state) {
+        final providerName = state.pathParameters['provider'];
+        final provider = RemoteProviderType.values.where(
+          (value) => value.name == providerName,
+        );
+        if (provider.length != 1 ||
+            (provider.single != RemoteProviderType.googleDrive &&
+                provider.single != RemoteProviderType.oneDrive)) {
+          return const Center(child: Text('Unsupported OAuth provider.'));
+        }
+        return NewOAuthConnection(
+          providerType: provider.single,
+          replacementConnectionId: state.uri.queryParameters['replace'],
+        );
+      },
     ),
     WdRoute(
       name: AppRoutes.connection.name,
@@ -163,9 +237,16 @@ class WDShellPage extends StatelessWidget {
       bottomNavBar: PlatformNavBar(
         backgroundColor: context.backgroundColor,
         items: [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard)),
-          BottomNavigationBarItem(icon: Icon(Icons.cable)),
-          BottomNavigationBarItem(icon: Icon(Icons.settings)),
+          BottomNavigationBarItem(icon: Icon(Icons.sync), label: 'Sync'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.cable),
+            label: 'Connections',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Activity'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
         ],
         currentIndex: navigationShell.currentIndex,
         itemChanged: (int index) {

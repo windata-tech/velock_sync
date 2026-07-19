@@ -13,14 +13,27 @@ class ProtocolIcon extends StatelessWidget {
     return Container(
       width: 32,
       height: 32,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), color: iconColor ?? context.primaryColor),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        color: iconColor ?? context.primaryColor,
+      ),
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Icon(PlatformIcons(context).folderSolid, size: 24, color: Colors.white),
+          Icon(
+            PlatformIcons(context).folderSolid,
+            size: 24,
+            color: Colors.white,
+          ),
           Positioned(
             bottom: 7,
-            child: Text(protocolName, style: context.titleStyle?.copyWith(color: context.primaryColor, fontSize: 8)),
+            child: Text(
+              protocolName,
+              style: context.titleStyle?.copyWith(
+                color: context.primaryColor,
+                fontSize: 8,
+              ),
+            ),
           ),
         ],
       ),

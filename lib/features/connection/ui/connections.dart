@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -13,12 +12,12 @@ class Connections extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scrollController = useScrollController();
-
     final connections = ref.watch(connectionsProvider);
 
     return PlatformScaffold(
-      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
+      iosContentPadding:
+          Theme.of(context).platform == TargetPlatform.iOS ||
+          Theme.of(context).platform == TargetPlatform.macOS,
       appBar: WDAppBar(
         title: Text('连接服务'),
         trailingActions: [
@@ -31,6 +30,25 @@ class Connections extends HookConsumerWidget {
               context.pushNamed(AppRoutes.newConnection.name);
             },
           ),
+          PlatformIconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () async {
+              try {
+                await ref.read(connectionsProvider.notifier).refreshStatuses();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('已更新连接状态。')));
+                }
+              } on Object {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('无法测试连接，请检查网络和授权。')),
+                  );
+                }
+              }
+            },
+          ),
         ],
       ),
       body: connections.when(
@@ -41,12 +59,18 @@ class Connections extends HookConsumerWidget {
                   PinnedHeaderSliver(
                     child: Container(
                       color: context.backgroundColor,
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
                       child: Text('已连接服务'), //
                     ), // 这是头
                   ),
                   SliverList(
-                    delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
+                    delegate: SliverChildBuilderDelegate((
+                      BuildContext context,
+                      int index,
+                    ) {
                       final connection = connections[index];
                       return GestureDetector(
                         onTap: () {
@@ -59,7 +83,10 @@ class Connections extends HookConsumerWidget {
                           child: ListTile(
                             title: Row(
                               children: [
-                                ConnectStatusIndicator(status: connection.status, pendingProgressSize: 12),
+                                ConnectStatusIndicator(
+                                  status: connection.status,
+                                  pendingProgressSize: 12,
+                                ),
                                 SizedBox(width: 8),
                                 Text(connection.name),
                               ],
@@ -67,7 +94,9 @@ class Connections extends HookConsumerWidget {
                             trailing: IconButton(
                               icon: const Icon(Icons.delete),
                               onPressed: () {
-                                ref.read(connectionsProvider.notifier).removeConnection(connection);
+                                ref
+                                    .read(connectionsProvider.notifier)
+                                    .removeConnection(connection);
                               },
                             ),
                           ),

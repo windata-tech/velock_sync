@@ -4,10 +4,12 @@ abstract class AppKeys {
   static const String themeMode = 'app_theme_mode';
   static const String notificationEnabled = 'app_notification_enabled';
   static const String languageCode = 'app_language_code';
-  static const String isShowPinnedOfDashboardPage = 'is_show_pinned_of_dashboard_page';
+  static const String isShowPinnedOfDashboardPage =
+      'is_show_pinned_of_dashboard_page';
   static const String syncTask = 'sync_task';
   static const String connections = 'connections';
   static const String protocols = 'protocols';
+  static const String deviceId = 'velock_sync_device_id';
 }
 
 class AppSetting {
@@ -24,10 +26,16 @@ class AppSetting {
   }
 
   Future<bool?> get isShowPinnedOfDashboardPage {
-    return _localDataManager.getBoolAsync(AppKeys.isShowPinnedOfDashboardPage, defaultValue: true);
+    return _localDataManager.getBoolAsync(
+      AppKeys.isShowPinnedOfDashboardPage,
+      defaultValue: true,
+    );
   }
 
   Future<void> setShowPinnedOfDashboardPage(bool value) {
-    return _localDataManager.setBoolAsync(AppKeys.isShowPinnedOfDashboardPage, value);
+    return _localDataManager.setBoolAsync(
+      AppKeys.isShowPinnedOfDashboardPage,
+      value,
+    );
   }
 }

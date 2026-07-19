@@ -19,7 +19,7 @@ class SyncTasks extends _$SyncTasks {
     state = AsyncData([...previousTasks, task]);
     try {
       await dashboardRepository.setSyncTasks(state.value!);
-    } catch (e, s) {
+    } catch (e) {
       state = AsyncData(previousTasks);
       rethrow;
     }
@@ -32,7 +32,7 @@ class SyncTasks extends _$SyncTasks {
     state = AsyncData(updatedTasks);
     try {
       await dashboardRepository.setSyncTasks(updatedTasks);
-    } catch (e, s) {
+    } catch (e) {
       state = AsyncData(previousTasks);
       rethrow;
     }

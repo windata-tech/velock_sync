@@ -1,0 +1,249 @@
+{
+  "schemaVersion": 1,
+  "source": "docs/V1_COMPLETION_SPEC.md#12",
+  "requirements": [
+    "V1C-PROVIDER-001",
+    "V1C-PROVIDER-002",
+    "V1C-PROVIDER-003",
+    "V1C-PROVIDER-004"
+  ],
+  "contracts": [
+    "zero_byte_round_trip",
+    "small_object_round_trip",
+    "large_streaming_write",
+    "interrupted_immutable_safe_retry",
+    "immutable_collision",
+    "pagination_deduplication",
+    "not_found_mapping",
+    "authorization_recovery",
+    "rate_limit_cancellation",
+    "transfer_integrity",
+    "unicode_logical_key",
+    "idempotent_delete",
+    "cancellation_cleanup",
+    "quota_mapping",
+    "traversal_rejection",
+    "redacted_errors"
+  ],
+  "providers": {
+    "webdav": {
+      "adapter": "WebDavObjectStore",
+      "auth": "reauthorization_required",
+      "resumableUpload": false,
+      "safeFallback": "immutable_safe_retry",
+      "suite": "test/providers/webdav/webdav_object_store_test.dart",
+      "contracts": {
+        "zero_byte_round_trip": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract zero_byte_round_trip"
+        },
+        "small_object_round_trip": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract small_object_round_trip"
+        },
+        "large_streaming_write": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract large_streaming_write"
+        },
+        "interrupted_immutable_safe_retry": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract interrupted_immutable_safe_retry"
+        },
+        "immutable_collision": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract immutable_collision"
+        },
+        "pagination_deduplication": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract pagination_deduplication"
+        },
+        "not_found_mapping": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract not_found_mapping"
+        },
+        "authorization_recovery": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract authorization_recovery"
+        },
+        "rate_limit_cancellation": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract rate_limit_cancellation"
+        },
+        "transfer_integrity": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract transfer_integrity"
+        },
+        "unicode_logical_key": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract unicode_logical_key"
+        },
+        "idempotent_delete": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract idempotent_delete"
+        },
+        "cancellation_cleanup": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract cancellation_cleanup"
+        },
+        "quota_mapping": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract quota_mapping"
+        },
+        "traversal_rejection": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract traversal_rejection"
+        },
+        "redacted_errors": {
+          "status": "verified",
+          "evidence": "test/providers/webdav/webdav_object_store_test.dart :: webdav V1 ObjectStore contract redacted_errors"
+        }
+      }
+    },
+    "google_drive": {
+      "adapter": "GoogleDriveObjectStore",
+      "auth": "oauth_refresh_once",
+      "resumableUpload": true,
+      "safeFallback": "none",
+      "suite": "test/providers/google_drive/google_drive_object_store_test.dart",
+      "contracts": {
+        "zero_byte_round_trip": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract zero_byte_round_trip"
+        },
+        "small_object_round_trip": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract small_object_round_trip"
+        },
+        "large_streaming_write": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract large_streaming_write"
+        },
+        "interrupted_immutable_safe_retry": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract interrupted_immutable_safe_retry"
+        },
+        "immutable_collision": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract immutable_collision"
+        },
+        "pagination_deduplication": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract pagination_deduplication"
+        },
+        "not_found_mapping": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract not_found_mapping"
+        },
+        "authorization_recovery": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract authorization_recovery"
+        },
+        "rate_limit_cancellation": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract rate_limit_cancellation"
+        },
+        "transfer_integrity": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract transfer_integrity"
+        },
+        "unicode_logical_key": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract unicode_logical_key"
+        },
+        "idempotent_delete": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract idempotent_delete"
+        },
+        "cancellation_cleanup": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract cancellation_cleanup"
+        },
+        "quota_mapping": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract quota_mapping"
+        },
+        "traversal_rejection": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract traversal_rejection"
+        },
+        "redacted_errors": {
+          "status": "verified",
+          "evidence": "test/providers/google_drive/google_drive_object_store_test.dart :: google_drive V1 ObjectStore contract redacted_errors"
+        }
+      }
+    },
+    "one_drive": {
+      "adapter": "OneDriveObjectStore",
+      "auth": "oauth_refresh_once",
+      "resumableUpload": true,
+      "safeFallback": "none",
+      "suite": "test/providers/one_drive/one_drive_object_store_test.dart",
+      "contracts": {
+        "zero_byte_round_trip": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract zero_byte_round_trip"
+        },
+        "small_object_round_trip": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract small_object_round_trip"
+        },
+        "large_streaming_write": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract large_streaming_write"
+        },
+        "interrupted_immutable_safe_retry": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract interrupted_immutable_safe_retry"
+        },
+        "immutable_collision": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract immutable_collision"
+        },
+        "pagination_deduplication": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract pagination_deduplication"
+        },
+        "not_found_mapping": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract not_found_mapping"
+        },
+        "authorization_recovery": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract authorization_recovery"
+        },
+        "rate_limit_cancellation": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract rate_limit_cancellation"
+        },
+        "transfer_integrity": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract transfer_integrity"
+        },
+        "unicode_logical_key": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract unicode_logical_key"
+        },
+        "idempotent_delete": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract idempotent_delete"
+        },
+        "cancellation_cleanup": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract cancellation_cleanup"
+        },
+        "quota_mapping": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract quota_mapping"
+        },
+        "traversal_rejection": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract traversal_rejection"
+        },
+        "redacted_errors": {
+          "status": "verified",
+          "evidence": "test/providers/one_drive/one_drive_object_store_test.dart :: one_drive V1 ObjectStore contract redacted_errors"
+        }
+      }
+    }
+  }
+}

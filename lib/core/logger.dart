@@ -22,9 +22,7 @@ var logger = Logger(
       Level.fatal: '🔴',
     },
   ),
-  output: MultiOutput([
-    DeveloperConsoleOutput(),
-  ]),
+  output: MultiOutput([DeveloperConsoleOutput()]),
 );
 
 class DebugFilter extends LogFilter {
@@ -40,14 +38,18 @@ class DeveloperConsoleOutput extends LogOutput {
     final StringBuffer buffer = StringBuffer();
     event.lines.forEach(buffer.writeln);
     log(
-      buffer.toString().replaceAll('[38;5;12m', '').replaceAll('[0m', '').replaceAll('[38;5;196m', '').replaceAll('[38;5;208m', ''),
+      buffer
+          .toString()
+          .replaceAll('[38;5;12m', '')
+          .replaceAll('[0m', '')
+          .replaceAll('[38;5;196m', '')
+          .replaceAll('[38;5;208m', ''),
       level: event.level.value,
       error: event.origin.error,
       stackTrace: event.origin.stackTrace,
     );
   }
 }
-
 
 void logd(dynamic text, {StackTrace? stackTrace}) {
   logger.d(text, stackTrace: stackTrace);

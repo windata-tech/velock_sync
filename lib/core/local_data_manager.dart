@@ -3,7 +3,6 @@ import 'package:velock_sync/core/app_repository.dart';
 
 import 'logger.dart';
 
-
 /// 用于管理本地键值对数据的单例工具类。
 ///
 /// 封装了 SharedPreferencesWithCache 和 SharedPreferencesAsync，
@@ -240,7 +239,10 @@ class LocalDataManager {
   }
 
   /// 异步获取字符串列表。适用于所有键。返回 `Future<List<String>>`。
-  Future<List<String>?> getStringListAsync(String key, {List<String>? defaultValue}) async {
+  Future<List<String>?> getStringListAsync(
+    String key, {
+    List<String>? defaultValue,
+  }) async {
     return await _asyncStore.getStringList(key) ?? defaultValue;
   }
 
@@ -270,9 +272,16 @@ class LocalDataManager {
 
   /// 私有辅助方法，用于日志记录持久化结果。
   /// 只在调试模式下打印日志，并可以记录具体的错误信息。
-  void _logPersistenceResult(String key, bool success, String methodName, {dynamic error}) {
+  void _logPersistenceResult(
+    String key,
+    bool success,
+    String methodName, {
+    dynamic error,
+  }) {
     if (!success) {
-      logw('LocalDataManager WARNING: $methodName for key "$key" failed to persist to disk! Error: $error');
+      // Keys can identify user data and platform exceptions can embed the
+      // rejected value, so diagnostics intentionally omit both.
+      logw('LocalDataManager persistence operation failed.');
     } else {
       // logd('LocalDataManager: $methodName for key "$key" persisted successfully.');
     }

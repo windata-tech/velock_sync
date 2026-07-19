@@ -1,15 +1,11 @@
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:velock_sync/core/logger.dart';
+import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
 part '../../../generated/features/connection/state/protocol_provider.g.dart';
-
-@riverpod
-List<ProtocolModel> supportedProtocols(Ref ref) {
-  return [ProtocolModel.webDav(protocolType: WebDavProtocolType.http, address: '', port: '')];
-}
 
 @riverpod
 Future<bool> protocolConnectChecker(Ref ref, ProtocolModel protocol) async {
@@ -29,38 +25,59 @@ Future<bool> protocolConnectChecker(Ref ref, ProtocolModel protocol) async {
   switch (protocol) {
     case WebDavProtocolModel():
       WebdavClient client;
+      final password = await ref
+          .read(credentialStoreProvider)
+          .readWebDavPassword(protocol.credentialRef ?? '');
       if (protocol.username != null &&
           protocol.username!.isNotEmpty &&
-          protocol.password != null &&
-          protocol.password!.isNotEmpty) {
+          password != null &&
+          password.isNotEmpty) {
         client = WebdavClient.basicAuth(
           url: '${protocol.address}:${protocol.port}',
           user: protocol.username!,
-          pwd: protocol.password!,
+          pwd: password,
         );
       } else {
-        client = WebdavClient.noAuth(url: '${protocol.address}:${protocol.port}');
+        client = WebdavClient.noAuth(
+          url: '${protocol.address}:${protocol.port}',
+        );
       }
       try {
         await client.ping();
         return true;
-      } catch (e, s) {
+      } catch (e) {
         if (e is WebdavException) {
-          if (e.statusCode == 401) {
-            Fluttertoast.showToast(msg: 'WebDav认证失败: ${e.message}');
-          } else {
-            Fluttertoast.showToast(msg: 'WebDav发生错误: ${e.message}');
-          }
+          logw('WebDAV connection failed with HTTP ${e.statusCode}.');
         } else {
-          Fluttertoast.showToast(msg: 'WebDav连接发生错误: $e');
+          logw('WebDAV connection failed with ${e.runtimeType}.');
         }
-        loge('----------- 发生错误 -----------');
-        loge('错误类型: ${e.runtimeType}');
-        loge('错误信息: $e');
-        loge('堆栈跟踪: ', stackTrace: s);
-        loge('------------------------------');
+        logw('WebDAV connection check failed.');
+        return false;
+      }
+    case OAuthProtocolModel(
+      :final providerType,
+      :final clientId,
+      :final credentialRef,
+      :final rootId,
+    ):
+      try {
+        final remote =
+            OAuthRemoteTargetFactory(
+              credentialStore: ref.read(credentialStoreProvider),
+            ).create(
+              OAuthRemoteTargetConfig(
+                providerType: providerType,
+                clientId: clientId,
+                credentialRef: credentialRef,
+                rootId: rootId,
+              ),
+            );
+        await remote.list(limit: 1);
+        return true;
+      } catch (e) {
+        logw('OAuth connection check failed with ${e.runtimeType}.');
+        logw('OAuth connection check failed.');
         return false;
       }
   }
-  return true;
 }

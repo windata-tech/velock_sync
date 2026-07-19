@@ -20,7 +20,7 @@ final materialDarkTheme =
     ThemeData.from(
       colorScheme: ColorScheme.fromSeed(
         seedColor: Colors.purple,
-        brightness: Brightness.light,
+        brightness: Brightness.dark,
       ),
     ).copyWith(
       cupertinoOverrideTheme: const CupertinoThemeData(
@@ -36,9 +36,7 @@ final cupertinoDarkTheme = MaterialBasedCupertinoThemeData(
 );
 
 @Riverpod(dependencies: [])
-ThemeData theme(Ref ref) {
-  throw UnimplementedError();
-}
+ThemeData theme(Ref ref) => materialLightTheme;
 
 @riverpod
 class VSThemeMode extends _$VSThemeMode {

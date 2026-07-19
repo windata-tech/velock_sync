@@ -16,11 +16,17 @@ class NewConnection extends HookConsumerWidget {
     final connectionData = ref.watch(connectionCreationProvider);
 
     useEffect(() {
-      final connectionCreationNotifier = ref.read(connectionCreationProvider.notifier);
+      final connectionCreationNotifier = ref.read(
+        connectionCreationProvider.notifier,
+      );
 
       if (connectionData == null) {
         Future.microtask(() {
-          connectionCreationNotifier.prepareNewConnection(name: '新建连接', source: '格间', target: null);
+          connectionCreationNotifier.prepareNewConnection(
+            name: '新建连接',
+            source: '格间',
+            target: null,
+          );
         });
       }
       return () {
@@ -33,7 +39,9 @@ class NewConnection extends HookConsumerWidget {
 
     if (connectionData == null) {
       return PlatformScaffold(
-        iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
+        iosContentPadding:
+            Theme.of(context).platform == TargetPlatform.iOS ||
+            Theme.of(context).platform == TargetPlatform.macOS,
         appBar: WDAppBar(title: Text(connectionData?.name ?? '')),
         body: const Center(child: PlatformCircularProgressIndicator()),
       );
@@ -41,7 +49,9 @@ class NewConnection extends HookConsumerWidget {
 
     // 4. 当 connectionData 不为 null 时 (第二帧)，显示真实的 UI
     return PlatformScaffold(
-      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
+      iosContentPadding:
+          Theme.of(context).platform == TargetPlatform.iOS ||
+          Theme.of(context).platform == TargetPlatform.macOS,
       appBar: WDAppBar(title: Text(connectionData.name)),
       body: CustomScrollView(
         slivers: [
@@ -51,7 +61,11 @@ class NewConnection extends HookConsumerWidget {
           ),
           SliverPadding(
             padding: EdgeInsets.all(16),
-            sliver: SliverToBoxAdapter(child: Row(children: [FlutterLogo(), Text(connectionData.source ?? '选择源')])),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [FlutterLogo(), Text(connectionData.source ?? '选择源')],
+              ),
+            ),
           ),
           SliverPadding(
             padding: EdgeInsets.all(16),
@@ -63,7 +77,9 @@ class NewConnection extends HookConsumerWidget {
               child: PlatformTextButton(
                 padding: EdgeInsets.zero,
                 cupertino: (context, platform) {
-                  return CupertinoTextButtonData(padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4));
+                  return CupertinoTextButtonData(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  );
                 },
                 child: Row(
                   children: [

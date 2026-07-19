@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Sync transports require network access in every build variant. Folder
+         access remains scoped to SAF grants; do not add broad storage access. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Granted only when this APK and Velock share a signing certificate. -->
+    <uses-permission android:name="tech.windata.velock.permission.SYNC_EXCHANGE"/>
     <application
         android:label="velock_sync"
         android:name="${applicationName}"
@@ -24,6 +30,15 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="velocksync"
+                    android:host="oauth"
+                    android:path="/callback" />
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
@@ -37,6 +52,9 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- This does not grant trust: MainActivity independently verifies the
+             resolved provider package and signing-certificate digest. -->
+        <provider android:authorities="${velockExchangeAuthority}" />
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

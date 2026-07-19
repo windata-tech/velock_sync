@@ -18,7 +18,8 @@ sealed class SyncTask with _$SyncTask {
     required SyncTaskStatus status,
   }) = _SyncTask;
 
-  factory SyncTask.fromJson(Map<String, Object?> json) => _$SyncTaskFromJson(json);
+  factory SyncTask.fromJson(Map<String, Object?> json) =>
+      _$SyncTaskFromJson(json);
 }
 
 @JsonEnum()

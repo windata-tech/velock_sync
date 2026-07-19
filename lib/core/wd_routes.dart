@@ -14,7 +14,8 @@ mixin WDResultProviderMixin<T> on PageRoute<T> {
   T? get currentResult => _currentResult;
 }
 
-class WDMaterialPageRoute<T> extends MaterialPageRoute<T> with WDResultProviderMixin<T> {
+class WDMaterialPageRoute<T> extends MaterialPageRoute<T>
+    with WDResultProviderMixin<T> {
   final Duration? customTransitionDuration;
 
   WDMaterialPageRoute({
@@ -31,10 +32,12 @@ class WDMaterialPageRoute<T> extends MaterialPageRoute<T> with WDResultProviderM
   });
 
   @override
-  Duration get transitionDuration => customTransitionDuration ?? super.transitionDuration;
+  Duration get transitionDuration =>
+      customTransitionDuration ?? super.transitionDuration;
 }
 
-class WDCupertinoPageRoute<T> extends CupertinoPageRoute<T> with WDResultProviderMixin<T> {
+class WDCupertinoPageRoute<T> extends CupertinoPageRoute<T>
+    with WDResultProviderMixin<T> {
   final Duration? customTransitionDuration;
 
   WDCupertinoPageRoute({
@@ -50,7 +53,8 @@ class WDCupertinoPageRoute<T> extends CupertinoPageRoute<T> with WDResultProvide
   });
 
   @override
-  Duration get transitionDuration => customTransitionDuration ?? super.transitionDuration;
+  Duration get transitionDuration =>
+      customTransitionDuration ?? super.transitionDuration;
 }
 
 class WDMaterialPage<T> extends MaterialPage<T> {
@@ -152,7 +156,8 @@ Page<T> platformWDPage<T>({
   TraversalEdgeBehavior? directionalTraversalEdgeBehavior,
   Duration? transitionDuration,
 }) {
-  if (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS) {
+  if (defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS) {
     return WDCupertinoPage<T>(
       child: child,
       title: title,
@@ -212,24 +217,26 @@ class WdRoute<T> extends GoRoute {
     TraversalEdgeBehavior? traversalEdgeBehavior,
     TraversalEdgeBehavior? directionalTraversalEdgeBehavior,
     Duration? transitionDuration,
-  }) : super(pageBuilder: (context, state) {
-          return platformWDPage<T>(
-            child: builder(context, state),
-            title: title,
-            fullscreenDialog: fullscreenDialog,
-            allowSnapshotting: allowSnapshotting,
-            maintainState: maintainState,
-            canPop: canPop,
-            onPopInvoked: onPopInvoked,
-            key: state.pageKey,
-            name: state.name,
-            arguments: originalArguments ?? state.extra,
-            restorationId: state.pageKey.value,
-            requestFocus: requestFocus,
-            barrierDismissible: barrierDismissible,
-            traversalEdgeBehavior: traversalEdgeBehavior,
-            directionalTraversalEdgeBehavior: directionalTraversalEdgeBehavior,
-            transitionDuration: transitionDuration,
-          );
-        });
+  }) : super(
+         pageBuilder: (context, state) {
+           return platformWDPage<T>(
+             child: builder(context, state),
+             title: title,
+             fullscreenDialog: fullscreenDialog,
+             allowSnapshotting: allowSnapshotting,
+             maintainState: maintainState,
+             canPop: canPop,
+             onPopInvoked: onPopInvoked,
+             key: state.pageKey,
+             name: state.name,
+             arguments: originalArguments ?? state.extra,
+             restorationId: state.pageKey.value,
+             requestFocus: requestFocus,
+             barrierDismissible: barrierDismissible,
+             traversalEdgeBehavior: traversalEdgeBehavior,
+             directionalTraversalEdgeBehavior: directionalTraversalEdgeBehavior,
+             transitionDuration: transitionDuration,
+           );
+         },
+       );
 }

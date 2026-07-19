@@ -8,10 +8,18 @@ part '../../../generated/features/connection/model/connection_model.g.dart';
 
 @freezed
 sealed class CreateConnectionDto with _$CreateConnectionDto {
-  factory CreateConnectionDto({required String name, String? description, required String? source, String? sourceDescription, required String? target, String? targetDescription, required ProtocolModel? protocol}) =
-      _CreateConnectionDto;
+  factory CreateConnectionDto({
+    required String name,
+    String? description,
+    required String? source,
+    String? sourceDescription,
+    required String? target,
+    String? targetDescription,
+    required ProtocolModel? protocol,
+  }) = _CreateConnectionDto;
 
-  factory CreateConnectionDto.empty({required String name}) => CreateConnectionDto(
+  factory CreateConnectionDto.empty({required String name}) =>
+      CreateConnectionDto(
         name: name,
         description: null,
         source: null,
@@ -21,7 +29,8 @@ sealed class CreateConnectionDto with _$CreateConnectionDto {
         protocol: null,
       );
 
-  factory CreateConnectionDto.fromJson(Map<String, dynamic> json) => _$CreateConnectionDtoFromJson(json);
+  factory CreateConnectionDto.fromJson(Map<String, dynamic> json) =>
+      _$CreateConnectionDtoFromJson(json);
 }
 
 @freezed
@@ -40,7 +49,8 @@ sealed class ConnectionModel with _$ConnectionModel {
     required ConnectionStatus status,
   }) = _ConnectionModel;
 
-  factory ConnectionModel.fromCreateDto(CreateConnectionDto dto) => ConnectionModel(
+  factory ConnectionModel.fromCreateDto(CreateConnectionDto dto) =>
+      ConnectionModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         name: dto.name,
         description: dto.description,
@@ -54,7 +64,8 @@ sealed class ConnectionModel with _$ConnectionModel {
         status: ConnectionStatus.pending,
       );
 
-  factory ConnectionModel.fromJson(Map<String, Object?> json) => _$ConnectionModelFromJson(json);
+  factory ConnectionModel.fromJson(Map<String, Object?> json) =>
+      _$ConnectionModelFromJson(json);
 }
 
 @freezed
@@ -63,9 +74,15 @@ sealed class ConnectionUiState with _$ConnectionUiState {
 
   const factory ConnectionUiState.inProgress() = _InProgress;
 
-  const factory ConnectionUiState.success({required ConnectionModel connection}) = _Success;
+  const factory ConnectionUiState.success({
+    required ConnectionModel connection,
+  }) = _Success;
 
-  const factory ConnectionUiState.failure({required FailedReason reason, String? message, Object? error}) = _Failure;
+  const factory ConnectionUiState.failure({
+    required FailedReason reason,
+    String? message,
+    Object? error,
+  }) = _Failure;
 }
 
 @JsonEnum()

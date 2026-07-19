@@ -67,6 +67,9 @@ dependencies:
   # https://pub.dev/packages/url_launcher
   url_launcher: ^6.3.2
 
+  # https://pub.dev/packages/app_links
+  app_links: ^7.2.1
+
   # https://pub.dev/packages/path_provider
   path_provider: ^2.1.5
 
@@ -75,6 +78,18 @@ dependencies:
 
   # https://pub.dev/packages/open_filex
   open_filex: ^4.7.0
+  flutter_secure_storage: ^10.0.0
+  uuid: ^4.5.2
+  sqlite3: ^2.9.4
+  sqlite3_flutter_libs: ^0.5.32
+  xml: ^6.6.1
+  crypto: ^3.0.6
+  cryptography: ^2.9.0
+  connectivity_plus: ^7.2.0
+  # Native directory selection for Selected Folder datasets.
+  file_selector: ^1.0.4
+  # Android WorkManager and iOS BGTaskScheduler background sync.
+  workmanager: ^0.9.0+3
 
 dev_dependencies:
   flutter_test:
@@ -86,6 +101,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # Direct test import for the in-memory SharedPreferences async platform.
+  shared_preferences_platform_interface: ^2.4.2
 
   # https://riverpod.dev/zh-hans/docs/introduction/getting_started
   build_runner:

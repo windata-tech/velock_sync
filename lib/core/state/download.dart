@@ -25,7 +25,12 @@ class DownloadManager extends _$DownloadManager {
     final savePath = '${dir.path}/${id}_file.dat';
 
     // 2. 创建新任务
-    final task = DownloadTask(id: id, url: url, savePath: savePath, status: DownloadStatus.downloading);
+    final task = DownloadTask(
+      id: id,
+      url: url,
+      savePath: savePath,
+      status: DownloadStatus.downloading,
+    );
 
     // 3. 更新状态：添加到列表
     _addOrUpdateTask(task);
@@ -155,7 +160,11 @@ class DownloadTask {
   });
 
   // 复制并修改 (Immutability is key in Riverpod)
-  DownloadTask copyWith({double? progress, DownloadStatus? status, String? errorMessage}) {
+  DownloadTask copyWith({
+    double? progress,
+    DownloadStatus? status,
+    String? errorMessage,
+  }) {
     return DownloadTask(
       id: id,
       url: url,

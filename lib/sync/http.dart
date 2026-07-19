@@ -3,7 +3,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part '../generated/sync/http.g.dart';
 
-
 @riverpod
 Dio dio(Ref ref) {
   final dio = Dio();

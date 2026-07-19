@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -10,20 +8,36 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/core/extensions.dart';
 import 'package:velock_sync/core/logger.dart';
+import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/core/utils.dart';
+import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/protocol_provider.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 class NewWebDav extends HookConsumerWidget {
-  const NewWebDav({super.key});
+  const NewWebDav({super.key, this.replacementConnectionId});
+
+  final String? replacementConnectionId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formKey = useMemoized(() => GlobalKey<FormState>());
+    final replacement = replacementConnectionId == null
+        ? const AsyncData<ConnectionModel?>(null)
+        : ref.watch(connectionDetailProvider(replacementConnectionId!));
+    final replacementConnection = replacement.when(
+      data: (connection) => connection,
+      error: (_, _) => null,
+      loading: () => null,
+    );
+    final replacementProtocol = replacementConnection?.protocol;
+    final existingWebDav = replacementProtocol is WebDavProtocolModel
+        ? replacementProtocol
+        : null;
 
-    final enableHTTPS = useState(false);
+    final enableHTTPS = useState(true);
     final addressController = useTextEditingController(
       text: enableHTTPS.value ? 'https://' : 'http://',
     );
@@ -33,6 +47,19 @@ class NewWebDav extends HookConsumerWidget {
     final pathController = useTextEditingController();
 
     final isLoading = useState(false);
+    final hasPrefilled = useRef(false);
+
+    useEffect(() {
+      if (existingWebDav == null || hasPrefilled.value) return null;
+      enableHTTPS.value =
+          existingWebDav.protocolType == WebDavProtocolType.https;
+      addressController.text = existingWebDav.address;
+      portController.text = existingWebDav.port;
+      userController.text = existingWebDav.username ?? '';
+      pathController.text = existingWebDav.path ?? '';
+      hasPrefilled.value = true;
+      return null;
+    }, [existingWebDav?.credentialRef]);
 
     useEffect(() {
       const http = 'http://';
@@ -73,10 +100,49 @@ class NewWebDav extends HookConsumerWidget {
       return null;
     }, [enableHTTPS.value]);
 
+    Future<void> onHttpsChanged(bool value) async {
+      if (value) {
+        enableHTTPS.value = true;
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('使用不安全的 HTTP？'),
+          content: const Text(
+            'HTTP 会使服务器地址、账号和传输内容面临被窃听或篡改的风险。仅在你确认服务器位于可信网络且不支持 HTTPS 时继续。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('保持 HTTPS'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('仍然使用 HTTP'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true && context.mounted) {
+        enableHTTPS.value = false;
+        logw('User explicitly enabled insecure WebDAV HTTP transport.');
+      }
+    }
+
+    if (replacementConnectionId != null && replacement.isLoading) {
+      return const Center(child: PlatformCircularProgressIndicator());
+    }
+    if (replacementConnectionId != null && existingWebDav == null) {
+      return const Center(child: Text('要编辑的 WebDAV 连接不可用。'));
+    }
+
     return PlatformScaffold(
-      iosContentPadding: Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS,
+      iosContentPadding:
+          Theme.of(context).platform == TargetPlatform.iOS ||
+          Theme.of(context).platform == TargetPlatform.macOS,
       appBar: WDAppBar(
-        title: Text('新建 WebDAV 连接'),
+        title: Text(existingWebDav == null ? '新建 WebDAV 连接' : '编辑 WebDAV 连接'),
         trailingActions: [
           PlatformTextButton(
             padding: EdgeInsets.zero,
@@ -85,75 +151,76 @@ class NewWebDav extends HookConsumerWidget {
                 : () async {
                     final isValidate = formKey.currentState?.validate();
                     if (isValidate == true) {
-                      final protocolModel = ProtocolModel.webDav(
-                        protocolType: enableHTTPS.value
-                            ? WebDavProtocolType.https
-                            : WebDavProtocolType.http,
-                        address: addressController.text,
-                        port: portController.text,
-                        username: userController.text.isNotEmpty
-                            ? userController.text
-                            : null,
-                        password: passwordController.text.isNotEmpty
-                            ? passwordController.text
-                            : null,
-                        path: pathController.text.isNotEmpty
-                            ? pathController.text
-                            : null,
-                      );
+                      String? createdCredentialRef;
+                      var connectionPersisted = false;
+                      isLoading.value = true;
                       try {
+                        if (passwordController.text.isNotEmpty) {
+                          createdCredentialRef = await ref
+                              .read(connectionRepositoryProvider)
+                              .storeWebDavPassword(passwordController.text);
+                        }
+                        final protocolModel = WebDavProtocolModel(
+                          protocolType: enableHTTPS.value
+                              ? WebDavProtocolType.https
+                              : WebDavProtocolType.http,
+                          address: addressController.text,
+                          port: portController.text,
+                          username: userController.text.isNotEmpty
+                              ? userController.text
+                              : null,
+                          credentialRef:
+                              createdCredentialRef ??
+                              existingWebDav?.credentialRef,
+                          path: pathController.text.isNotEmpty
+                              ? pathController.text
+                              : null,
+                        );
                         final checkProvider = protocolConnectCheckerProvider(
                           protocolModel,
                         );
-                        isLoading.value = true;
                         final isConnected = await ref.read(
                           checkProvider.future,
                         );
                         if (isConnected) {
-                          if (context.mounted) {
-                            // context.pop(protocolModel);
-                            // context.pushReplacementNamed(AppRoutes.connection.name, extra: protocolModel);
-                            // context.goNamed(AppRoutes.connection.name, extra: protocolModel);
-                            // final protocol = ref.read(protocolProvider.notifier);
-                            // protocol.setProtocol(protocolModel);
+                          if (replacementConnection != null) {
+                            await ref
+                                .read(connectionsProvider.notifier)
+                                .replaceWebDavConnection(
+                                  connectionId: replacementConnection.id,
+                                  protocol: protocolModel,
+                                );
+                          } else {
                             final connectionCreation = ref.read(
                               connectionCreationProvider.notifier,
                             );
                             await connectionCreation.setProtocolAndFinalize(
                               protocolModel: protocolModel,
                             );
-                            if (context.mounted) {
-                              context.goNamed(AppRoutes.connections.name);
-                            } else {
-                              Fluttertoast.showToast(
-                                msg:
-                                    'context is not mounted, cannot navigate to connection page',
-                              );
-                            }
                           }
+                          connectionPersisted = true;
+                          if (context.mounted) {
+                            context.goNamed(AppRoutes.connections.name);
+                          } else {
+                            Fluttertoast.showToast(msg: '连接已保存。');
+                          }
+                        } else {
+                          await ref
+                              .read(connectionRepositoryProvider)
+                              .deleteCredential(createdCredentialRef);
                         }
-                        // if (isConnected) {
-                        //   if (context.mounted) {
-                        //     ScaffoldMessenger.of(context).showSnackBar(
-                        //       const SnackBar(content: Text('连接成功'), backgroundColor: Colors.green),
-                        //     );
-                        //   }
-                        // } else {
-                        //   if (context.mounted) {
-                        //     ScaffoldMessenger.of(context).showSnackBar(
-                        //       const SnackBar(content: Text('连接失败，请检查配置'), backgroundColor: Colors.orange),
-                        //     );
-                        //   }
-                        // }
-                      } catch (e, stackTrace) {
-                        loge('连接失败: $e', stackTrace: stackTrace);
+                      } catch (e) {
+                        if (!connectionPersisted) {
+                          await ref
+                              .read(connectionRepositoryProvider)
+                              .deleteCredential(createdCredentialRef);
+                        }
+                        loge('连接失败: ${e.runtimeType}');
                         return;
                       } finally {
                         isLoading.value = false;
                       }
-                      logd(
-                        'address: ${addressController.text}, user: ${userController.text}, password: ${passwordController.text}, port: ${portController.text}, path: ${pathController.text}, enableHTTPS: ${enableHTTPS.value}',
-                      );
+                      logd('WebDAV connection creation finished.');
                       // protocol.setProtocol(ProtocolModel.webDav(protocolType: WebDavProtocolType.http, address: address, port: port))
                     }
                   },
@@ -178,10 +245,8 @@ class NewWebDav extends HookConsumerWidget {
             userController: userController,
             passwordController: passwordController,
             pathController: pathController,
-            onEnableHTTPSChanged: (bool value) {
-              enableHTTPS.value = value;
-              logd('enableHTTPS: $value');
-            },
+            passwordOptional: existingWebDav?.credentialRef != null,
+            onEnableHTTPSChanged: onHttpsChanged,
           ),
         ),
       ),
@@ -207,6 +272,7 @@ class _WebDavFormFields extends StatelessWidget {
   final TextEditingController passwordController;
   final TextEditingController pathController;
   final bool enableHTTPS;
+  final bool passwordOptional;
   final ValueChanged<bool> onEnableHTTPSChanged;
 
   const _WebDavFormFields({
@@ -216,6 +282,7 @@ class _WebDavFormFields extends StatelessWidget {
     required this.passwordController,
     required this.pathController,
     required this.enableHTTPS,
+    required this.passwordOptional,
     required this.onEnableHTTPSChanged,
   });
 
@@ -240,6 +307,12 @@ class _WebDavFormFields extends StatelessWidget {
           }
           if (!isUrl(value, protocols: ['http', 'https'])) {
             return '请输入有效的服务器地址';
+          }
+          final expectedScheme = enableHTTPS ? 'https://' : 'http://';
+          if (!value.toLowerCase().startsWith(expectedScheme)) {
+            return enableHTTPS
+                ? '启用 HTTPS 时地址必须以 https:// 开头'
+                : '使用 HTTP 时地址必须以 http:// 开头';
           }
           return null;
         },
@@ -339,14 +412,18 @@ class _WebDavFormFields extends StatelessWidget {
       ),
       PlatformTextFormField(
         controller: passwordController,
+        obscureText: true,
+        autocorrect: false,
+        enableSuggestions: false,
         validator: (value) {
           if (userController.text.isNotEmpty &&
+              !passwordOptional &&
               (value == null || value.isEmpty)) {
             return '请输入密码';
           }
           return null;
         },
-        hintText: '请输入密码',
+        hintText: passwordOptional ? '留空则保留原密码' : '请输入密码',
         material: (context, platform) {
           return MaterialTextFormFieldData(
             decoration: InputDecoration(labelText: '密码'),
@@ -365,7 +442,8 @@ class _WebDavFormFields extends StatelessWidget {
       ),
     ];
 
-    return Theme.of(context).platform == TargetPlatform.iOS || Theme.of(context).platform == TargetPlatform.macOS
+    return Theme.of(context).platform == TargetPlatform.iOS ||
+            Theme.of(context).platform == TargetPlatform.macOS
         ? Column(
             children: [
               CupertinoFormSection.insetGrouped(

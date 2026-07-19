@@ -1,10 +1,20 @@
 # velock_sync
 
-[English] A dedicated synchronization program for Velock. We plan to support all platforms, but due to current manpower limitations, the initial plan is to launch on mobile first, followed by the desktop. We also welcome everyone to submit PRs and work together to make it better and better.
+[English] An open-source, cross-platform, incremental bidirectional sync engine for Velock and user-selected files. The project is designed to support WebDAV, Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive, and additional providers through adapters. Mobile platforms are prioritized first, followed by desktop platforms.
 
 ---
 
-[中文] 给格间的专属同步程序，计划支持全平台，但目前限于人力实在是有限，计划先上移动端再上桌面端。同时也欢迎大家提交PR，大家一起把它越做越好。
+[中文] 一个开源、跨平台的增量双向同步工具。格间是内置的深度集成数据源，同时也支持非格间用户同步其主动选择的文件夹。云端目标通过 Provider 适配器扩展，计划支持 WebDAV、Google Drive、OneDrive、百度网盘和阿里云盘。项目优先支持移动端，再逐步完善桌面端。
+
+## 产品与技术文档
+
+- [产品需求文档（PRD）](./docs/PRD.md)
+- [技术规格（Technical Specification）](./docs/TECHNICAL_SPEC.md)
+- [Velock Sync Protocol V1](./docs/SYNC_PROTOCOL_V1.md)
+- [Generic Vault 恢复流程](./docs/GENERIC_VAULT_RECOVERY.md)
+- [PRD / Technical Spec 实现与验收状态](./docs/IMPLEMENTATION_STATUS.md)
+
+核心安全原则：Velock Sync 在格间模式下只搬运经过端到端加密和认证的增量包，不持有格间主密钥或同步密钥。
 
 ## 格间已在iOS Store上架：
 
