@@ -89,13 +89,13 @@ void main() {
       'verifies only an exact receipt signed by the paired producer',
       () async {
         await _beginPending(gateway);
-      final request = await _storedRequest(root);
-      final receipt = await _signedReceipt(request, signingKey, now);
-      final receiptFile = File(
-        '${root.path}/Control/ConflictReceipts/${request.requestId}.json',
-      );
-      await receiptFile.parent.create(recursive: true);
-      await receiptFile.writeAsBytes(receipt.encode(), flush: true);
+        final request = await _storedRequest(root);
+        final receipt = await _signedReceipt(request, signingKey, now);
+        final receiptFile = File(
+          '${root.path}/Control/ConflictReceipts/${request.requestId}.json',
+        );
+        await receiptFile.parent.create(recursive: true);
+        await receiptFile.writeAsBytes(receipt.encode(), flush: true);
 
         final opened = await gateway.open(
           profile: _profile(),
