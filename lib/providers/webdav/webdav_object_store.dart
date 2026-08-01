@@ -96,6 +96,9 @@ class WebDavObjectStore implements RemoteObjectStore {
 
     final document = XmlDocument.parse(response.data!);
     final itemsByKey = <String, RemoteObjectMetadata>{};
+    final queriedKey = prefix.endsWith('/')
+        ? prefix.substring(0, prefix.length - 1)
+        : prefix;
     for (final responseElement
         in document.descendants.whereType<XmlElement>().where(
           (element) => element.name.local == 'response',
@@ -103,7 +106,7 @@ class WebDavObjectStore implements RemoteObjectStore {
       final href = _firstDescendantText(responseElement, 'href');
       if (href == null) continue;
       final logicalKey = _logicalKeyForHref(href);
-      if (logicalKey == null || logicalKey == prefix) continue;
+      if (logicalKey == null || logicalKey == queriedKey) continue;
       final contentLength =
           int.tryParse(
             _firstDescendantText(responseElement, 'getcontentlength') ?? '',
@@ -307,8 +310,12 @@ class WebDavObjectStore implements RemoteObjectStore {
     if (!allowEmpty && logicalKey.isEmpty) {
       throw ArgumentError.value(logicalKey, 'logicalKey');
     }
+    final validatedKey = logicalKey.endsWith('/')
+        ? logicalKey.substring(0, logicalKey.length - 1)
+        : logicalKey;
     if (logicalKey.startsWith('/') ||
-        logicalKey
+        (!allowEmpty && validatedKey.isEmpty) ||
+        validatedKey
             .split('/')
             .any((part) => part.isEmpty || part == '.' || part == '..')) {
       throw ArgumentError.value(

@@ -98,6 +98,26 @@ void main() {
       },
     );
 
+    test('lists a normalized collection prefix with a trailing slash', () async {
+      adapter.response = ResponseBody.fromString(
+        '''<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+          <d:response><d:href>/root/velock-sync/v1/vault/devices/source/commits/</d:href></d:response>
+          <d:response><d:href>/root/velock-sync/v1/vault/devices/source/commits/00000000000000000001-batch.commit</d:href><d:propstat><d:prop><d:getcontentlength>16</d:getcontentlength></d:prop></d:propstat></d:response>
+        </d:multistatus>''',
+        207,
+      );
+
+      final page = await store.list(
+        prefix: 'velock-sync/v1/vault/devices/source/commits/',
+      );
+
+      expect(adapter.lastOptions!.uri.path, endsWith('/commits/'));
+      expect(
+        page.items.single.logicalKey,
+        'velock-sync/v1/vault/devices/source/commits/00000000000000000001-batch.commit',
+      );
+    });
+
     test(
       'uses conditional create and translates 412 to immutable-object error',
       () async {

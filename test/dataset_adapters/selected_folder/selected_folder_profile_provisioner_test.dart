@@ -86,6 +86,9 @@ void main() {
             deviceId: 'new-device',
             vaultId: 'existing-vault',
             rootKeyRef: rootKeyRef,
+            recoveredTrustedDevices: {
+              'existing-device': Uint8List.fromList(List<int>.filled(32, 9)),
+            },
           );
 
       expect(profile!.vaultId, 'existing-vault');
@@ -95,7 +98,7 @@ void main() {
         (await database.readTrustedDevicePublicKeys(
           vaultId: 'existing-vault',
         )).keys,
-        ['new-device'],
+        ['existing-device', 'new-device'],
       );
     },
   );

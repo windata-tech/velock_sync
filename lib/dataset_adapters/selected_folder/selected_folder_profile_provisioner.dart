@@ -84,6 +84,7 @@ class SelectedFolderProfileProvisioner {
     required String deviceId,
     required String vaultId,
     required String rootKeyRef,
+    required Map<String, Uint8List> recoveredTrustedDevices,
     SyncProfileBackgroundPolicy backgroundPolicy =
         const SyncProfileBackgroundPolicy(),
     String keyId = 'key-1',
@@ -100,6 +101,9 @@ class SelectedFolderProfileProvisioner {
     if (await _vaultKeys.readRootKey(rootKeyRef) == null) {
       throw StateError('Recovered Generic Vault root key is unavailable.');
     }
+    if (recoveredTrustedDevices.isEmpty) {
+      throw ArgumentError('Recovered Vault trust anchors must not be empty.');
+    }
     final access = await _authorizer.authorizeDirectory();
     if (access == null) return null;
     return _createForAuthorizedFolder(
@@ -111,6 +115,7 @@ class SelectedFolderProfileProvisioner {
       keyId: keyId,
       vaultId: vaultId,
       rootKeyRef: rootKeyRef,
+      initialTrustedDevices: recoveredTrustedDevices,
     );
   }
 
@@ -123,9 +128,10 @@ class SelectedFolderProfileProvisioner {
     required String keyId,
     required String vaultId,
     required String rootKeyRef,
+    Map<String, Uint8List> initialTrustedDevices = const {},
   }) async {
     String? signingKeyRef;
-    var deviceTrusted = false;
+    final trustedDeviceIds = <String>[];
     try {
       final signingKey = await _ed25519.newKeyPair();
       signingKeyRef = await _signingKeys.writeEd25519Key(signingKey);
@@ -149,19 +155,32 @@ class SelectedFolderProfileProvisioner {
         createdAt: _now().toUtc(),
       );
       final publicKey = await signingKey.extractPublicKey();
+      for (final entry in initialTrustedDevices.entries) {
+        if (entry.key == deviceId) {
+          throw ArgumentError(
+            'Recovered trust anchor collides with the new local device.',
+          );
+        }
+        await _database.trustDevice(
+          vaultId: profile.vaultId,
+          deviceId: entry.key,
+          signingPublicKey: entry.value,
+        );
+        trustedDeviceIds.add(entry.key);
+      }
       await _database.trustDevice(
         vaultId: profile.vaultId,
         deviceId: deviceId,
         signingPublicKey: Uint8List.fromList(publicKey.bytes),
       );
-      deviceTrusted = true;
+      trustedDeviceIds.add(deviceId);
       await _profiles.save(profile);
       return profile;
     } on Object {
-      if (deviceTrusted) {
+      for (final trustedDeviceId in trustedDeviceIds) {
         await _database.revokeTrustedDevice(
           vaultId: vaultId,
-          deviceId: deviceId,
+          deviceId: trustedDeviceId,
         );
       }
       if (signingKeyRef != null) await _signingKeys.delete(signingKeyRef);

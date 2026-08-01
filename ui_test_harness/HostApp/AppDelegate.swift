@@ -31,8 +31,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         VelockSync-E2E-Replica
 
         File: \(fixtureFileName)
-        SHA-256: \(fixture.sha256)
-        Bytes: \(fixture.byteCount)
+        Source SHA-256: \(fixture.sourceSHA256)
+        Source bytes: \(fixture.sourceByteCount)
+        Replica restored: \(fixture.replicaSHA256 == nil ? "no" : "yes")
+        Replica SHA-256: \(fixture.replicaSHA256 ?? "missing")
+        Replica bytes: \(fixture.replicaByteCount.map(String.init) ?? "missing")
         """
 
         let stack = UIStackView(arrangedSubviews: [title, details])
@@ -55,7 +58,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
 
-    private func prepareFixture() -> (sha256: String, byteCount: Int) {
+    private func prepareFixture() -> (
+        sourceSHA256: String,
+        sourceByteCount: Int,
+        replicaSHA256: String?,
+        replicaByteCount: Int?
+    ) {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let source = documents.appendingPathComponent("VelockSync-E2E-Source", isDirectory: true)
         let replica = documents.appendingPathComponent("VelockSync-E2E-Replica", isDirectory: true)
@@ -68,7 +76,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         Fixture version: 2026-07-19
         """.data(using: .utf8)!
         try? fixture.write(to: source.appendingPathComponent(fixtureFileName), options: .atomic)
-        return (sha256(fixture), fixture.count)
+        let replicaData = try? Data(contentsOf: replica.appendingPathComponent(fixtureFileName))
+        return (
+            sourceSHA256: sha256(fixture),
+            sourceByteCount: fixture.count,
+            replicaSHA256: replicaData.map(sha256),
+            replicaByteCount: replicaData?.count
+        )
     }
 
     private func sha256(_ data: Data) -> String {

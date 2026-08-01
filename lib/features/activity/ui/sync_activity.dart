@@ -26,6 +26,7 @@ class SyncActivity extends HookConsumerWidget {
     ]);
 
     Future<void> resolve(
+      BuildContext messengerContext,
       SyncConflictRecord conflict,
       ConflictResolutionStrategy strategy,
     ) async {
@@ -49,94 +50,100 @@ class SyncActivity extends HookConsumerWidget {
         // Resolution service failures are deliberately reduced to the same
         // generic UI state as non-completion results below.
       }
-      if (context.mounted) {
+      if (messengerContext.mounted) {
         ScaffoldMessenger.of(
-          context,
+          messengerContext,
         ).showSnackBar(SnackBar(content: Text(message)));
       }
     }
 
-    return PlatformScaffold(
-      iosContentPadding:
-          Theme.of(context).platform == TargetPlatform.iOS ||
-          Theme.of(context).platform == TargetPlatform.macOS,
-      appBar: WDAppBar(
-        title: const Text('活动与冲突'),
-        trailingActions: [
-          PlatformIconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => revision.value++,
-          ),
-        ],
-      ),
-      body: FutureBuilder<_ActivityData>(
-        future: activity,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: PlatformCircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return const Center(child: Text('无法读取活动记录。'));
-          }
-          final values = snapshot.requireData;
-          if (values.runs.isEmpty &&
-              values.transfers.isEmpty &&
-              values.conflicts.isEmpty) {
-            return const Center(child: Text('还没有同步活动。'));
-          }
-          return ListView(
-            children: [
-              if (values.runs.isNotEmpty) ...[
-                const _ActivityHeader('最近同步'),
-                for (final run in values.runs)
-                  ListTile(
-                    leading: Icon(
-                      run.state == 'completed'
-                          ? Icons.check_circle_outline
-                          : Icons.error_outline,
-                    ),
-                    title: Text(run.state == 'completed' ? '同步完成' : '同步失败'),
-                    subtitle: Text(
-                      '配置 ${_shortId(run.profileId)} · ${_formatTime(run.completedAt ?? run.startedAt)}${_runErrorDetails(run)}',
-                    ),
-                    isThreeLine: _runErrorDetails(run).isNotEmpty,
-                  ),
-              ],
-              if (values.transfers.isNotEmpty) ...[
-                const _ActivityHeader('待恢复传输'),
-                for (final transfer in values.transfers)
-                  ListTile(
-                    leading: Icon(
-                      transfer.direction == TransferJobDirection.upload
-                          ? Icons.upload_outlined
-                          : Icons.download_outlined,
-                    ),
-                    title: Text(_transferTitle(transfer)),
-                    subtitle: Text(
-                      '配置 ${_shortId(transfer.profileId)} · ${_transferProgress(transfer)}${transfer.errorCode == null ? '' : '\n${transfer.errorCode}'}',
-                    ),
-                    isThreeLine: transfer.errorCode != null,
-                  ),
-              ],
-              const _ActivityHeader('待处理冲突'),
-              if (values.conflicts.isEmpty)
-                const ListTile(title: Text('没有待处理冲突。')),
-              for (final conflict in values.conflicts)
-                ListTile(
-                  leading: const Icon(Icons.warning_amber_rounded),
-                  title: Text(_conflictType(conflict.type)),
-                  subtitle: Text(
-                    '对象 ${_shortId(conflict.entityId)} · 设备 ${_shortId(conflict.sourceDeviceId ?? '未知')}\n${_formatTime(conflict.createdAt)}',
-                  ),
-                  isThreeLine: true,
-                  trailing: _ConflictResolutionActions(
-                    kind: values.kindFor(conflict.profileId),
-                    onSelected: (strategy) => resolve(conflict, strategy),
-                  ),
-                ),
+    return Material(
+      type: MaterialType.transparency,
+      child: ScaffoldMessenger(
+        child: PlatformScaffold(
+          iosContentPadding:
+              Theme.of(context).platform == TargetPlatform.iOS ||
+              Theme.of(context).platform == TargetPlatform.macOS,
+          appBar: WDAppBar(
+            title: const Text('活动与冲突'),
+            trailingActions: [
+              PlatformIconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () => revision.value++,
+              ),
             ],
-          );
-        },
+          ),
+          body: FutureBuilder<_ActivityData>(
+            future: activity,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: PlatformCircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const Center(child: Text('无法读取活动记录。'));
+              }
+              final values = snapshot.requireData;
+              if (values.runs.isEmpty &&
+                  values.transfers.isEmpty &&
+                  values.conflicts.isEmpty) {
+                return const Center(child: Text('还没有同步活动。'));
+              }
+              return ListView(
+                children: [
+                  if (values.runs.isNotEmpty) ...[
+                    const _ActivityHeader('最近同步'),
+                    for (final run in values.runs)
+                      ListTile(
+                        leading: Icon(
+                          run.state == 'completed'
+                              ? Icons.check_circle_outline
+                              : Icons.error_outline,
+                        ),
+                        title: Text(run.state == 'completed' ? '同步完成' : '同步失败'),
+                        subtitle: Text(
+                          '配置 ${_shortId(run.profileId)} · ${_formatTime(run.completedAt ?? run.startedAt)}${_runErrorDetails(run)}',
+                        ),
+                        isThreeLine: _runErrorDetails(run).isNotEmpty,
+                      ),
+                  ],
+                  if (values.transfers.isNotEmpty) ...[
+                    const _ActivityHeader('待恢复传输'),
+                    for (final transfer in values.transfers)
+                      ListTile(
+                        leading: Icon(
+                          transfer.direction == TransferJobDirection.upload
+                              ? Icons.upload_outlined
+                              : Icons.download_outlined,
+                        ),
+                        title: Text(_transferTitle(transfer)),
+                        subtitle: Text(
+                          '配置 ${_shortId(transfer.profileId)} · ${_transferProgress(transfer)}${transfer.errorCode == null ? '' : '\n${transfer.errorCode}'}',
+                        ),
+                        isThreeLine: transfer.errorCode != null,
+                      ),
+                  ],
+                  const _ActivityHeader('待处理冲突'),
+                  if (values.conflicts.isEmpty)
+                    const ListTile(title: Text('没有待处理冲突。')),
+                  for (final conflict in values.conflicts)
+                    ListTile(
+                      leading: const Icon(Icons.warning_amber_rounded),
+                      title: Text(_conflictType(conflict.type)),
+                      subtitle: Text(
+                        '对象 ${_shortId(conflict.entityId)} · 设备 ${_shortId(conflict.sourceDeviceId ?? '未知')}\n${_formatTime(conflict.createdAt)}',
+                      ),
+                      isThreeLine: true,
+                      trailing: _ConflictResolutionActions(
+                        kind: values.kindFor(conflict.profileId),
+                        onSelected: (strategy) =>
+                            resolve(context, conflict, strategy),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }

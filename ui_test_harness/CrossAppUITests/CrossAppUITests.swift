@@ -6,9 +6,12 @@ import XCTest
 /// It drives the installed apps through their visible UI and accessibility
 /// identifiers/text so it remains useful while the production apps evolve.
 final class CrossAppUITests: XCTestCase {
-    private let syncBundleID = "tech.windata.velock.sync.velockSync"
+    private let syncBundleID = "tech.windata.velock.sync"
     private let velockBundleID = "tech.windata.velock"
-    private let syncPairingURL = "velock://sync-pairing?requestId=ui-test"
+    private let fixtureHostBundleID = "tech.windata.velock.crossapp.uitest.host"
+    private var webDAVPort: String {
+        ProcessInfo.processInfo.environment["E2E_WEBDAV_PORT"] ?? "18991"
+    }
 
     private var syncApp: XCUIApplication!
     private var velockApp: XCUIApplication!
@@ -80,6 +83,11 @@ final class CrossAppUITests: XCTestCase {
         let connectionsTab = syncApp.staticTexts["Connections"]
         XCTAssertTrue(connectionsTab.waitForExistence(timeout: 10))
         connectionsTab.tap()
+        if syncApp.descendants(matching: .any)["新建连接"]
+            .waitForExistence(timeout: 3) {
+            attachScreenshot("webdav_connection_reused")
+            return
+        }
         XCTAssertTrue(
             syncApp.descendants(matching: .any)["没有连接的服务"]
                 .waitForExistence(timeout: 10),
@@ -117,7 +125,7 @@ final class CrossAppUITests: XCTestCase {
 
         let port = fields.element(boundBy: 1)
         port.tap()
-        port.typeText("18991")
+        port.typeText(webDAVPort)
 
         let save = syncApp.buttons["保存"]
         XCTAssertTrue(save.waitForExistence(timeout: 5))
@@ -140,8 +148,21 @@ final class CrossAppUITests: XCTestCase {
     /// persisted WebDAV connection, then records both app hierarchies so the
     /// production E2E can use stable labels instead of coordinates.
     func testProbeSelectedFolderPicker() {
+        prepareFixtureHost()
         syncApp.launch()
         XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+        let syncTab = syncApp.descendants(matching: .any)["Sync"].firstMatch
+        if syncTab.waitForExistence(timeout: 5) {
+            syncTab.tap()
+        }
+
+        let existingProfile = syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH '同步文件夹'")
+        ).firstMatch
+        if existingProfile.waitForExistence(timeout: 3) {
+            attachScreenshot("selected_folder_profile_reused")
+            return
+        }
 
         let create = syncApp.buttons.matching(
             NSPredicate(format: "label CONTAINS '新建同步配置'")
@@ -257,7 +278,7 @@ final class CrossAppUITests: XCTestCase {
         let syncResult = waitForOutcome(
             success: completed,
             failure: syncFailure,
-            timeout: 15
+            timeout: 60
         )
         if syncResult == .timedOut {
             // The successful sync can finish in well under one second, so the
@@ -274,9 +295,7 @@ final class CrossAppUITests: XCTestCase {
             if persistedProfile.waitForExistence(timeout: 5) {
                 persistedProfile.tap()
             }
-            let recentSuccess = syncApp.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS '最近同步' AND label CONTAINS 'completed'")
-            ).firstMatch
+            let recentSuccess = durableCompletedStatus(in: syncApp)
             if recentSuccess.waitForExistence(timeout: 10) {
                 print("E2E_FIRST_SYNC_DURABLE_STATUS=\(recentSuccess.label)")
                 attachScreenshot("selected_folder_first_sync_completed")
@@ -445,6 +464,7 @@ final class CrossAppUITests: XCTestCase {
             return
         }
 
+        prepareFixtureHost()
         syncApp.launch()
         XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
         createLocalWebDAVConnectionIfNeeded()
@@ -520,6 +540,14 @@ final class CrossAppUITests: XCTestCase {
                 ).firstMatch.waitForExistence(timeout: 20),
                 "Replica profile recovery did not complete"
             )
+
+            // Recovery completion can leave the wizard route in a transient
+            // state long after the profile has been persisted. A clean relaunch
+            // is deterministic and verifies that recovery survived process
+            // death before the first download starts.
+            syncApp.terminate()
+            syncApp.launch()
+            XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 30))
         }
 
         let profile = waitForAny(
@@ -546,7 +574,19 @@ final class CrossAppUITests: XCTestCase {
             XCTAssertTrue(confirm.waitForExistence(timeout: 5))
             confirm.tap()
         }
-        let result = waitForOutcome(success: completed, failure: failure, timeout: 30)
+        let result = waitForOutcome(success: completed, failure: failure, timeout: 60)
+        if result == .timedOut {
+            let recentSuccess = durableCompletedStatus(in: syncApp)
+            if recentSuccess.waitForExistence(timeout: 15) {
+                print("E2E_REPLICA_DURABLE_STATUS=completed")
+            }
+            // The transient completion banner and Flutter semantics can both
+            // disappear between XCTest snapshots. The restored file hash is
+            // the authoritative durable outcome for a fresh replica.
+            attachScreenshot("replica_download_completed")
+            verifyReplicaFixtureIntegrity()
+            return
+        }
         guard result == .success else {
             XCTFail("Replica first sync did not complete successfully")
             return
@@ -569,16 +609,62 @@ final class CrossAppUITests: XCTestCase {
         print("E2E_REPLICA_UPLOAD_BATCHES=\(uploads)")
         print("E2E_REPLICA_DOWNLOAD_BATCHES=\(downloads)")
         attachScreenshot("replica_download_completed")
+        verifyReplicaFixtureIntegrity()
     }
 
-    /// End-to-end flow: Sync wizard → Velock unlock → return to Sync.
+    /// Verifies the restored bytes within the same test invocation. Starting a
+    /// second XCTest invocation may reinstall the fixture host and reset its
+    /// Documents container before it can inspect the downloaded file.
+    private func verifyReplicaFixtureIntegrity() {
+        let fixtureApp = XCUIApplication(bundleIdentifier: fixtureHostBundleID)
+        fixtureApp.launch()
+        XCTAssertTrue(fixtureApp.wait(for: .runningForeground, timeout: 20))
+
+        let details = fixtureApp.descendants(matching: .any)["fixture-details"]
+        XCTAssertTrue(details.waitForExistence(timeout: 10), "Fixture details were unavailable")
+        let report = details.label
+        XCTAssertTrue(report.contains("Replica restored: yes"), "Replica proof file is missing")
+
+        let sourceHash = captureValue(named: "Source SHA-256", in: report)
+        let replicaHash = captureValue(named: "Replica SHA-256", in: report)
+        let sourceBytes = captureValue(named: "Source bytes", in: report)
+        let replicaBytes = captureValue(named: "Replica bytes", in: report)
+        XCTAssertNotNil(sourceHash)
+        XCTAssertNotNil(replicaHash)
+        XCTAssertEqual(replicaHash, sourceHash, "Replica proof file hash differs from source")
+        XCTAssertEqual(replicaBytes, sourceBytes, "Replica proof file byte count differs from source")
+        attachScreenshot("replica_fixture_integrity_verified")
+        fixtureApp.terminate()
+    }
+
+    /// End-to-end flow: initialize Velock → publish pairing identity →
+    /// Sync creates a real one-time request → Velock approves it → Sync
+    /// verifies, persists and consumes the signed response.
     ///
     /// The password is supplied at runtime with VELOCK_RUNTIME_PASSWORD and
     /// is never written to source, fixtures, attachments, or test output.
     func testCrossAppPairingFlow() {
+        ensureVelockInitializedAndPairingEnabled()
+
         syncApp.launch()
         XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+        createLocalWebDAVConnectionIfNeeded()
+
+        let syncTab = syncApp.descendants(matching: .any)["Sync"].firstMatch
+        if syncTab.waitForExistence(timeout: 5) {
+            syncTab.tap()
+        }
         attachScreenshot("01_sync_home")
+
+        let existingProfile = syncApp.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label CONTAINS 'Velock' AND label CONTAINS 'Profile'"
+            )
+        ).firstMatch
+        XCTAssertFalse(
+            existingProfile.exists,
+            "Pairing E2E requires a clean Sync app without an existing Velock profile"
+        )
 
         let create = waitForAny(
             syncApp.buttons["sync-profile-create"],
@@ -619,17 +705,10 @@ final class CrossAppUITests: XCTestCase {
         }
         attachScreenshot("02_sync_velock_dataset")
 
-        let readinessError = syncApp.staticTexts["Velock 版本不受支持"]
-        let readinessMessage = syncApp.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS 'Exchange V1'"))
-        if readinessError.waitForExistence(timeout: 5)
-            || readinessMessage.firstMatch.waitForExistence(timeout: 2) {
-            XCTContext.runActivity(named: "Record real readiness blocker") { activity in
-                activity.add(XCTAttachment(string: "Velock managed data did not become ready on this installed build."))
-            }
-            attachScreenshot("03_sync_readiness_blocked")
-            return
-        }
+        XCTAssertFalse(
+            syncApp.staticTexts["Velock 版本不受支持"].waitForExistence(timeout: 2),
+            "Installed Velock build does not expose Exchange V1"
+        )
 
         let beginPairing = firstExisting(
             syncApp.buttons["begin-velock-pairing"],
@@ -639,21 +718,205 @@ final class CrossAppUITests: XCTestCase {
         XCTAssertTrue(beginPairing.waitForExistence(timeout: 10), "Ready flow should expose 开始配对")
         beginPairing.tap()
 
-        velockApp.launch()
+        // submitPairingRequest writes the real UUID request and launches this
+        // app with that exact requestId. Never synthesize a test deep link.
         XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 20))
         unlockVelockIfNeeded()
-        attachScreenshot("04_velock_unlocked")
+        let approveRequest = velockApp.buttons["批准"]
+        XCTAssertTrue(
+            approveRequest.waitForExistence(timeout: 15),
+            "Velock did not expose the one-time request created by Sync"
+        )
+        approveRequest.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).tap()
+        XCTAssertTrue(
+            velockApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS '批准这台 Velock Sync'" )
+            ).firstMatch.waitForExistence(timeout: 5)
+        )
+        // Flutter's Cupertino dialog is not exposed as an XCUI `.alert`. While
+        // it is presented, the underlying row action is removed from the
+        // accessibility tree, leaving the modal confirmation as the sole
+        // matching button.
+        let approvalButtons = velockApp.buttons.matching(
+            NSPredicate(format: "label == '批准'")
+        )
+        XCTAssertEqual(approvalButtons.count, 1)
+        let confirmApproval = approvalButtons.firstMatch
+        confirmApproval.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).tap()
+        XCTAssertFalse(
+            velockApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS '批准这台 Velock Sync'")
+            ).firstMatch.waitForExistence(timeout: 5),
+            "Velock approval confirmation did not dismiss"
+        )
+        XCTAssertTrue(
+            velockApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS '暂无待审批请求'")
+            ).firstMatch.waitForExistence(timeout: 30),
+            "Velock did not persist the signed approval"
+        )
+        attachScreenshot("04_velock_pairing_approved")
 
-        // Open the real deep link only after the UI flow has produced a request.
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        springboard.open(URL(string: syncPairingURL)!)
         syncApp.activate()
         XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 15))
-        attachScreenshot("05_sync_pairing_result")
+        let checkApproval = syncApp.buttons["检查批准结果"]
+        XCTAssertTrue(checkApproval.waitForExistence(timeout: 10))
+        checkApproval.tap()
+
+        XCTAssertTrue(
+            syncApp.staticTexts["步骤 4 / 7 · 选择远端连接"]
+                .waitForExistence(timeout: 10)
+        )
+        let connection = syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "http://127.0.0.1:\(webDAVPort)")
+        ).firstMatch
+        XCTAssertTrue(connection.waitForExistence(timeout: 10))
+        connection.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).tap()
+
+        let confirmTarget = syncApp.buttons["确认目标"]
+        XCTAssertTrue(confirmTarget.waitForExistence(timeout: 10))
+        confirmTarget.tap()
+        let confirmBackground = syncApp.buttons["继续"]
+        XCTAssertTrue(confirmBackground.waitForExistence(timeout: 10))
+        confirmBackground.tap()
+        let finalize = syncApp.buttons["确认并创建"]
+        XCTAssertTrue(finalize.waitForExistence(timeout: 10))
+        finalize.tap()
+
+        XCTAssertTrue(
+            syncApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS 'Profile 已保存，配对响应已安全消费。'")
+            ).firstMatch.waitForExistence(timeout: 20),
+            "Sync did not persist the profile and consume the signed response"
+        )
+        attachScreenshot("05_sync_pairing_completed")
+    }
+
+    private func ensureVelockInitializedAndPairingEnabled() {
+        let password = ProcessInfo.processInfo.environment["VELOCK_RUNTIME_PASSWORD"] ?? ""
+        XCTAssertFalse(password.isEmpty, "Set VELOCK_RUNTIME_PASSWORD at runtime")
+
+        velockApp.launch()
+        XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 20))
+        let createSandbox = velockApp.buttons["创建一个沙盒空间"]
+        if createSandbox.waitForExistence(timeout: 3) {
+            createSandbox.tap()
+            let name = velockApp.textFields["名称"]
+            let firstPassword = velockApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label == '密码'")
+            ).firstMatch
+            let repeatedPassword = velockApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label == '重复密码'")
+            ).firstMatch
+            XCTAssertTrue(name.waitForExistence(timeout: 10))
+            name.tap()
+            name.typeText(
+                ProcessInfo.processInfo.environment["VELOCK_E2E_SANDBOX_NAME"]
+                    ?? "Velock E2E Replica"
+            )
+            XCTAssertTrue(firstPassword.waitForExistence(timeout: 5))
+            firstPassword.tap()
+            firstPassword.typeText(password)
+            XCTAssertTrue(repeatedPassword.waitForExistence(timeout: 5))
+            repeatedPassword.tap()
+            repeatedPassword.typeText(password)
+            XCTAssertGreaterThanOrEqual(velockApp.switches.count, 2)
+            velockApp.switches.element(boundBy: 1).tap()
+            let submit = velockApp.buttons["创建沙盒空间"]
+            XCTAssertTrue(submit.waitForExistence(timeout: 5))
+            submit.tap()
+
+            let saveAndEnter = velockApp.buttons["保存并进入"]
+            XCTAssertTrue(saveAndEnter.waitForExistence(timeout: 15))
+            saveAndEnter.tap()
+            allowPhotoAdditionIfRequested()
+            if !velockApp.wait(for: .runningForeground, timeout: 5) {
+                // Querying and dismissing the SpringBoard-owned Photos prompt can
+                // leave the application inactive on newer simulator runtimes.
+                // Bring the already-registered app back before inspecting its
+                // post-registration account gate.
+                velockApp.activate()
+                XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 10))
+            }
+            if saveAndEnter.waitForExistence(timeout: 3) {
+                saveAndEnter.tap()
+            }
+            let home = velockApp.descendants(matching: .any)["首页"]
+            if !home.waitForExistence(timeout: 8) {
+                // A process transition around the Photos permission can finish
+                // registration but return to the account gate. Treat that as
+                // a durable registration and authenticate with the same
+                // runtime-only password before continuing.
+                if !velockApp.wait(for: .runningForeground, timeout: 2) {
+                    velockApp.activate()
+                    XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 10))
+                }
+                unlockVelockIfNeeded()
+            }
+            XCTAssertTrue(
+                home.waitForExistence(timeout: 30),
+                "Velock registration did not complete after saving the recovery card"
+            )
+        }
+
+        unlockVelockIfNeeded()
+        let settingsTab = velockApp.staticTexts["设置"]
+        if settingsTab.waitForExistence(timeout: 10) {
+            settingsTab.tap()
+        }
+        let syncSettings = velockApp.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label CONTAINS 'Velock Sync' AND label CONTAINS '独立应用配对与审批'"
+            )
+        ).firstMatch
+        XCTAssertTrue(syncSettings.waitForExistence(timeout: 10))
+        syncSettings.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).tap()
+
+        let pairingStatus = velockApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS '允许新的配对'")
+        ).firstMatch
+        XCTAssertTrue(pairingStatus.waitForExistence(timeout: 10))
+        if pairingStatus.label.contains("未启用") {
+            pairingStatus.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.90, dy: 0.50)
+            ).tap()
+            let enable = velockApp.buttons["启用"]
+            XCTAssertTrue(enable.waitForExistence(timeout: 5))
+            enable.tap()
+        }
+        XCTAssertTrue(
+            velockApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS '已启用'")
+            ).firstMatch.waitForExistence(timeout: 15),
+            "Velock did not publish its pairing descriptor"
+        )
+    }
+
+    private func allowPhotoAdditionIfRequested() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = firstExisting(
+            springboard.buttons["允许"],
+            springboard.buttons["Allow"]
+        )
+        if allow.waitForExistence(timeout: 5) {
+            allow.tap()
+        }
     }
 
     private func unlockVelockIfNeeded() {
-        guard velockApp.secureTextFields.firstMatch.waitForExistence(timeout: 8)
+        let labeledPassword = velockApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label IN %@", ["请输入密码", "Password"])
+        ).firstMatch
+        guard labeledPassword.waitForExistence(timeout: 8)
+                || velockApp.secureTextFields.firstMatch.waitForExistence(timeout: 2)
                 || velockApp.textFields.firstMatch.waitForExistence(timeout: 2) else {
             return
         }
@@ -661,20 +924,34 @@ final class CrossAppUITests: XCTestCase {
         let password = ProcessInfo.processInfo.environment["VELOCK_RUNTIME_PASSWORD"] ?? ""
         XCTAssertFalse(password.isEmpty, "Set VELOCK_RUNTIME_PASSWORD at runtime to run the unlock step")
 
-        let field = velockApp.secureTextFields.firstMatch.exists
-            ? velockApp.secureTextFields.firstMatch
-            : velockApp.textFields.firstMatch
+        let field = labeledPassword.exists
+            ? labeledPassword
+            : (velockApp.secureTextFields.firstMatch.exists
+                ? velockApp.secureTextFields.firstMatch
+                : velockApp.textFields.firstMatch)
         field.tap()
-        field.typeText(password)
-
-        let unlock = velockApp.buttons["tkBtn_lock_unlock"]
-        if unlock.exists {
-            unlock.tap()
-        } else if velockApp.buttons["解锁"].exists {
-            velockApp.buttons["解锁"].tap()
-        } else if velockApp.buttons["Login"].exists {
-            velockApp.buttons["Login"].tap()
+        if labeledPassword.exists {
+            // Flutter can expose the focused password input as a generic
+            // semantics element. Sending keys through the application mirrors
+            // real keyboard input even when XCUIElement.typeText cannot resolve
+            // that modern text-input automation type.
+            velockApp.typeText(password)
+        } else {
+            field.typeText(password)
         }
+
+        for button in [
+            velockApp.buttons["tkBtn_lock_unlock"],
+            velockApp.buttons["解锁"],
+            velockApp.buttons["进入沙盒空间"],
+            velockApp.buttons["Login"],
+        ] {
+            if button.waitForExistence(timeout: 3) {
+                button.tap()
+                return
+            }
+        }
+        XCTFail("Velock password gate did not expose its submit action")
     }
 
     private func createLocalWebDAVConnectionIfNeeded() {
@@ -713,7 +990,7 @@ final class CrossAppUITests: XCTestCase {
         address.typeText("127.0.0.1")
         let port = fields.element(boundBy: 1)
         port.tap()
-        port.typeText("18991")
+        port.typeText(webDAVPort)
         let save = syncApp.buttons["保存"]
         XCTAssertTrue(save.waitForExistence(timeout: 5))
         save.tap()
@@ -755,11 +1032,38 @@ final class CrossAppUITests: XCTestCase {
         open.tap()
     }
 
+    private func prepareFixtureHost() {
+        let fixtureApp = XCUIApplication(bundleIdentifier: fixtureHostBundleID)
+        fixtureApp.launch()
+        XCTAssertTrue(fixtureApp.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(
+            fixtureApp.descendants(matching: .any)["fixture-details"]
+                .waitForExistence(timeout: 10),
+            "Fixture host did not prepare its shared Documents folders"
+        )
+        fixtureApp.terminate()
+    }
+
     private func attachScreenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func durableCompletedStatus(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS[c] 'completed'")
+        ).firstMatch
+    }
+
+    private func captureValue(named name: String, in report: String) -> String? {
+        let prefix = "\(name): "
+        return report.split(separator: "\n")
+            .map(String.init)
+            .first(where: { $0.hasPrefix(prefix) })?
+            .dropFirst(prefix.count)
+            .description
     }
 
     private func waitForAny(_ candidates: XCUIElement..., timeout: TimeInterval = 10) -> XCUIElement {

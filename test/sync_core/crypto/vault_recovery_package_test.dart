@@ -79,4 +79,36 @@ void main() {
       expect(await store.readRootKey(restoredRef), rootKey);
     },
   );
+
+  test('round-trips authenticated recovery trust anchors', () async {
+    final store = InMemoryVaultKeyStore();
+    final codec = VaultRecoveryPackageCodec(iterations: 100000);
+    final sourceRef = await store.writeRootKey(rootKey);
+    final service = GenericVaultRecoveryService(store, codec: codec);
+    final signingKey = Uint8List.fromList(List<int>.filled(32, 9));
+
+    final recoveryPackage = await service.exportBundle(
+      rootKeyRef: sourceRef,
+      vaultId: 'vault-1',
+      trustedDevices: {'source-device': signingKey},
+      passphrase: 'passphrase',
+    );
+    final recovered = await service.importBundle(
+      recoveryPackage: recoveryPackage,
+      passphrase: 'passphrase',
+      expectedVaultId: 'vault-1',
+    );
+
+    expect(await store.readRootKey(recovered.rootKeyRef), rootKey);
+    expect(recovered.vaultId, 'vault-1');
+    expect(recovered.trustedDevices['source-device'], signingKey);
+    await expectLater(
+      service.importBundle(
+        recoveryPackage: recoveryPackage,
+        passphrase: 'passphrase',
+        expectedVaultId: 'different-vault',
+      ),
+      throwsA(isA<VaultRecoveryPackageException>()),
+    );
+  });
 }

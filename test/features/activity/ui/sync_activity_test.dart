@@ -1,4 +1,6 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -13,6 +15,37 @@ import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 
 void main() {
+  testWidgets('renders recent sync runs on iOS with a Material ancestor', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final fixture = await _Fixture.create(SyncDatasetKind.selectedFolder);
+      addTearDown(fixture.dispose);
+      final startedAt = DateTime.utc(2026, 8, 1, 12);
+      await fixture.database.startSyncRun(
+        runId: 'run-1',
+        profileId: 'profile-1',
+        startedAt: startedAt,
+      );
+      await fixture.database.finishSyncRun(
+        runId: 'run-1',
+        state: 'completed',
+        completedAt: startedAt.add(const Duration(seconds: 1)),
+      );
+
+      await tester.pumpWidget(
+        _app(fixture, _RecordingConflictResolutionService()),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('同步完成'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets(
     'Selected Folder conflict keeps protected details private and offers only folder strategies',
     (tester) async {
@@ -84,7 +117,14 @@ Widget _app(_Fixture fixture, ConflictResolutionService service) =>
         syncProfileRepositoryProvider.overrideWithValue(fixture.profiles),
         conflictResolutionServiceProvider.overrideWithValue(service),
       ],
-      child: const PlatformApp(home: SyncActivity()),
+      child: const PlatformApp(
+        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+          DefaultMaterialLocalizations.delegate,
+          DefaultWidgetsLocalizations.delegate,
+          DefaultCupertinoLocalizations.delegate,
+        ],
+        home: SyncActivity(),
+      ),
     );
 
 class _Fixture {

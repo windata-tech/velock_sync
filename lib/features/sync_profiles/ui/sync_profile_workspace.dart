@@ -302,9 +302,17 @@ class _ProfileTile extends ConsumerWidget {
           }
           final passphrase = await _requestProfileRecoveryPassphrase(context);
           if (passphrase == null || !context.mounted) return;
-          final recoveryPackage = await GenericVaultRecoveryService(
-            ref.read(vaultKeyStoreProvider),
-          ).export(rootKeyRef: profile.rootKeyRef, passphrase: passphrase);
+          final recoveryPackage =
+              await GenericVaultRecoveryService(
+                ref.read(vaultKeyStoreProvider),
+              ).exportBundle(
+                rootKeyRef: profile.rootKeyRef,
+                vaultId: profile.vaultId,
+                trustedDevices: await ref
+                    .read(syncStateDatabaseProvider)
+                    .readTrustedDevicePublicKeys(vaultId: profile.vaultId),
+                passphrase: passphrase,
+              );
           if (context.mounted) {
             await _showProfileRecoveryPackage(context, recoveryPackage);
           }

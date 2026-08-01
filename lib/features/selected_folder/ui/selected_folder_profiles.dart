@@ -108,10 +108,13 @@ class SelectedFolderProfiles extends HookConsumerWidget {
       String? rootKeyRef;
       try {
         final keyStore = ref.read(vaultKeyStoreProvider);
-        rootKeyRef = await GenericVaultRecoveryService(keyStore).import(
-          recoveryPackage: recovery.recoveryPackage,
-          passphrase: recovery.passphrase,
-        );
+        final recovered = await GenericVaultRecoveryService(keyStore)
+            .importBundle(
+              recoveryPackage: recovery.recoveryPackage,
+              passphrase: recovery.passphrase,
+              expectedVaultId: recovery.vaultId,
+            );
+        rootKeyRef = recovered.rootKeyRef;
         final profile =
             await SelectedFolderProfileProvisioner(
               authorizer: NativeFolderAccessAuthorizer(),
@@ -125,6 +128,7 @@ class SelectedFolderProfiles extends HookConsumerWidget {
               deviceId: await _deviceId(ref.read(localDataManagerProvider)),
               vaultId: recovery.vaultId,
               rootKeyRef: rootKeyRef,
+              recoveredTrustedDevices: recovered.trustedDevices,
               backgroundPolicy: _backgroundPolicyFrom(
                 await LocalSyncGlobalSettingsStore(
                   ref.read(localDataManagerProvider),
@@ -161,9 +165,17 @@ class SelectedFolderProfiles extends HookConsumerWidget {
       if (passphrase == null || !context.mounted) return;
       busy.value = true;
       try {
-        final recoveryPackage = await GenericVaultRecoveryService(
-          ref.read(vaultKeyStoreProvider),
-        ).export(rootKeyRef: profile.rootKeyRef, passphrase: passphrase);
+        final recoveryPackage =
+            await GenericVaultRecoveryService(
+              ref.read(vaultKeyStoreProvider),
+            ).exportBundle(
+              rootKeyRef: profile.rootKeyRef,
+              vaultId: profile.vaultId,
+              trustedDevices: await ref
+                  .read(syncStateDatabaseProvider)
+                  .readTrustedDevicePublicKeys(vaultId: profile.vaultId),
+              passphrase: passphrase,
+            );
         if (context.mounted) {
           await _showRecoveryPackage(context, recoveryPackage);
         }

@@ -27,6 +27,8 @@ class VaultRecoveryPackageCodec {
   static const _saltLength = 16;
   static const _nonceLength = 12;
   static const _macLength = 16;
+  static const _maximumPackageLength = 65536;
+  static const _maximumTrustedDevices = 128;
 
   final int _iterations;
   final Uint8List Function(int length) _randomBytes;
@@ -38,6 +40,61 @@ class VaultRecoveryPackageCodec {
   }) async {
     _validateRecoveryRootKey(rootKey);
     _validatePassphrase(passphrase);
+    return _createPayload(version: 1, payload: rootKey, passphrase: passphrase);
+  }
+
+  /// Creates an authenticated recovery bundle that transfers both the Vault
+  /// root key and the local device trust anchors required to verify existing
+  /// remote batches. Public keys are inside the passphrase-encrypted AEAD
+  /// payload; an untrusted remote can neither replace nor add a device.
+  Future<String> createBundle({
+    required Uint8List rootKey,
+    required String vaultId,
+    required Map<String, Uint8List> trustedDevices,
+    required String passphrase,
+  }) async {
+    _validateRecoveryRootKey(rootKey);
+    _validateVaultId(vaultId);
+    _validatePassphrase(passphrase);
+    if (trustedDevices.isEmpty ||
+        trustedDevices.length > _maximumTrustedDevices) {
+      throw ArgumentError.value(trustedDevices.length, 'trustedDevices.length');
+    }
+    final entries = trustedDevices.entries.toList()
+      ..sort((left, right) => left.key.compareTo(right.key));
+    for (final entry in entries) {
+      _validateDeviceId(entry.key);
+      if (entry.value.length != 32) {
+        throw ArgumentError.value(
+          entry.value.length,
+          'trustedDevices[${entry.key}].length',
+        );
+      }
+    }
+    final payload = Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'v': 1,
+          'vaultId': vaultId,
+          'rootKey': _base64Url(rootKey),
+          'trustedDevices': [
+            for (final entry in entries)
+              {
+                'deviceId': entry.key,
+                'signingPublicKey': _base64Url(entry.value),
+              },
+          ],
+        }),
+      ),
+    );
+    return _createPayload(version: 2, payload: payload, passphrase: passphrase);
+  }
+
+  Future<String> _createPayload({
+    required int version,
+    required Uint8List payload,
+    required String passphrase,
+  }) async {
     final salt = _randomBytes(_saltLength);
     final nonce = _randomBytes(_nonceLength);
     if (salt.length != _saltLength || nonce.length != _nonceLength) {
@@ -49,13 +106,13 @@ class VaultRecoveryPackageCodec {
       iterations: _iterations,
     );
     final box = await _cipher.encrypt(
-      rootKey,
+      payload,
       secretKey: secretKey,
       nonce: nonce,
       aad: utf8.encode(_aad),
     );
     final body = <String, Object>{
-      'v': 1,
+      'v': version,
       'kdf': 'PBKDF2-HMAC-SHA256',
       'i': _iterations,
       's': _base64Url(salt),
@@ -70,6 +127,17 @@ class VaultRecoveryPackageCodec {
     required String recoveryPackage,
     required String passphrase,
   }) async {
+    final bundle = await restoreBundle(
+      recoveryPackage: recoveryPackage,
+      passphrase: passphrase,
+    );
+    return Uint8List.fromList(bundle.rootKey);
+  }
+
+  Future<VaultRecoveryBundle> restoreBundle({
+    required String recoveryPackage,
+    required String passphrase,
+  }) async {
     _validatePassphrase(passphrase);
     final parsed = _parse(recoveryPackage);
     final secretKey = await _deriveKey(
@@ -78,17 +146,69 @@ class VaultRecoveryPackageCodec {
       iterations: parsed.iterations,
     );
     try {
-      final rootKey = await _cipher.decrypt(
-        SecretBox(parsed.cipherText, nonce: parsed.nonce, mac: parsed.mac),
-        secretKey: secretKey,
-        aad: utf8.encode(_aad),
+      final cleartext = Uint8List.fromList(
+        await _cipher.decrypt(
+          SecretBox(parsed.cipherText, nonce: parsed.nonce, mac: parsed.mac),
+          secretKey: secretKey,
+          aad: utf8.encode(_aad),
+        ),
       );
-      final result = Uint8List.fromList(rootKey);
-      _validateRecoveryRootKey(result);
-      return result;
+      if (parsed.version == 1) {
+        _validateRecoveryRootKey(cleartext);
+        return VaultRecoveryBundle(rootKey: cleartext);
+      }
+      return _decodeBundle(cleartext);
     } on SecretBoxAuthenticationError {
       throw const VaultRecoveryPackageException();
+    } on FormatException {
+      throw const VaultRecoveryPackageException();
+    } on ArgumentError {
+      // Authenticated payloads still cross a serialization boundary. Normalize
+      // validator failures so callers never need to distinguish malformed
+      // bundle fields from any other invalid recovery package.
+      throw const VaultRecoveryPackageException();
     }
+  }
+
+  VaultRecoveryBundle _decodeBundle(Uint8List cleartext) {
+    final value = jsonDecode(utf8.decode(cleartext));
+    if (value is! Map<String, dynamic> ||
+        value.length != 4 ||
+        value['v'] != 1 ||
+        value['vaultId'] is! String ||
+        value['rootKey'] is! String ||
+        value['trustedDevices'] is! List<dynamic>) {
+      throw const FormatException('Recovery trust bundle is invalid.');
+    }
+    final vaultId = value['vaultId'] as String;
+    _validateVaultId(vaultId);
+    final rootKey = _decodeBase64Url(value['rootKey'] as String);
+    _validateRecoveryRootKey(rootKey);
+    final values = value['trustedDevices'] as List<dynamic>;
+    if (values.isEmpty || values.length > _maximumTrustedDevices) {
+      throw const FormatException('Recovery trust bundle is invalid.');
+    }
+    final trusted = <String, Uint8List>{};
+    for (final item in values) {
+      if (item is! Map<String, dynamic> ||
+          item.length != 2 ||
+          item['deviceId'] is! String ||
+          item['signingPublicKey'] is! String) {
+        throw const FormatException('Recovery trust bundle is invalid.');
+      }
+      final deviceId = item['deviceId'] as String;
+      _validateDeviceId(deviceId);
+      final key = _decodeBase64Url(item['signingPublicKey'] as String);
+      if (key.length != 32 || trusted.containsKey(deviceId)) {
+        throw const FormatException('Recovery trust bundle is invalid.');
+      }
+      trusted[deviceId] = key;
+    }
+    return VaultRecoveryBundle(
+      rootKey: rootKey,
+      vaultId: vaultId,
+      trustedDevices: trusted,
+    );
   }
 
   Future<SecretKey> _deriveKey({
@@ -103,7 +223,7 @@ class VaultRecoveryPackageCodec {
   }
 
   _RecoveryPackage _parse(String value) {
-    if (!value.startsWith(_prefix) || value.length > 4096) {
+    if (!value.startsWith(_prefix) || value.length > _maximumPackageLength) {
       throw const VaultRecoveryPackageException();
     }
     try {
@@ -112,7 +232,7 @@ class VaultRecoveryPackageCodec {
       );
       if (decoded is! Map<String, dynamic> ||
           decoded.length != 7 ||
-          decoded['v'] != 1 ||
+          (decoded['v'] != 1 && decoded['v'] != 2) ||
           decoded['kdf'] != 'PBKDF2-HMAC-SHA256' ||
           decoded['i'] is! int ||
           decoded['s'] is! String ||
@@ -129,11 +249,14 @@ class VaultRecoveryPackageCodec {
       final mac = _decodeBase64Url(decoded['m'] as String);
       if (salt.length != _saltLength ||
           nonce.length != _nonceLength ||
-          cipherText.length != 32 ||
+          (decoded['v'] == 1
+              ? cipherText.length != 32
+              : cipherText.isEmpty || cipherText.length > 48 * 1024) ||
           mac.length != _macLength) {
         throw const VaultRecoveryPackageException();
       }
       return _RecoveryPackage(
+        version: decoded['v'] as int,
         iterations: iterations,
         salt: salt,
         nonce: nonce,
@@ -154,6 +277,22 @@ class VaultRecoveryPackageCodec {
   static void _validateRecoveryRootKey(Uint8List rootKey) {
     if (rootKey.length != 32) {
       throw ArgumentError.value(rootKey.length, 'rootKey.length', 'must be 32');
+    }
+  }
+
+  static void _validateVaultId(String value) {
+    if (value.isEmpty || value.length > 512 || value.contains('/')) {
+      throw ArgumentError.value(value, 'vaultId');
+    }
+  }
+
+  static void _validateDeviceId(String value) {
+    if (value.isEmpty ||
+        value.length > 512 ||
+        value.contains('/') ||
+        value.contains('..') ||
+        value.contains('\\')) {
+      throw ArgumentError.value(value, 'deviceId');
     }
   }
 
@@ -197,6 +336,24 @@ class GenericVaultRecoveryService {
     return _codec.create(rootKey: rootKey, passphrase: passphrase);
   }
 
+  Future<String> exportBundle({
+    required String rootKeyRef,
+    required String vaultId,
+    required Map<String, Uint8List> trustedDevices,
+    required String passphrase,
+  }) async {
+    final rootKey = await _keyStore.readRootKey(rootKeyRef);
+    if (rootKey == null) {
+      throw StateError('Generic Vault root key is unavailable.');
+    }
+    return _codec.createBundle(
+      rootKey: rootKey,
+      vaultId: vaultId,
+      trustedDevices: trustedDevices,
+      passphrase: passphrase,
+    );
+  }
+
   Future<String> import({
     required String recoveryPackage,
     required String passphrase,
@@ -207,10 +364,59 @@ class GenericVaultRecoveryService {
     );
     return _keyStore.writeRootKey(rootKey);
   }
+
+  Future<GenericVaultRecoveredMaterial> importBundle({
+    required String recoveryPackage,
+    required String passphrase,
+    required String expectedVaultId,
+  }) async {
+    final bundle = await _codec.restoreBundle(
+      recoveryPackage: recoveryPackage,
+      passphrase: passphrase,
+    );
+    if (bundle.vaultId != expectedVaultId || bundle.trustedDevices.isEmpty) {
+      throw const VaultRecoveryPackageException();
+    }
+    return GenericVaultRecoveredMaterial(
+      rootKeyRef: await _keyStore.writeRootKey(bundle.rootKey),
+      vaultId: bundle.vaultId!,
+      trustedDevices: bundle.trustedDevices,
+    );
+  }
+}
+
+class VaultRecoveryBundle {
+  VaultRecoveryBundle({
+    required Uint8List rootKey,
+    this.vaultId,
+    Map<String, Uint8List> trustedDevices = const {},
+  }) : rootKey = Uint8List.fromList(rootKey),
+       trustedDevices = Map.unmodifiable(
+         trustedDevices.map(
+           (deviceId, key) => MapEntry(deviceId, Uint8List.fromList(key)),
+         ),
+       );
+
+  final Uint8List rootKey;
+  final String? vaultId;
+  final Map<String, Uint8List> trustedDevices;
+}
+
+class GenericVaultRecoveredMaterial {
+  const GenericVaultRecoveredMaterial({
+    required this.rootKeyRef,
+    required this.vaultId,
+    required this.trustedDevices,
+  });
+
+  final String rootKeyRef;
+  final String vaultId;
+  final Map<String, Uint8List> trustedDevices;
 }
 
 class _RecoveryPackage {
   const _RecoveryPackage({
+    required this.version,
     required this.iterations,
     required this.salt,
     required this.nonce,
@@ -218,6 +424,7 @@ class _RecoveryPackage {
     required this.mac,
   });
 
+  final int version;
   final int iterations;
   final Uint8List salt;
   final Uint8List nonce;
