@@ -143,7 +143,7 @@ class Connections extends HookConsumerWidget {
             for (final connection in connections)
               _ConnectionTile(
                 connection: connection,
-                onOpen: () => context.pushNamed(
+                onOpen: () => context.goNamed(
                   AppRoutes.connection.name,
                   pathParameters: {'id': connection.id},
                 ),
