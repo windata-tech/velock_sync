@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_velock_exchange_dataset_adapter.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/apple_pairing_control_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_discovery.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_store.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
@@ -36,11 +38,13 @@ class PlatformVelockDatasetAdapterFactory
     discoveryForCandidate,
     required AndroidExchangeChannel androidExchange,
     required AppleExchangeRootLocator appleRootLocator,
+    VelockPairingControlChannel? pairingControl,
     VelockExchangePlatform Function()? platform,
   }) : _discovery = discovery,
        _discoveryForCandidate = discoveryForCandidate,
        _androidExchange = androidExchange,
        _appleRootLocator = appleRootLocator,
+       _pairingControl = pairingControl,
        _platform = platform ?? _currentPlatform;
 
   /// A fixed discovery is retained for pairing/test callers that already own a
@@ -52,6 +56,7 @@ class PlatformVelockDatasetAdapterFactory
   _discoveryForCandidate;
   final AndroidExchangeChannel _androidExchange;
   final AppleExchangeRootLocator _appleRootLocator;
+  final VelockPairingControlChannel? _pairingControl;
   final VelockExchangePlatform Function() _platform;
 
   @override
@@ -81,12 +86,19 @@ class PlatformVelockDatasetAdapterFactory
       throw VelockDatasetAdapterUnavailableException(discovery.availability);
     }
 
+    final authorization = await _authorizationStatus(profile.deviceId);
+    if (authorization == VelockDeviceAuthorizationStatus.revoked) {
+      throw const VelockDatasetAdapterUnavailableException(
+        VelockExchangeAvailability.accessRevoked,
+      );
+    }
+
     switch (_platform()) {
       case VelockExchangePlatform.android:
         return AndroidVelockExchangeDatasetAdapter(
           datasetId: profile.datasetId,
           vaultId: profile.vaultId,
-          deviceId: profile.deviceId,
+          producerDeviceId: profile.pairedProducerId,
           displayName: profile.displayName,
           exchange: _androidExchange,
         );
@@ -100,7 +112,7 @@ class PlatformVelockDatasetAdapterFactory
         return VelockExchangeDatasetAdapter(
           datasetId: profile.datasetId,
           vaultId: profile.vaultId,
-          deviceId: profile.deviceId,
+          producerDeviceId: profile.pairedProducerId,
           displayName: profile.displayName,
           exchange: VelockExchangeStore(root),
         );
@@ -124,6 +136,34 @@ class PlatformVelockDatasetAdapterFactory
     ),
     VelockExchangePlatform.unsupported => const _UnavailableDiscovery(),
   };
+
+  Future<VelockDeviceAuthorizationStatus> _authorizationStatus(
+    String syncAppInstanceId,
+  ) async {
+    final control = _pairingControl;
+    if (control != null) {
+      return control.queryAuthorizationStatus(syncAppInstanceId);
+    }
+    switch (_platform()) {
+      case VelockExchangePlatform.android:
+        return (_androidExchange as AndroidPairingControlChannel)
+            .queryAuthorizationStatus(syncAppInstanceId);
+      case VelockExchangePlatform.apple:
+        final root = await _appleRootLocator.locate();
+        if (!await root.exists()) {
+          throw const VelockDatasetAdapterUnavailableException(
+            VelockExchangeAvailability.configurationMissing,
+          );
+        }
+        return ApplePairingControlChannel(
+          rootLocator: _appleRootLocator,
+        ).queryAuthorizationStatus(syncAppInstanceId);
+      case VelockExchangePlatform.unsupported:
+        throw const VelockDatasetAdapterUnavailableException(
+          VelockExchangeAvailability.appNotInstalled,
+        );
+    }
+  }
 
   static VelockExchangePlatform _currentPlatform() {
     if (Platform.isAndroid) return VelockExchangePlatform.android;

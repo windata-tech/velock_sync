@@ -34,6 +34,8 @@ abstract final class VelockExchangeV1Contract {
   static const androidSubmitPairingRequestMethod = 'submitPairingRequest';
   static const androidQueryPairingResponseMethod = 'queryPairingResponse';
   static const androidAcknowledgePairingMethod = 'acknowledgePairing';
+  static const androidQueryAuthorizationStatusMethod =
+      'queryAuthorizationStatus';
 
   static const appleAppGroup = 'group.tech.windata.velock.sync.exchange';
   static const appleSyncFlutterChannel = 'tech.windata.velock.sync/exchange';

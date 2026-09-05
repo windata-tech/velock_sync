@@ -1,12 +1,13 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
-import 'package:velock_sync/widgets/common_widgets.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
 class NewConnection extends HookConsumerWidget {
   const NewConnection({super.key});
@@ -38,60 +39,67 @@ class NewConnection extends HookConsumerWidget {
     }, const []);
 
     if (connectionData == null) {
-      return PlatformScaffold(
-        iosContentPadding:
-            Theme.of(context).platform == TargetPlatform.iOS ||
-            Theme.of(context).platform == TargetPlatform.macOS,
-        appBar: WDAppBar(title: Text(connectionData?.name ?? '')),
-        body: const Center(child: PlatformCircularProgressIndicator()),
+      return const AdaptiveScaffold(
+        title: '新建连接',
+        body: AdaptiveLoadingState(label: '正在准备连接配置'),
       );
     }
 
-    // 4. 当 connectionData 不为 null 时 (第二帧)，显示真实的 UI
-    return PlatformScaffold(
-      iosContentPadding:
-          Theme.of(context).platform == TargetPlatform.iOS ||
-          Theme.of(context).platform == TargetPlatform.macOS,
-      appBar: WDAppBar(title: Text(connectionData.name)),
-      body: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            sliver: SliverToBoxAdapter(child: Text('本地目标')),
-            padding: EdgeInsets.all(16),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.all(16),
-            sliver: SliverToBoxAdapter(
-              child: Row(
-                children: [FlutterLogo(), Text(connectionData.source ?? '选择源')],
-              ),
+    return AdaptiveScaffold(
+      title: '新建连接',
+      body: ListView(
+        padding: const EdgeInsets.only(
+          top: AppSpacing.md,
+          bottom: AppSpacing.xl,
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              0,
+              AppSpacing.page,
+              AppSpacing.sm,
+            ),
+            child: Text(
+              '先选择本地目标，再连接一个远端空间。凭据会保存在系统安全存储中。',
+              style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
             ),
           ),
-          SliverPadding(
-            padding: EdgeInsets.all(16),
-            sliver: SliverToBoxAdapter(child: Text('远程目标')),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.all(16),
-            sliver: SliverToBoxAdapter(
-              child: PlatformTextButton(
-                padding: EdgeInsets.zero,
-                cupertino: (context, platform) {
-                  return CupertinoTextButtonData(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  );
-                },
-                child: Row(
-                  children: [
-                    Icon(PlatformIcons(context).add),
-                    Text(connectionData.target ?? '选择协议'), // 读取数据
-                  ],
+          AdaptiveListSection(
+            header: '本地目标',
+            children: [
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: Icons.folder_rounded,
+                    cupertino: CupertinoIcons.folder_fill,
+                  ),
+                  color: context.appPrimary,
                 ),
-                onPressed: () {
-                  context.pushNamed(AppRoutes.protocols.name);
-                },
+                title: Text(connectionData.source ?? '选择源'),
+                subtitle: const Text('当前设备上的格间数据'),
+                additionalInfo: const Icon(Icons.check_rounded),
               ),
-            ),
+            ],
+          ),
+          AdaptiveListSection(
+            header: '远端目标',
+            children: [
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: Icons.add_link_rounded,
+                    cupertino: CupertinoIcons.link,
+                  ),
+                ),
+                title: Text(connectionData.target ?? '选择协议'),
+                subtitle: const Text('WebDAV、Google Drive 或 OneDrive'),
+                showChevron: true,
+                onTap: () => context.pushNamed(AppRoutes.protocols.name),
+              ),
+            ],
           ),
         ],
       ),

@@ -11,7 +11,7 @@ Velock Sync is een open-source, platformonafhankelijk hulpmiddel voor incremente
 
 - Incrementele bidirectionele synchronisatie: alleen nieuwe of gewijzigde inhoud wordt overgedragen; met checkpoint-herstel, hervatbare uploads en garbage collection; bestaande gegevens worden niet opnieuw geüpload.
 - End-to-end-versleuteling: in de Velock-modus worden alleen ondoorzichtige versleutelde delta's van Velock verplaatst. Velock Sync bezit nooit de hoofdsleutel of synchronisatiesleutels van Velock en leest nooit de database.
-- Algemene mapsynchronisatie: niet-Velock-gebruikers kunnen een lokale map kiezen, standaard end-to-end versleuteld, met een eenvoudige spiegelfunctie.
+ctie.
 - Meerdere clouddoelen: WebDAV, Google Drive en OneDrive worden ondersteund; meer clouds zoals Baidu Netdisk en Aliyun Drive volgen via Provider-adapters.
 - Samenwerking op meerdere apparaten: versievectoren en tombstones zorgen ervoor dat gelijktijdige wijzigingen nooit stil verloren gaan; bij een conflict worden beide versies behouden en kiest u.
 - Achtergrondsynchronisatie: handmatige, voorgrond- en netwerkhersteltriggers, plus Android WorkManager / iOS BGTask.

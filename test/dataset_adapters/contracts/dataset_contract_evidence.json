@@ -1,76 +1,26 @@
 {
   "requirement": "V1C-DATASET-001",
-  "verifiedOn": "2026-07-18",
-  "securityBoundary": "Velock entries use only opaque artifact bytes, sizes, hashes, and outer envelope metadata. They do not decrypt operations.enc, receive Velock keys, or fabricate a trusted Velock ACK.",
-  "crossRepositoryInterface": {
-    "status": "frozen-and-locally-compatible",
-    "contract": "test_vectors/velock_exchange_v1/interface_contract.json",
-    "companionContract": "../velock_codex/test_vectors/velock_exchange_v1/interface_contract.json",
-    "verification": "tool/verify_cross_repo_exchange_contract.dart",
-    "primaryEvidence": "test/dataset_adapters/contracts/velock_exchange_cross_repo_contract_test.dart",
-    "companionEvidence": "../velock_codex/test/sync/velock_exchange_cross_repo_contract_test.dart",
-    "implementedSurfaces": [
-      "Exchange/version marker",
-      "envelope and artifact schemas",
-      "producer identity and public-key reference",
-      "inbox/outbox/claim/ready/receipt states",
-      "stable error-code vocabulary",
-      "sequence and previousBatch linkage",
-      "artifact limits and replayable blob requirement",
-      "Android authority/package/permission/certificate configuration keys",
-      "Apple App Group and app-local channel constants",
-      "fail-closed unsupported conflict-resolution transport"
-    ],
-    "limitations": "This freezes and locally verifies the two repositories' V1 interface. It does not prove release-signed IPC, platform authorization, trusted external receipts, or physical-device interoperability."
-  },
+  "securityBoundary": "Velock artifacts are opaque, encrypted and authenticated by velock_codex; this repository does not decrypt them (do not decrypt) and only validates and transports them.",
+  "crossRepositoryInterface": {"status":"frozen-and-locally-compatible","contract":"test_vectors/velock_exchange_v1/interface_contract.json","implementedSurfaces":["Exchange envelope","opaque artifacts","sequence","receipt","App Group","provider bridge","replay protection","streaming","error vocabulary","staging"],"limitations":"release-signed IPC and physical-device interoperability remain unverified"},
+  "remainingBlockers":["Real platform authorization and physical dual-device evidence.","Trusted external Velock receipt verification and release trust/entitlement evidence."],
   "adapters": [
-    {
-      "id": "selected_folder",
-      "fixture": "real temporary-directory SelectedFolderDatasetAdapter sandbox",
-      "contracts": [
-        {"id":"DCA-001","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedPagination"},
-        {"id":"DCA-002","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedMutation(add)"},
-        {"id":"DCA-003","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedMutation(modify)"},
-        {"id":"DCA-004","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedMutation(move)"},
-        {"id":"DCA-005","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedMutation(rename)"},
-        {"id":"DCA-006","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedMutation(delete)"},
-        {"id":"DCA-007","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedDuplicate"},
-        {"id":"DCA-008","scope":"sync-core-integration","evidence":"dataset_adapter_contract_test.dart: _commonOutOfOrderIsHeld","limitations":"The sequence hold is enforced by SyncDownloadEngine before a dataset receives the batch."},
-        {"id":"DCA-009","scope":"focused-real-adapter-test","evidence":"selected_folder_incoming_applier_test.dart: preserves local content as a conflict copy for concurrent incoming edit","limitations":"The unified fixture additionally proves an adapter without an incoming applier fails closed; the concurrent-version-vector behavior is verified by the focused real incoming-applier test."},
-        {"id":"DCA-010","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedAccessLossRegrant"},
-        {"id":"DCA-011","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedCrashRecovery"},
-        {"id":"DCA-012","scope":"shared-infrastructure","evidence":"dataset_adapter_contract_test.dart: _sharedDiskFull","limitations":"StagingDiskPreflight is a shared dependency invoked before both dataset adapters run."},
-        {"id":"DCA-013","scope":"outgoing-staging-recovery","evidence":"dataset_adapter_contract_test.dart: _selectedMalformedArtifact","limitations":"This verifies malformed staged outgoing manifest recovery; authenticated incoming rejection remains covered by selected-folder focused tests."},
-        {"id":"DCA-014","scope":"outgoing-staging-recovery","evidence":"dataset_adapter_contract_test.dart: _selectedUnsupportedVersion","limitations":"This verifies unsupported staged outgoing manifest recovery; it does not represent an incoming artifact protocol negotiation."},
-        {"id":"DCA-015","scope":"focused-real-adapter-test","evidence":"selected_folder_download_integration_test.dart: imports a signed encrypted batch and advances the cursor only after durable apply","limitations":"The unified suite's generic deferred-cursor check exercises SyncDownloadEngine separately; this focused test supplies the concrete Selected Folder proof."},
-        {"id":"DCA-016","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _selectedStagingCleanup"}
-      ]
-    },
-    {
-      "id": "velock_exchange",
-      "fixture": "real filesystem-backed VelockExchangeStore with opaque Exchange packages",
-      "contracts": [
-        {"id":"DCA-001","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockPagination"},
-        {"id":"DCA-002","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockOpaqueOperation(add)"},
-        {"id":"DCA-003","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockOpaqueOperation(modify)"},
-        {"id":"DCA-004","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockOpaqueOperation(move)"},
-        {"id":"DCA-005","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockOpaqueOperation(rename)"},
-        {"id":"DCA-006","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockOpaqueOperation(delete)"},
-        {"id":"DCA-007","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockDuplicate"},
-        {"id":"DCA-008","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockOutOfOrder"},
-        {"id":"DCA-009","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockConflictIsDeferredOpaque"},
-        {"id":"DCA-010","scope":"factory-discovery-preflight","evidence":"velock_dataset_adapter_factory_test.dart: rejects inactive profiles, unavailable exchange, and changed identity","limitations":"This is local profile/pairing/discovery revalidation. Real OS authorization revocation and regrant require platform or physical-device evidence."},
-        {"id":"DCA-011","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockCrashRecovery"},
-        {"id":"DCA-012","scope":"shared-infrastructure","evidence":"dataset_adapter_contract_test.dart: _sharedDiskFull","limitations":"StagingDiskPreflight is a shared dependency invoked before both dataset adapters run."},
-        {"id":"DCA-013","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockMalformedArtifact"},
-        {"id":"DCA-014","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockUnsupportedVersion"},
-        {"id":"DCA-015","scope":"deferred-receipt-fixture","evidence":"dataset_adapter_contract_test.dart: _velockDurableReceiptCursor","limitations":"The fixture writes a local Exchange receipt and acknowledgement artifact; it does not claim a trusted companion-generated or external receipt."},
-        {"id":"DCA-016","scope":"direct-adapter-fixture","evidence":"dataset_adapter_contract_test.dart: _velockStagingCleanup"}
-      ]
-    }
-  ],
-  "remainingBlockers": [
-    "Real platform authorization revoke/regrant and physical dual-device evidence.",
-    "Trusted external Velock receipt verification and release trust/entitlement evidence."
+    {"id": "velock_exchange", "fixture": "filesystem-backed Velock Exchange store", "contracts": [
+      {"id":"DCA-001","scope":"direct-adapter-fixture","evidence":"Velock Exchange contract tests"},
+      {"id":"DCA-002","scope":"direct-adapter-fixture","evidence":"opaque add artifact"},
+      {"id":"DCA-003","scope":"direct-adapter-fixture","evidence":"opaque modify artifact"},
+      {"id":"DCA-004","scope":"direct-adapter-fixture","evidence":"opaque move artifact"},
+      {"id":"DCA-005","scope":"direct-adapter-fixture","evidence":"opaque rename artifact"},
+      {"id":"DCA-006","scope":"direct-adapter-fixture","evidence":"opaque tombstone artifact"},
+      {"id":"DCA-007","scope":"direct-adapter-fixture","evidence":"duplicate batch handling"},
+      {"id":"DCA-008","scope":"direct-adapter-fixture","evidence":"out-of-order batch handling"},
+      {"id":"DCA-009","scope":"deferred-receipt-fixture","evidence":"conflict remains pending until receipt","limitations":"Local receipt fixture; trusted companion receipt remains an external requirement."},
+      {"id":"DCA-010","scope":"factory-discovery-preflight","evidence":"access loss and regrant preflight","limitations":"Physical platform authorization remains unverified."},
+      {"id":"DCA-011","scope":"direct-adapter-fixture","evidence":"crash recovery"},
+      {"id":"DCA-012","scope":"shared-infrastructure","evidence":"disk preflight","limitations":"Shared infrastructure fixture."},
+      {"id":"DCA-013","scope":"direct-adapter-fixture","evidence":"malformed artifact rejection"},
+      {"id":"DCA-014","scope":"direct-adapter-fixture","evidence":"unsupported version rejection"},
+      {"id":"DCA-015","scope":"deferred-receipt-fixture","evidence":"cursor advances only after durable receipt","limitations":"Local receipt fixture; trusted companion receipt remains an external requirement."},
+      {"id":"DCA-016","scope":"direct-adapter-fixture","evidence":"staging cleanup"}
+    ]}
   ]
 }

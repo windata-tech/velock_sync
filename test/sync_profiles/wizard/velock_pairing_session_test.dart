@@ -13,6 +13,7 @@ void main() {
     late _FakeControl control;
     late PlatformVelockPairingSessionService service;
     late VelockPairingDescriptor descriptor;
+    late List<Uri> launches;
 
     setUp(() async {
       now = DateTime.utc(2026, 7, 18, 8);
@@ -23,10 +24,15 @@ void main() {
         now,
       );
       var next = 0;
+      launches = [];
       service = PlatformVelockPairingSessionService(
         control: control,
         now: () => now,
         nextId: () => 'generated-${++next}',
+        launchVelock: (uri) async {
+          launches.add(uri);
+          return true;
+        },
       );
     });
 
@@ -52,6 +58,23 @@ void main() {
         expect(control.acknowledged, session.request.requestId);
       },
     );
+
+    test('reopens Velock for the existing pending request', () async {
+      final session = await service.begin(
+        descriptor: descriptor,
+        syncAppInstanceId: 'sync-instance-1',
+      );
+
+      await service.reopen(session);
+
+      expect(launches, hasLength(1));
+      expect(launches.single.scheme, 'velock');
+      expect(launches.single.host, 'sync-pairing');
+      expect(
+        launches.single.queryParameters['requestId'],
+        session.request.requestId,
+      );
+    });
 
     test(
       'rejects tampered approval and expires locally without querying',

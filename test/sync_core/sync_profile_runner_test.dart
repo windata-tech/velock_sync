@@ -270,10 +270,10 @@ class _IdleDataset implements SyncDatasetAdapter {
   Future<DatasetDescriptor> describe() async => const DatasetDescriptor(
     datasetId: 'd',
     vaultId: 'vault-1',
-    kind: DatasetKind.selectedFolder,
+    kind: DatasetKind.velockManaged,
     displayName: 'd',
     accessState: DatasetAccessState.available,
-    encryptionMode: EncryptionMode.endToEnd,
+    encryptionMode: EncryptionMode.velockManaged,
   );
   @override
   Future<PreparedOutgoingBatch?> prepareNextBatch({

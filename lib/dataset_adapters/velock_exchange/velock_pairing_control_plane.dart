@@ -229,6 +229,64 @@ class VelockPairingControlResponse {
   }
 }
 
+/// Whether an already-paired Sync instance remains authorized by Velock.
+enum VelockDeviceAuthorizationStatus { granted, revoked }
+
+/// Signed, Velock-owned revocation marker stored in `Control/Revocations`.
+/// Sync never trusts a marker it cannot verify with the published descriptor
+/// public key, so a revoked device cannot be silently re-authorized by local
+/// file edits.
+class VelockPairingRevocation {
+  const VelockPairingRevocation({
+    required this.deviceId,
+    required this.revokedAt,
+    required this.signature,
+  });
+
+  final String deviceId;
+  final DateTime revokedAt;
+  final Uint8List signature;
+
+  static VelockPairingRevocation parse(Uint8List bytes) {
+    final json = _object(bytes, const {
+      'deviceId',
+      'revokedAt',
+      'signatureAlgorithm',
+      'signature',
+    });
+    if (json['signatureAlgorithm'] !=
+        VelockExchangeV1Contract.signatureAlgorithm) {
+      throw const FormatException('Invalid Velock revocation algorithm.');
+    }
+    final signatureText = json['signature'];
+    if (signatureText is! String) {
+      throw const FormatException('Invalid Velock revocation signature.');
+    }
+    final signature = _base64(signatureText, 'signature');
+    if (signature.length != 64) {
+      throw const FormatException('Invalid Velock revocation signature.');
+    }
+    return VelockPairingRevocation(
+      deviceId: _id(json, 'deviceId'),
+      revokedAt: _utc(json, 'revokedAt'),
+      signature: signature,
+    );
+  }
+
+  Future<bool> verify({required VelockPairingDescriptor descriptor}) async {
+    final payload = utf8.encode(
+      jsonEncode({
+        'deviceId': deviceId,
+        'revokedAt': revokedAt.toIso8601String(),
+      }),
+    );
+    return Ed25519().verify(
+      payload,
+      signature: Signature(signature, publicKey: descriptor.publicKey),
+    );
+  }
+}
+
 enum VelockPairingControlStatus { pending, approved, denied, expired, revoked }
 
 /// Platform-neutral pairing control boundary.
@@ -237,6 +295,9 @@ enum VelockPairingControlStatus { pending, approved, denied, expired, revoked }
 /// implements it through the dedicated, entitlement-protected App Group.
 abstract interface class VelockPairingControlChannel {
   Future<VelockPairingDescriptor> pairingDescriptor();
+  Future<VelockDeviceAuthorizationStatus> queryAuthorizationStatus(
+    String syncAppInstanceId,
+  );
   Future<VelockPairingControlStatus> submitPairingRequest(
     VelockPairingControlRequest request,
   );

@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 
@@ -25,6 +26,7 @@ abstract interface class VelockPairingSessionService {
     required String syncAppInstanceId,
   });
   Future<VelockPairingSessionState> inspect(VelockPairingSession session);
+  Future<void> reopen(VelockPairingSession session);
   Future<void> acknowledge(VelockPairingSession session);
 }
 
@@ -37,13 +39,16 @@ class PlatformVelockPairingSessionService
     required VelockPairingControlChannel control,
     DateTime Function()? now,
     String Function()? nextId,
+    Future<bool> Function(Uri uri)? launchVelock,
   }) : _control = control,
        _now = now ?? DateTime.now,
-       _nextId = nextId ?? const Uuid().v4;
+       _nextId = nextId ?? const Uuid().v4,
+       _launchVelock = launchVelock ?? launchUrl;
 
   final VelockPairingControlChannel _control;
   final DateTime Function() _now;
   final String Function() _nextId;
+  final Future<bool> Function(Uri uri) _launchVelock;
 
   @override
   Future<VelockPairingSession> begin({
@@ -96,6 +101,20 @@ class PlatformVelockPairingSessionService
       throw const VelockPairingSessionException('invalid_pairing_response');
     }
     return VelockPairingSessionState(status: result.status, response: response);
+  }
+
+  @override
+  Future<void> reopen(VelockPairingSession session) async {
+    final launched = await _launchVelock(
+      Uri(
+        scheme: 'velock',
+        host: 'sync-pairing',
+        queryParameters: {'requestId': session.request.requestId},
+      ),
+    );
+    if (!launched) {
+      throw const VelockPairingSessionException('pairing_app_unavailable');
+    }
   }
 
   @override

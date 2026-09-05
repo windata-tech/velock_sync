@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -20,17 +21,26 @@ void showPlatformMessage(BuildContext context, String message) {
 }
 
 class WDAppBar extends PlatformAppBar {
-  WDAppBar({super.key, super.title, super.trailingActions, super.leading})
-    : super(
-        // backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        material: (_, _) => MaterialAppBarData(
-          centerTitle: true,
-          titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20), //
-        ),
-        cupertino: (_, _) => CupertinoNavigationBarData(
-          // padding: EdgeInsetsDirectional.zero
-        ),
-      );
+  WDAppBar({
+    super.key,
+    Widget? title,
+    super.trailingActions,
+    super.leading,
+    bool showTitle = false,
+  }) : super(
+         title: showTitle ? title : null,
+         material: (_, _) => MaterialAppBarData(
+           centerTitle: false,
+           elevation: 0,
+           scrolledUnderElevation: 0,
+           surfaceTintColor: Colors.transparent,
+         ),
+         cupertino: (_, _) => CupertinoNavigationBarData(
+           border: const Border(
+             bottom: BorderSide(color: CupertinoColors.separator, width: 0),
+           ),
+         ),
+       );
 }
 
 /// 连接状态指示器
@@ -52,7 +62,7 @@ class ConnectStatusIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (status == null) {
-      return SizedBox.shrink();
+      return const SizedBox.shrink();
     }
     return switch (status!) {
       ConnectionStatus.pending => SizedBox.fromSize(
@@ -61,7 +71,7 @@ class ConnectStatusIndicator extends StatelessWidget {
           pendingProgressSize ?? dotSize * 2,
         ),
         child: CircularProgressIndicator(
-          padding: EdgeInsets.all(0),
+          padding: const EdgeInsets.all(0),
           strokeWidth: strokeWidth,
         ),
       ),
@@ -87,7 +97,7 @@ class ColoredDot extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.green),
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
     );
   }
 }

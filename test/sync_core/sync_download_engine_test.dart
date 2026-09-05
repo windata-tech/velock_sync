@@ -405,10 +405,10 @@ class _ImportingDataset implements SyncDatasetAdapter {
   Future<DatasetDescriptor> describe() async => const DatasetDescriptor(
     datasetId: 'dataset-1',
     vaultId: 'vault-1',
-    kind: DatasetKind.selectedFolder,
+    kind: DatasetKind.velockManaged,
     displayName: 'Test',
     accessState: DatasetAccessState.available,
-    encryptionMode: EncryptionMode.endToEnd,
+    encryptionMode: EncryptionMode.velockManaged,
   );
 
   @override

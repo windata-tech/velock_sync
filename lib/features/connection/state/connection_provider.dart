@@ -9,15 +9,32 @@ import 'package:velock_sync/features/connection/state/protocol_provider.dart';
 
 part '../../../generated/features/connection/state/connection_provider.g.dart';
 
-@riverpod
+// Connections is app-global state that methods mutate after awaits. With the
+// default autoDispose lifecycle, Riverpod 3 throws UnmountedRefException when a
+// provider is disposed while one of these awaits is pending (e.g. `await
+// future` inside addConnection/refreshStatuses). Keeping it alive for the app
+// session makes those mutations race-free.
+@Riverpod(keepAlive: true)
 class Connections extends _$Connections {
   @override
   FutureOr<List<ConnectionModel>> build() async {
     final connections = await ref
         .watch(connectionRepositoryProvider)
         .loadConnections();
-    Future.microtask(refreshStatuses);
+    // A microtask here runs before this build's data state is committed, so
+    // the initial sweep used to always see an empty list. Schedule it on the
+    // next event-loop turn instead, once `state.value` is populated.
+    Future<void>.delayed(Duration.zero, _refreshAfterLoad);
     return connections;
+  }
+
+  Future<void> _refreshAfterLoad() async {
+    if (!ref.mounted) return;
+    try {
+      await refreshStatuses();
+    } on Object catch (e) {
+      logw('Initial connection status refresh failed with ${e.runtimeType}.');
+    }
   }
 
   Future<void> addConnection(CreateConnectionDto createConnectionDto) async {
@@ -27,10 +44,16 @@ class Connections extends _$Connections {
     state = AsyncData([...previousConnections, connectionModel]);
     try {
       await connectionRepository.setConnections(state.value!);
-      await refreshStatuses(); // 添加后立即刷新状态
     } catch (e) {
       state = AsyncData(previousConnections);
       rethrow;
+    }
+    // A failed status probe must not roll back a connection that is already
+    // durably saved; the UI keeps the pending state until the next refresh.
+    try {
+      await refreshStatuses();
+    } on Object {
+      logw('Saved connection but could not refresh its status.');
     }
   }
 
@@ -153,15 +176,35 @@ class Connections extends _$Connections {
       return; // 如果没有连接，则无需刷新
     }
 
-    // ✨ 2. 并行检查所有连接的状态
-    // 使用 Future.wait 可以最高效地同时发起所有网络请求
-    final results = await Future.wait(
-      currentConnections.map((conn) {
-        // 这里使用 ref.read，因为我们是在一个方法内部执行一次性读取操作
-        // .future 会返回底层的 Future<bool>
-        return ref.read(protocolConnectCheckerProvider(conn.protocol).future);
-      }).toList(),
+    // Surface the in-flight probe immediately so the connections page does
+    // not appear unresponsive while a network check is running.
+    state = AsyncData(
+      currentConnections
+          .map(
+            (connection) =>
+                connection.copyWith(status: ConnectionStatus.pending),
+          )
+          .toList(),
     );
+
+    // ✨ 2. 并行检查所有连接的状态
+    // 使用 Future.wait 可以最高效地同时发起所有网络请求。这里直接用普通
+    // 探测函数，避免 autoDispose provider 在 await 期间被回收而抛
+    // UnmountedRefException。
+    late final List<bool> results;
+    try {
+      results = await Future.wait(
+        currentConnections.map((conn) {
+          return probeProtocolConnection(
+            credentials: ref.read(credentialStoreProvider),
+            protocol: conn.protocol,
+          );
+        }).toList(),
+      );
+    } on Object {
+      state = AsyncData(currentConnections);
+      rethrow;
+    }
 
     // ✨ 3. 构建包含最新状态的新列表
     final updatedConnections = <ConnectionModel>[];
@@ -235,7 +278,7 @@ ConnectionModel reconfiguredWebDavConnection(
   );
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 class ConnectionCreation extends _$ConnectionCreation {
   @override
   CreateConnectionDto? build() {
@@ -255,11 +298,15 @@ class ConnectionCreation extends _$ConnectionCreation {
   Future<void> setProtocolAndFinalize({
     required ProtocolModel protocolModel,
   }) async {
-    if (state == null) {
-      loge('state is null. please call prepareNewConnection first.');
-      return;
-    }
-    final completeConnection = state!.copyWith(
+    // The draft provider is kept alive for the session, but a save can still
+    // arrive without a prepared draft (e.g. a direct wizard shortcut). Fall
+    // back to the same defaults the new-connection page would have used.
+    final base =
+        state ??
+        CreateConnectionDto.empty(
+          name: '新建连接',
+        ).copyWith(source: '格间', target: null);
+    final completeConnection = base.copyWith(
       target: protocolModel.targetLabel,
       targetDescription: 'runtimeType=${protocolModel.runtimeType}',
       protocol: protocolModel,

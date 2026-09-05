@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/apple_velock_companion_probe.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_discovery.dart';
 
 void main() {
@@ -109,12 +111,13 @@ void main() {
   );
 
   test(
-    'Apple discovery accepts only the dedicated locator root when it exists',
+    'Apple discovery accepts a matching descriptor from the dedicated root',
     () async {
       final directory = await Directory.systemTemp.createTemp(
         'velock-exchange-',
       );
       addTearDown(() => directory.delete(recursive: true));
+      await _writeDescriptor(directory, producerId: candidate.producerId);
       final locator = AppleExchangeRootLocator(
         channel: _FakeAppleExchangeRootChannel(() async => directory.path),
         isApplePlatform: () => true,
@@ -123,10 +126,59 @@ void main() {
       final result = await AppleVelockExchangeDiscovery(
         rootLocator: locator,
         candidate: candidate,
+        companionProbe: _FakeAppleCompanionProbe(() async => true),
       ).discover();
 
       expect(result.availability, VelockExchangeAvailability.available);
-      expect(result.candidate, same(candidate));
+      expect(result.candidate?.sameIdentityAs(candidate), isTrue);
+    },
+  );
+
+  test(
+    'Apple discovery rejects an existing root without a descriptor',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'velock-exchange-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+
+      final result = await AppleVelockExchangeDiscovery(
+        rootLocator: AppleExchangeRootLocator(
+          channel: _FakeAppleExchangeRootChannel(() async => directory.path),
+          isApplePlatform: () => true,
+        ),
+        candidate: candidate,
+        companionProbe: _FakeAppleCompanionProbe(() async => true),
+      ).discover();
+
+      expect(
+        result.availability,
+        VelockExchangeAvailability.configurationMissing,
+      );
+      expect(result.isAvailable, isFalse);
+    },
+  );
+
+  test(
+    'Apple discovery rejects a descriptor for a different producer identity',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'velock-exchange-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      await _writeDescriptor(directory, producerId: 'producer-2');
+
+      final result = await AppleVelockExchangeDiscovery(
+        rootLocator: AppleExchangeRootLocator(
+          channel: _FakeAppleExchangeRootChannel(() async => directory.path),
+          isApplePlatform: () => true,
+        ),
+        candidate: candidate,
+        companionProbe: _FakeAppleCompanionProbe(() async => true),
+      ).discover();
+
+      expect(result.availability, VelockExchangeAvailability.accessRevoked);
+      expect(result.isAvailable, isFalse);
     },
   );
 
@@ -144,6 +196,7 @@ void main() {
           isApplePlatform: () => true,
         ),
         candidate: candidate,
+        companionProbe: _FakeAppleCompanionProbe(() async => true),
       ).discover();
       final unsupported = await AppleVelockExchangeDiscovery(
         rootLocator: AppleExchangeRootLocator(
@@ -151,6 +204,7 @@ void main() {
           isApplePlatform: () => false,
         ),
         candidate: candidate,
+        companionProbe: _FakeAppleCompanionProbe(() async => true),
       ).discover();
 
       expect(
@@ -162,6 +216,68 @@ void main() {
         VelockExchangeAvailability.appNotInstalled,
       );
     },
+  );
+
+  test(
+    'Apple discovery reports appNotInstalled even when a stale descriptor exists',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'velock-exchange-stale-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      await _writeDescriptor(directory, producerId: candidate.producerId);
+
+      final result = await AppleVelockExchangeDiscovery(
+        rootLocator: AppleExchangeRootLocator(
+          channel: _FakeAppleExchangeRootChannel(() async => directory.path),
+          isApplePlatform: () => true,
+        ),
+        candidate: candidate,
+        companionProbe: _FakeAppleCompanionProbe(() async => false),
+      ).discover();
+
+      expect(result.availability, VelockExchangeAvailability.appNotInstalled);
+      expect(result.isAvailable, isFalse);
+    },
+  );
+
+  test('Apple discovery fails closed when the install probe errors', () async {
+    final result = await AppleVelockExchangeDiscovery(
+      rootLocator: AppleExchangeRootLocator(
+        channel: _FakeAppleExchangeRootChannel(() async => '/unused'),
+        isApplePlatform: () => true,
+      ),
+      candidate: candidate,
+      companionProbe: _FakeAppleCompanionProbe(
+        () async => throw MissingPluginException(),
+      ),
+    ).discover();
+
+    expect(result.availability, VelockExchangeAvailability.unsupportedVersion);
+    expect(result.isAvailable, isFalse);
+  });
+}
+
+Future<void> _writeDescriptor(
+  Directory root, {
+  required String producerId,
+}) async {
+  final file = File('${root.path}/Control/descriptor.json');
+  await file.parent.create(recursive: true);
+  await file.writeAsString(
+    jsonEncode({
+      'controlVersion': 1,
+      'exchangeBindingId': 'exchange-1',
+      'exchangeVersion': 1,
+      'producerId': producerId,
+      'producerPublicKeyId': 'producer-key-1',
+      'producerSigningPublicKey':
+          'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+      'protocol': 'velock-sync',
+      'protocolVersion': 1,
+      'publishedAt': DateTime.utc(2026, 8, 8).toIso8601String(),
+      'signatureAlgorithm': 'Ed25519',
+    }),
   );
 }
 
@@ -184,4 +300,13 @@ class _FakeAppleExchangeRootChannel implements AppleExchangeRootChannel {
 
   @override
   Future<String?> readExchangeRoot() => _readExchangeRoot();
+}
+
+class _FakeAppleCompanionProbe implements AppleVelockCompanionProbe {
+  _FakeAppleCompanionProbe(this._isInstalled);
+
+  final Future<bool> Function() _isInstalled;
+
+  @override
+  Future<bool> isInstalled() => _isInstalled();
 }

@@ -335,6 +335,7 @@ class _WebDavContractFixture implements ObjectStoreContractFixture {
         putSeen = true;
         expect(await _bodyBytes(body), isEmpty);
         expect(options.headers['Content-Length'], '0');
+        expect(options.headers['Content-Type'], 'application/octet-stream');
         return ResponseBody.fromBytes(const [], 201);
       }
       expect(options.method, 'GET');
@@ -384,6 +385,7 @@ class _WebDavContractFixture implements ObjectStoreContractFixture {
     var total = 0;
     _adapter.handler = (options, body, _) async {
       expect(options.method, 'PUT');
+      expect(options.headers['Content-Type'], 'application/octet-stream');
       await for (final chunk in body!) {
         maxChunk = maxChunk < chunk.length ? chunk.length : maxChunk;
         total += chunk.length;

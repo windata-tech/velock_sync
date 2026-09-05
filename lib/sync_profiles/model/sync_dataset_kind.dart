@@ -2,7 +2,6 @@
 /// dispatcher. The persistent value is deliberately stable and never derived
 /// from an enum name.
 enum SyncDatasetKind {
-  selectedFolder('selected-folder'),
   velockManaged('velock-managed');
 
   const SyncDatasetKind(this.persistedValue);

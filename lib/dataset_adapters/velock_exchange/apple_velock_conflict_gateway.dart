@@ -164,7 +164,7 @@ class AppleVelockConflictGateway
       );
       final key = trusted[velockProfile.pairedProducerId];
       if (key == null) return false;
-      return Ed25519().verify(
+      return await Ed25519().verify(
         parsed.signaturePayload(),
         signature: Signature(
           parsed.signature,

@@ -48,7 +48,7 @@ final class ThemeProvider
   }
 }
 
-String _$themeHash() => r'0fea6438c8bee8be98515c10e8e67c2e75c6af46';
+String _$themeHash() => r'd7bb58b469a615acb15726df0799fdc9402f6b0e';
 
 @ProviderFor(VSThemeMode)
 const vSThemeModeProvider = VSThemeModeProvider._();

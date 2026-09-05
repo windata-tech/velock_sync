@@ -1,12 +1,11 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
-import 'package:velock_sync/core/extensions.dart';
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/core/utils.dart';
@@ -14,6 +13,8 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/protocol_provider.dart';
+import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 class NewWebDav extends HookConsumerWidget {
@@ -138,12 +139,18 @@ class NewWebDav extends HookConsumerWidget {
     }
 
     return PlatformScaffold(
-      iosContentPadding:
-          Theme.of(context).platform == TargetPlatform.iOS ||
-          Theme.of(context).platform == TargetPlatform.macOS,
+      iosContentPadding: false,
       appBar: WDAppBar(
         title: Text(existingWebDav == null ? '新建 WebDAV 连接' : '编辑 WebDAV 连接'),
         trailingActions: [
+          PlatformTextButton(
+            padding: EdgeInsets.zero,
+            onPressed: () => context.pushNamed(
+              AppRoutes.connectionHelp.name,
+              queryParameters: {'provider': RemoteProviderType.webDav.name},
+            ),
+            child: const Text('说明'),
+          ),
           PlatformTextButton(
             padding: EdgeInsets.zero,
             onPressed: isLoading.value
@@ -176,11 +183,16 @@ class NewWebDav extends HookConsumerWidget {
                               ? pathController.text
                               : null,
                         );
-                        final checkProvider = protocolConnectCheckerProvider(
-                          protocolModel,
-                        );
-                        final isConnected = await ref.read(
-                          checkProvider.future,
+                        // Use the plain probe instead of
+                        // `protocolConnectCheckerProvider(...).future`: that
+                        // autoDispose provider can be disposed while the await
+                        // is pending (Riverpod 3 UnmountedRefException), which
+                        // used to land here in the catch and delete the
+                        // just-stored password even though the connection was
+                        // already saved.
+                        final isConnected = await probeProtocolConnection(
+                          credentials: ref.read(credentialStoreProvider),
+                          protocol: protocolModel,
                         );
                         if (isConnected) {
                           if (replacementConnection != null) {
@@ -208,14 +220,36 @@ class NewWebDav extends HookConsumerWidget {
                           await ref
                               .read(connectionRepositoryProvider)
                               .deleteCredential(createdCredentialRef);
+                          if (context.mounted) {
+                            Fluttertoast.showToast(
+                              msg: '连接测试失败：请检查地址、端口、账号密码。',
+                            );
+                          }
                         }
                       } catch (e) {
+                        // A connection may already be durably saved by the time
+                        // an exception reaches this handler, so never delete
+                        // the fresh credential just because the flow aborted.
+                        // It is removed only when the probe explicitly failed
+                        // above (nothing was persisted) or, below, only when
+                        // we know this flow never persisted anything.
                         if (!connectionPersisted) {
-                          await ref
-                              .read(connectionRepositoryProvider)
-                              .deleteCredential(createdCredentialRef);
+                          try {
+                            await ref
+                                .read(connectionRepositoryProvider)
+                                .deleteCredential(createdCredentialRef);
+                          } on Object {
+                            // Keep the original error as the actionable one.
+                          }
                         }
                         loge('连接失败: ${e.runtimeType}');
+                        if (context.mounted) {
+                          Fluttertoast.showToast(
+                            msg: connectionPersisted
+                                ? '连接已保存，但状态检查未完成。'
+                                : '连接保存失败，请重试。',
+                          );
+                        }
                         return;
                       } finally {
                         isLoading.value = false;
@@ -235,19 +269,23 @@ class NewWebDav extends HookConsumerWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(0),
-        child: Form(
-          key: formKey,
-          child: _WebDavFormFields(
-            enableHTTPS: enableHTTPS.value,
-            addressController: addressController,
-            portController: portController,
-            userController: userController,
-            passwordController: passwordController,
-            pathController: pathController,
-            passwordOptional: existingWebDav?.credentialRef != null,
-            onEnableHTTPSChanged: onHttpsChanged,
-          ),
+        padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+        child: Column(
+          children: [
+            Form(
+              key: formKey,
+              child: _WebDavFormFields(
+                enableHTTPS: enableHTTPS.value,
+                addressController: addressController,
+                portController: portController,
+                userController: userController,
+                passwordController: passwordController,
+                pathController: pathController,
+                passwordOptional: existingWebDav?.credentialRef != null,
+                onEnableHTTPSChanged: onHttpsChanged,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -261,7 +299,7 @@ class PrefixWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(width: 95, child: child);
+    return SizedBox(width: 96, child: child);
   }
 }
 
@@ -293,7 +331,7 @@ class _WebDavFormFields extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            Text('是否启用Https'),
+            const Text('启用 HTTPS'),
             Spacer(),
             PlatformSwitch(value: enableHTTPS, onChanged: onEnableHTTPSChanged),
           ],
@@ -442,22 +480,11 @@ class _WebDavFormFields extends StatelessWidget {
       ),
     ];
 
-    return Theme.of(context).platform == TargetPlatform.iOS ||
-            Theme.of(context).platform == TargetPlatform.macOS
-        ? Column(
-            children: [
-              CupertinoFormSection.insetGrouped(
-                backgroundColor: context.groupedBackgroundColor,
-                header: const Text('基本信息'),
-                children: formChildren,
-              ),
-              CupertinoFormSection.insetGrouped(
-                backgroundColor: context.groupedBackgroundColor,
-                header: const Text('选填信息'),
-                children: formOptionalChildren,
-              ),
-            ],
-          )
-        : Column(children: [...formChildren, ...formOptionalChildren]);
+    return Column(
+      children: [
+        AdaptiveListSection(header: '基本信息', children: formChildren),
+        AdaptiveListSection(header: '选填信息', children: formOptionalChildren),
+      ],
+    );
   }
 }

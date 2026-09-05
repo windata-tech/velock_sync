@@ -30,7 +30,7 @@ void main() {
     final adapter = VelockExchangeDatasetAdapter(
       datasetId: 'velock-1',
       vaultId: 'vault-1',
-      deviceId: 'device-1',
+      producerDeviceId: 'device-1',
       displayName: 'Velock',
       exchange: store,
     );
@@ -45,6 +45,10 @@ void main() {
     expect(
       await File('${root.path}/Outbox/Receipts/batch-1.json').exists(),
       isTrue,
+    );
+    expect(
+      await Directory('${root.path}/Outbox/Claimed/batch-1').exists(),
+      isFalse,
     );
   });
 
@@ -70,7 +74,7 @@ void main() {
       final adapter = VelockExchangeDatasetAdapter(
         datasetId: 'velock-1',
         vaultId: 'vault-1',
-        deviceId: 'device-1',
+        producerDeviceId: 'device-1',
         displayName: 'Velock',
         exchange: store,
       );
@@ -109,12 +113,16 @@ void main() {
           'publishedAt': '2026-07-15T00:00:00.000Z',
         }),
       );
-      await store.claimNextOutbox(leaseId: 'crashed-process');
+      await store.claimNextOutbox(
+        leaseId: 'crashed-process',
+        vaultId: 'vault-1',
+        sourceDeviceId: 'device-1',
+      );
       now = now.add(const Duration(minutes: 2));
       final adapter = VelockExchangeDatasetAdapter(
         datasetId: 'velock-1',
         vaultId: 'vault-1',
-        deviceId: 'device-1',
+        producerDeviceId: 'device-1',
         displayName: 'Velock',
         exchange: store,
       );
@@ -135,7 +143,7 @@ void main() {
     final adapter = VelockExchangeDatasetAdapter(
       datasetId: 'velock-1',
       vaultId: 'vault-1',
-      deviceId: 'consumer-1',
+      producerDeviceId: 'producer-1',
       displayName: 'Velock',
       exchange: store,
     );

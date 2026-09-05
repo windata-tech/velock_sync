@@ -42,6 +42,8 @@ class SyncProfileRunResult {
   final UploadRunResult upload;
   final DownloadRunResult download;
   final CheckpointRecoveryResult? checkpointRecovery;
+
+  bool get didTransfer => upload.didPublish || download.importedBatchCount > 0;
 }
 
 /// The application-facing V1 run sequence. It keeps trust local: remote member

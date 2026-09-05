@@ -34,10 +34,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
-
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "tech.windata.velock.sync.velock_sync"
@@ -96,17 +92,23 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+    }
+}
+
 dependencies {
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260719")
 }
 
 flutter {
     source = "../.."
 }
 
-val verifyOfficialReleaseSigning by tasks.registering {
+val verifyOfficialReleaseSigning = tasks.register("verifyOfficialReleaseSigning") {
     group = "verification"
     description = "Rejects release assembly without an official signing key."
     doLast {

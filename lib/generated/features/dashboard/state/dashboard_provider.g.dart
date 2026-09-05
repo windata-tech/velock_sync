@@ -33,7 +33,7 @@ final class SyncTasksProvider
   SyncTasks create() => SyncTasks();
 }
 
-String _$syncTasksHash() => r'3d59e624c1c0f4c98d8036822cf97eb66ca0905f';
+String _$syncTasksHash() => r'71f05dda8daefe433150f177820d89748a1d80c8';
 
 abstract class _$SyncTasks extends $AsyncNotifier<List<SyncTask>> {
   FutureOr<List<SyncTask>> build();

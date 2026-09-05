@@ -14,11 +14,17 @@ void main() {
       root,
       now: () => DateTime.utc(2026, 7, 15),
     );
-    await Directory(
-      '${root.path}/Outbox/Ready/batch-1',
-    ).create(recursive: true);
+    final package = Directory('${root.path}/Outbox/Ready/batch-1');
+    await package.create(recursive: true);
+    await File('${package.path}/envelope.json').writeAsString(
+      jsonEncode({'vaultId': 'vault-1', 'sourceDeviceId': 'device-1'}),
+    );
 
-    final claim = await store.claimNextOutbox(leaseId: 'lease-1');
+    final claim = await store.claimNextOutbox(
+      leaseId: 'lease-1',
+      vaultId: 'vault-1',
+      sourceDeviceId: 'device-1',
+    );
 
     expect(claim!.batchId, 'batch-1');
     expect(
@@ -30,6 +36,37 @@ void main() {
     );
     expect(lease['leaseId'], 'lease-1');
   });
+
+  test(
+    'claims only a READY package that matches the requested vault and source',
+    () async {
+      final root = await Directory.systemTemp.createTemp('velock-exchange-');
+      addTearDown(() => root.delete(recursive: true));
+      final store = VelockExchangeStore(root);
+      for (final entry in [
+        ('batch-other', 'other-vault', 'other-device'),
+        ('batch-mine', 'vault-1', 'device-1'),
+      ]) {
+        final package = Directory('${root.path}/Outbox/Ready/${entry.$1}');
+        await package.create(recursive: true);
+        await File('${package.path}/envelope.json').writeAsString(
+          jsonEncode({'vaultId': entry.$2, 'sourceDeviceId': entry.$3}),
+        );
+      }
+
+      final claim = await store.claimNextOutbox(
+        leaseId: 'lease-1',
+        vaultId: 'vault-1',
+        sourceDeviceId: 'device-1',
+      );
+
+      expect(claim!.batchId, 'batch-mine');
+      expect(
+        await Directory('${root.path}/Outbox/Ready/batch-other').exists(),
+        isTrue,
+      );
+    },
+  );
 
   test(
     'publishes an inbox package only after every artifact is staged',
@@ -54,6 +91,39 @@ void main() {
       expect(
         jsonDecode(await File('${ready.path}/READY').readAsString()),
         containsPair('batchId', 'batch-1'),
+      );
+      expect(
+        await Directory('${root.path}/Inbox/Staging/batch-1.tmp').exists(),
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'publishing the same inbox package again is an idempotent no-op',
+    () async {
+      final root = await Directory.systemTemp.createTemp('velock-exchange-');
+      addTearDown(() => root.delete(recursive: true));
+      final store = VelockExchangeStore(root);
+      final artifacts = {
+        'envelope.json': ImmutableArtifact.fromBytes(
+          Uint8List.fromList(utf8.encode('opaque')),
+        ),
+      };
+
+      final first = await store.publishInboxPackage(
+        batchId: 'batch-1',
+        artifacts: artifacts,
+      );
+      final second = await store.publishInboxPackage(
+        batchId: 'batch-1',
+        artifacts: artifacts,
+      );
+
+      expect(second.path, first.path);
+      expect(
+        await File('${second.path}/envelope.json').readAsString(),
+        'opaque',
       );
       expect(
         await Directory('${root.path}/Inbox/Staging/batch-1.tmp').exists(),

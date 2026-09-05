@@ -5,13 +5,13 @@
 
 ---
 
-Velock Sync, açık kaynaklı, çok platformlu, artımlı çift yönlü bir senkronizasyon aracıdır. Velock kullanıcıları için, şifrelenmiş kasa verilerini kendi cihazlarınız arasında senkronize eden bağımsız yardımcı uygulamadır. Ayrıca Velock hesabı gerektirmeden, kullanıcı tarafından seçilen klasörlerin uçtan uca şifreli senkronizasyonunu destekler.
+u destekler.
 
 ## Temel Özellikler
 
 - Artımlı çift yönlü senkronizasyon: yalnızca yeni veya değiştirilmiş içerik aktarılır; kontrol noktası kurtarma, sürdürülebilir yükleme ve çöp toplama desteklenir; mevcut veriler yeniden yüklenmez.
 - Uçtan uca şifreleme: Velock modunda yalnızca Velock tarafından üretilen opak şifreli deltalar taşınır. Velock Sync, Velock'un ana anahtarını veya senkronizasyon anahtarlarını asla tutmaz ve veritabanını okumaz.
-- Genel klasör senkronizasyonu: Velock kullanmayanlar yerel bir klasör seçebilir; varsayılan olarak uçtan uca şifreli, ayrıca düz ayna modu da sunulur.
+ulur.
 - Birden çok bulut hedefi: WebDAV, Google Drive ve OneDrive desteklenir; Baidu Netdisk ve Aliyun Drive gibi daha fazla bulut, Provider bağdaştırıcılarıyla ekleniyor.
 - Çok cihazlı iş birliği: sürüm vektörleri ve tombstone mekanizması, eş zamanlı değişikliklerin sessizce kaybolmamasını sağlar; çakışmada her iki sürüm korunur ve seçim size bırakılır.
 - Arka plan senkronizasyonu: manuel, ön planda ve ağ kurtarma tetikleyicileri ile Android WorkManager / iOS BGTask zamanlaması.
@@ -20,7 +20,7 @@ Velock Sync, açık kaynaklı, çok platformlu, artımlı çift yönlü bir senk
 ## Platformlar
 
 - Velock tarafından yönetilen veriler V1: iOS/iPadOS; Velock ile özel bir App Group üzerinden veri alışverişi yapar.
-- Seçilen klasörler ve bulut Provider'ları: Android ve iOS/iPadOS.
+Android ve iOS/iPadOS.
 - Masaüstü: planlanıyor.
 
 ## Açık Kaynak ve Ticari Not

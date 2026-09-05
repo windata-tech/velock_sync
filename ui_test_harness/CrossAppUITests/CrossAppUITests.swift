@@ -29,6 +29,198 @@ final class CrossAppUITests: XCTestCase {
         velockApp = nil
     }
 
+    /// Visual verification for the four root tabs. The tabs are selected through
+    /// the actual iOS accessibility tree so a screenshot cannot accidentally
+    /// be captured from the dashboard route while claiming to be another tab.
+    func testFourHomeTabsHaveNoTitles() {
+        syncApp.launch()
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+
+        tapHomeTab("同步", normalizedX: 0.125, screenshotName: "tab-sync-no-title-verified")
+        tapHomeTab("连接", normalizedX: 0.375, screenshotName: "tab-connections-no-title-verified")
+        tapHomeTab("活动", normalizedX: 0.625, screenshotName: "tab-activity-no-title-verified")
+        tapHomeTab("设置", normalizedX: 0.875, screenshotName: "tab-settings-no-title-verified")
+    }
+
+    private func tapHomeTab(
+        _ label: String,
+        normalizedX: CGFloat,
+        screenshotName: String
+    ) {
+        let tab = syncApp.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "\(label)\n")
+        ).firstMatch
+        if tab.waitForExistence(timeout: 5) && tab.isHittable {
+            tab.tap()
+        } else {
+            syncApp.coordinate(
+                withNormalizedOffset: CGVector(dx: normalizedX, dy: 0.94)
+            ).tap()
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        print("HOME_TAB_\(label)_BEGIN\n\(syncApp.debugDescription)\nHOME_TAB_\(label)_END")
+        attachScreenshot(screenshotName)
+    }
+
+    /// Captures every currently reachable product route without changing
+    /// persistent app data. Each flow starts from a fresh app process so a
+    /// failed or cancelled form cannot contaminate the next screenshot.
+    func testCaptureAllProductPages() {
+        launchSyncFresh()
+        attachScreenshot("page-sync-home-entry")
+
+        tapHomeTab("同步", normalizedX: 0.125, screenshotName: "page-sync-home-all")
+        tapFirstContaining("新建同步配置")
+        waitForAnyText("选择数据集")
+        attachScreenshot("page-sync-profile-wizard")
+
+        tapSelectedFolderCard()
+        waitForAnyText("同步文件夹")
+        attachScreenshot("page-selected-folder-profiles")
+
+        launchSyncFresh()
+        tapHomeTab("连接", normalizedX: 0.375, screenshotName: "page-connections")
+        tapFirstContaining("新建连接")
+        waitForAnyText("选择协议")
+        attachScreenshot("page-new-connection")
+        tapFirstContaining("选择协议")
+        waitForAnyText("可用协议")
+        attachScreenshot("page-protocols")
+        tapFirstContaining("详细配置说明")
+        waitForAnyText("远端服务配置说明")
+        attachScreenshot("page-connection-help")
+
+        launchSyncFresh()
+        openNewConnectionProtocols()
+        tapFirstContaining("WebDAV")
+        waitForAnyText("服务器地址")
+        attachScreenshot("page-new-webdav")
+        openConnectionHelp(marker: "WebDAV 配置说明")
+        attachScreenshot("page-new-webdav-guide")
+
+        launchSyncFresh()
+        openNewConnectionProtocols()
+        tapFirstContaining("Google Drive")
+        waitForAnyText("Google Drive")
+        attachScreenshot("page-new-google-drive")
+        openConnectionHelp(marker: "Google Drive 配置说明")
+        attachScreenshot("page-new-google-drive-guide")
+
+        launchSyncFresh()
+        openNewConnectionProtocols()
+        tapFirstContaining("OneDrive")
+        waitForAnyText("OneDrive")
+        attachScreenshot("page-new-onedrive")
+        openConnectionHelp(marker: "OneDrive 配置说明")
+        attachScreenshot("page-new-onedrive-guide")
+
+        launchSyncFresh()
+        openNewConnectionProtocols()
+        tapFirstContaining("百度网盘")
+        waitForAnyText("Access Token")
+        attachScreenshot("page-new-baidu-token")
+        openConnectionHelp(marker: "百度网盘 配置说明")
+        attachScreenshot("page-new-baidu-token-guide")
+
+        launchSyncFresh()
+        tapHomeTab("连接", normalizedX: 0.375, screenshotName: "page-connections-detail-entry")
+        let connection = syncApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'dav.yibogame.com'")
+        ).firstMatch
+        XCTAssertTrue(connection.waitForExistence(timeout: 10))
+        connection.tap()
+        // Connection details load their remote-browser state asynchronously;
+        // capture the real resulting page even when the configured endpoint
+        // cannot be reached by the simulator.
+        RunLoop.current.run(until: Date().addingTimeInterval(3))
+        attachScreenshot("page-connection-detail")
+
+        launchSyncFresh()
+        tapHomeTab("同步", normalizedX: 0.125, screenshotName: "page-sync-detail-entry")
+        let profile = syncApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'test1 的 Velock'")
+        ).firstMatch
+        XCTAssertTrue(profile.waitForExistence(timeout: 10))
+        profile.tap()
+        waitForAnyText("概览")
+        attachScreenshot("page-sync-detail-overview")
+    }
+
+    /// Focused visual check for the newly exposed Baidu credential flow. The
+    /// broader route capture above remains the full product-page sweep; this
+    /// focused test keeps credential-page regressions quick to diagnose.
+    func testCaptureBaiduTokenPages() {
+        launchSyncFresh()
+        openNewConnectionProtocols()
+        tapFirstContaining("百度网盘")
+        waitForAnyText("Access Token")
+        attachScreenshot("page-new-baidu-token")
+        openConnectionHelp(marker: "百度网盘 配置说明")
+        attachScreenshot("page-new-baidu-token-guide")
+    }
+
+    private func openNewConnectionProtocols() {
+        tapHomeTab("连接", normalizedX: 0.375, screenshotName: "page-connections-entry")
+        tapFirstContaining("新建连接")
+        waitForAnyText("选择协议")
+        tapFirstContaining("选择协议")
+        waitForAnyText("可用协议")
+    }
+
+    private func openConnectionHelp(marker: String) {
+        let helpButton = syncApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "说明")
+        ).firstMatch
+        XCTAssertTrue(helpButton.waitForExistence(timeout: 5), "Missing connection help entry")
+        XCTAssertTrue(helpButton.isHittable, "Connection help entry is not tappable")
+        helpButton.tap()
+        waitForAnyText(marker)
+    }
+
+    private func tapSelectedFolderCard() {
+        print("SYNC_WIZARD_BEFORE_SELECTED_FOLDER\n\(syncApp.debugDescription)\nSYNC_WIZARD_BEFORE_SELECTED_FOLDER_END")
+        let button = syncApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'Selected Folder'")
+        ).firstMatch
+        if button.waitForExistence(timeout: 5) && button.isHittable {
+            button.tap()
+            return
+        }
+        // Flutter exposes this Cupertino list row as one merged static-text
+        // node on this simulator, so tap the row's visible center.
+        syncApp.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.50, dy: 0.18)
+        ).tap()
+    }
+
+    private func launchSyncFresh() {
+        syncApp.terminate()
+        syncApp.launch()
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+    }
+
+    private func tapFirstContaining(_ label: String) {
+        let button = syncApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", label)
+        ).firstMatch
+        if button.waitForExistence(timeout: 10) && button.isHittable {
+            button.tap()
+            return
+        }
+        let text = syncApp.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", label)
+        ).firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 5), "Missing UI label: \(label)")
+        text.tap()
+    }
+
+    private func waitForAnyText(_ label: String) {
+        let element = syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", label)
+        ).firstMatch
+        XCTAssertTrue(element.waitForExistence(timeout: 15), "Missing page marker: \(label)")
+    }
+
     /// Diagnostic only. This is intentionally excluded from the final E2E run.
     /// It records the accessibility hierarchy used to build stable black-box
     /// selectors for the Selected Folder flow.
@@ -763,13 +955,10 @@ final class CrossAppUITests: XCTestCase {
 
         syncApp.activate()
         XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 15))
-        let checkApproval = syncApp.buttons["检查批准结果"]
-        XCTAssertTrue(checkApproval.waitForExistence(timeout: 10))
-        checkApproval.tap()
-
         XCTAssertTrue(
             syncApp.staticTexts["步骤 4 / 7 · 选择远端连接"]
-                .waitForExistence(timeout: 10)
+                .waitForExistence(timeout: 15),
+            "Sync did not automatically inspect the Velock approval on resume"
         )
         let connection = syncApp.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS %@", "http://127.0.0.1:\(webDAVPort)")

@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
 /// The source of a synchronised dataset. These values are provider-neutral.
-enum DatasetKind { velockManaged, selectedFolder, photoLibrary }
+enum DatasetKind { velockManaged }
 
 enum DatasetAccessState { available, needsAuthorization, unavailable }
 
-enum EncryptionMode { velockManaged, endToEnd, visibleMirror }
+enum EncryptionMode { velockManaged }
 
 enum RemoteProviderType {
   webDav,
@@ -15,13 +15,13 @@ enum RemoteProviderType {
   aliyunDrive,
 }
 
-enum RemoteLayoutMode { managedVault, visibleMirror }
+enum RemoteLayoutMode { managedVault }
 
 enum SyncDirection { bidirectional, uploadOnly, downloadOnly }
 
 enum SyncOperationType { upsert, delete, resolveConflict }
 
-/// The two entry kinds supported by the first Selected Folder index.
+/// Entry kinds reserved for future dataset adapters.
 enum FolderEntryType { file, directory }
 
 enum VersionVectorComparison { equal, dominates, dominated, concurrent }
@@ -206,7 +206,7 @@ class BlobDescriptor {
   final int chunkSize;
 }
 
-/// Durable, provider-neutral metadata for one entry under a Selected Folder
+/// Durable, provider-neutral metadata for one entry under a dataset.
 /// root. File contents and user-visible paths never enter remote objects here;
 /// this is strictly local scanner state.
 class FolderScanEntry {

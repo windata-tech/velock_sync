@@ -20,7 +20,7 @@ class VelockExchangeDatasetAdapter
   VelockExchangeDatasetAdapter({
     required this.datasetId,
     required this.vaultId,
-    required this.deviceId,
+    required this.producerDeviceId,
     required this.displayName,
     required VelockExchangeStore exchange,
     Uuid? uuid,
@@ -29,7 +29,7 @@ class VelockExchangeDatasetAdapter
 
   final String datasetId;
   final String vaultId;
-  final String deviceId;
+  final String producerDeviceId;
   final String displayName;
   final VelockExchangeStore _exchange;
   final Uuid _uuid;
@@ -65,7 +65,12 @@ class VelockExchangeDatasetAdapter
       await _exchange.reclaimExpiredClaims();
     }
     final claimed =
-        _claimed ?? await _exchange.claimNextOutbox(leaseId: _uuid.v4());
+        _claimed ??
+        await _exchange.claimNextOutbox(
+          leaseId: _uuid.v4(),
+          vaultId: vaultId,
+          sourceDeviceId: producerDeviceId,
+        );
     if (claimed == null) return null;
     _claimed = claimed;
     final ready = File('${claimed.directory.path}/READY');
@@ -86,7 +91,7 @@ class VelockExchangeDatasetAdapter
     }
     final identity = VelockExchangeV1Contract.parseEnvelope(envelopeBytes);
     if (identity.vaultId != vaultId ||
-        identity.sourceDeviceId != deviceId ||
+        identity.sourceDeviceId != producerDeviceId ||
         identity.batchId != claimed.batchId) {
       throw const FormatException(
         'Claimed exchange package identity is invalid.',
@@ -147,18 +152,19 @@ class VelockExchangeDatasetAdapter
             'protocolVersion': 1,
             'remoteCommitKey': LogicalKeys.commit(
               vaultId,
-              deviceId,
+              producerDeviceId,
               sequence,
               batchId,
             ),
             'sequence': sequence,
-            'sourceDeviceId': deviceId,
+            'sourceDeviceId': producerDeviceId,
             'status': 'published',
             'vaultId': vaultId,
           }),
         ),
       ),
     );
+    await _exchange.removeClaimedOutbox(batchId);
     _claimed = null;
   }
 

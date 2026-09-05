@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:open_filex/open_filex.dart';
+import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -144,7 +144,7 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
           ext: ext,
           onProgress: onProgress,
         );
-        final result = await OpenFilex.open(downloadedFile.path);
+        final result = await OpenFile.open(downloadedFile.path);
         if (result.type != ResultType.done) {
           logger.w('External file-open request did not complete.');
         } else {

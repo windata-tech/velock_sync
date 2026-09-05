@@ -63,7 +63,7 @@ class SyncStateDatabase {
           insert.execute([entry.key, entry.value, updatedAt]);
         }
       } finally {
-        insert.dispose();
+        insert.close();
       }
       _database.execute('COMMIT');
     } on Object {
@@ -274,6 +274,32 @@ class SyncStateDatabase {
       [profileId, 'running'],
     );
     return rows.isNotEmpty;
+  }
+
+  /// Closes runs that were interrupted by process termination before their
+  /// normal completion callback ran. This is used only for an explicit local
+  /// profile removal, so a removed profile cannot leave a permanent "running"
+  /// record that blocks future cleanup.
+  Future<int> failRunningSyncRunsForProfile({
+    required String profileId,
+    required String errorCode,
+    DateTime? completedAt,
+  }) async {
+    if (profileId.isEmpty || errorCode.isEmpty) {
+      throw ArgumentError('Profile and error identities are required.');
+    }
+    final updated = _database.select(
+      'UPDATE sync_runs SET state = ?, completed_at = ?, error_code = ? '
+      'WHERE profile_id = ? AND state = ? RETURNING run_id',
+      [
+        'failed',
+        (completedAt ?? DateTime.now()).toUtc().millisecondsSinceEpoch,
+        errorCode,
+        profileId,
+        'running',
+      ],
+    );
+    return updated.length;
   }
 
   Future<List<SyncRunRecord>> listRecentSyncRuns({
@@ -928,7 +954,7 @@ class SyncStateDatabase {
           ]);
         }
       } finally {
-        insert.dispose();
+        insert.close();
       }
       _database.execute('COMMIT');
     } on Object {
@@ -1096,7 +1122,7 @@ class SyncStateDatabase {
     );
   }
 
-  /// Durably queues a Selected Folder conflict resolution for the normal
+  /// Durably queues a conflict resolution for the normal
   /// scanner/batch pipeline. The stored vector is the component-wise merge of
   /// both conflicting revisions; the batch preparer will increment the local
   /// device component when it creates the resolution operation.
@@ -1563,7 +1589,7 @@ class SyncStateDatabase {
     );
   }
 
-  Future<void> close() async => _database.dispose();
+  Future<void> close() async => _database.close();
 
   void _migrate() {
     final version =

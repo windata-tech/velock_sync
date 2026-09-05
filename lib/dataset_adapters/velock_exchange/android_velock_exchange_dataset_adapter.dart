@@ -20,7 +20,7 @@ class AndroidVelockExchangeDatasetAdapter
   AndroidVelockExchangeDatasetAdapter({
     required this.datasetId,
     required this.vaultId,
-    required this.deviceId,
+    required this.producerDeviceId,
     required this.displayName,
     required AndroidExchangeChannel exchange,
     Uuid? uuid,
@@ -29,7 +29,7 @@ class AndroidVelockExchangeDatasetAdapter
 
   final String datasetId;
   final String vaultId;
-  final String deviceId;
+  final String producerDeviceId;
   final String displayName;
   final AndroidExchangeChannel _exchange;
   final Uuid _uuid;
@@ -97,7 +97,7 @@ class AndroidVelockExchangeDatasetAdapter
     }
     final identity = VelockExchangeV1Contract.parseEnvelope(envelopeBytes);
     if (identity.vaultId != vaultId ||
-        identity.sourceDeviceId != deviceId ||
+        identity.sourceDeviceId != producerDeviceId ||
         identity.batchId != batchId) {
       throw const FormatException(
         'Claimed Android exchange identity is invalid.',
@@ -159,11 +159,11 @@ class AndroidVelockExchangeDatasetAdapter
             'protocolVersion': 1,
             'batchId': batchId,
             'vaultId': vaultId,
-            'sourceDeviceId': deviceId,
+            'sourceDeviceId': producerDeviceId,
             'sequence': sequence,
             'remoteCommitKey': LogicalKeys.commit(
               vaultId,
-              deviceId,
+              producerDeviceId,
               sequence,
               batchId,
             ),

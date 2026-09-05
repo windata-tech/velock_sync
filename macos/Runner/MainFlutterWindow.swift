@@ -23,6 +23,21 @@ class MainFlutterWindow: NSWindow {
         .appendingPathComponent("SyncExchange", isDirectory: true)
       result(root?.path)
     }
+    let companionInstalledChannel = FlutterMethodChannel(
+      name: "tech.windata.velock.sync/companion_installed",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    companionInstalledChannel.setMethodCallHandler { call, result in
+      guard call.method == "isInstalled" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      result(
+        NSWorkspace.shared.urlForApplication(
+          withBundleIdentifier: "com.venyore.ps"
+        ) != nil
+      )
+    }
 
     super.awakeFromNib()
   }

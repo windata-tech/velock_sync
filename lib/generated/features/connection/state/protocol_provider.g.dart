@@ -60,7 +60,7 @@ final class ProtocolConnectCheckerProvider
 }
 
 String _$protocolConnectCheckerHash() =>
-    r'39c24db3bf158399f80fd681cb104fe31f1c565e';
+    r'ca8ebed9921214dc727cd0d9dfab8c9a7ce32318';
 
 final class ProtocolConnectCheckerFamily extends $Family
     with $FunctionalFamilyOverride<FutureOr<bool>, ProtocolModel> {

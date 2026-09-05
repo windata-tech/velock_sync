@@ -60,13 +60,23 @@ class VelockExchangeStore {
 
   /// Atomically claims the first ready package. A crash-safe lease is written
   /// only after the rename, so a concurrent sync process cannot consume it.
+  ///
+  /// Only packages whose envelope belongs to the requested vault and source
+  /// device are claimed. The shared App Group exchange can hold packages from
+  /// several Velock vaults; claiming one for another vault would fail identity
+  /// validation and abort the run.
   Future<VelockClaimedOutbox?> claimNextOutbox({
     required String leaseId,
+    required String vaultId,
+    required String sourceDeviceId,
   }) async {
     _id(leaseId, 'leaseId');
     await initialize();
     for (final batchId in await readyOutboxIds()) {
       final ready = Directory('${_outboxReady.path}/$batchId');
+      if (!await _matchesClaimIdentity(batchId, vaultId, sourceDeviceId)) {
+        continue;
+      }
       final claimed = Directory('${_outboxClaimed.path}/$batchId');
       try {
         await ready.rename(claimed.path);
@@ -88,6 +98,33 @@ class VelockExchangeStore {
       return VelockClaimedOutbox(batchId: batchId, directory: claimed);
     }
     return null;
+  }
+
+  Future<bool> _matchesClaimIdentity(
+    String batchId,
+    String vaultId,
+    String sourceDeviceId,
+  ) async {
+    final envelope = File('${_outboxReady.path}/$batchId/envelope.json');
+    try {
+      final json = jsonDecode(await envelope.readAsString());
+      return json is Map<String, dynamic> &&
+          json['vaultId'] == vaultId &&
+          json['sourceDeviceId'] == sourceDeviceId;
+    } on Object {
+      return false;
+    }
+  }
+
+  /// Removes a claimed package after its receipt has been durably written.
+  /// Without this cleanup the package would return to Ready after its lease
+  /// expires and be re-uploaded on every later run.
+  Future<void> removeClaimedOutbox(String batchId) async {
+    _id(batchId, 'batchId');
+    final claimed = Directory('${_outboxClaimed.path}/$batchId');
+    if (await claimed.exists()) {
+      await claimed.delete(recursive: true);
+    }
   }
 
   /// Returns only expired claimed packages to Ready. A malformed or missing
@@ -148,7 +185,13 @@ class VelockExchangeStore {
       }
       final ready = Directory('${_inboxReady.path}/$batchId');
       if (await ready.exists()) {
-        throw StateError('Inbox package already exists.');
+        // The same batch may already have been delivered to this device (for
+        // example after a profile was recreated). Its artifacts are
+        // deterministic, so an existing package is an idempotent no-op.
+        if (await staging.exists()) {
+          await staging.delete(recursive: true);
+        }
+        return ready;
       }
       await staging.rename(ready.path);
       await _writeAtomic(

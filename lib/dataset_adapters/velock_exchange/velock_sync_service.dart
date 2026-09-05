@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_dataset_adapter_factory.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_discovery.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
@@ -105,7 +106,17 @@ class VelockSyncService implements VelockSyncRunner {
     // This must happen before any remote operation. Factory construction
     // revalidates package/App Group authorization and the locally paired
     // producer binding, failing closed after a revoke or configuration change.
-    final dataset = await _adapterFactory.create(profile);
+    SyncDatasetAdapter dataset;
+    try {
+      dataset = await _adapterFactory.create(profile);
+    } on VelockDatasetAdapterUnavailableException catch (error) {
+      if (error.availability == VelockExchangeAvailability.accessRevoked ||
+          error.availability ==
+              VelockExchangeAvailability.authorizationRequired) {
+        await _profiles.setState(profileId, SyncProfileState.accessRequired);
+      }
+      rethrow;
+    }
 
     // The runner repeats this preflight after the sync run is recorded. This
     // early check deliberately comes before resolving credentials or creating
@@ -128,7 +139,6 @@ class VelockSyncService implements VelockSyncRunner {
       downloadLimits: downloadLimits,
       preflight: () => _diskPreflight.ensureAvailable(_stagingRoot),
       // Pairing is the only local source of a Velock producer allow-list.
-      // Do not consult or mutate Generic Vault membership for this dataset.
       trustedProducerDeviceIds: [profile.pairedProducerId],
     );
   }

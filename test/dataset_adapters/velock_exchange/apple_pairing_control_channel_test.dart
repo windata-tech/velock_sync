@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_pairing_control_channel.dart';
@@ -13,11 +14,19 @@ void main() {
     late DateTime now;
     late List<Uri> launches;
     late ApplePairingControlChannel channel;
+    late SimpleKeyPair descriptorKey;
+    late String descriptorPublicKey;
 
     setUp(() async {
       root = await Directory.systemTemp.createTemp('apple-pairing-control-');
       now = DateTime.utc(2026, 7, 18, 8);
       launches = [];
+      descriptorKey = await Ed25519().newKeyPairFromSeed(
+        List<int>.filled(32, 7),
+      );
+      descriptorPublicKey = base64UrlEncode(
+        (await descriptorKey.extractPublicKey()).bytes,
+      );
       channel = ApplePairingControlChannel(
         rootLocator: AppleExchangeRootLocator(
           channel: _RootChannel(root.path),
@@ -35,8 +44,7 @@ void main() {
         'exchangeVersion': 1,
         'producerId': 'producer-1',
         'producerPublicKeyId': 'key-1',
-        'producerSigningPublicKey':
-            'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        'producerSigningPublicKey': descriptorPublicKey,
         'protocol': 'velock-sync',
         'protocolVersion': 1,
         'publishedAt': now.toIso8601String(),
@@ -146,6 +154,58 @@ void main() {
         }
       },
     );
+
+    test('reports granted when no revocation marker exists', () async {
+      expect(
+        await channel.queryAuthorizationStatus('sync-instance-1'),
+        VelockDeviceAuthorizationStatus.granted,
+      );
+    });
+
+    test(
+      'reports revoked only for a marker signed by the descriptor key',
+      () async {
+        final revokedAt = now.add(const Duration(hours: 1));
+        final unsigned = {
+          'deviceId': 'sync-instance-1',
+          'revokedAt': revokedAt.toIso8601String(),
+        };
+        final signature = await Ed25519().sign(
+          Uint8List.fromList(utf8.encode(jsonEncode(unsigned))),
+          keyPair: descriptorKey,
+        );
+        await _writeJson(
+          File('${root.path}/Control/Revocations/sync-instance-1.json'),
+          {
+            ...unsigned,
+            'signatureAlgorithm': 'Ed25519',
+            'signature': base64UrlEncode(signature.bytes),
+          },
+        );
+
+        expect(
+          await channel.queryAuthorizationStatus('sync-instance-1'),
+          VelockDeviceAuthorizationStatus.revoked,
+        );
+      },
+    );
+
+    test('fails closed for a forged revocation marker', () async {
+      await _writeJson(
+        File('${root.path}/Control/Revocations/sync-instance-1.json'),
+        {
+          'deviceId': 'sync-instance-1',
+          'revokedAt': now.add(const Duration(hours: 1)).toIso8601String(),
+          'signatureAlgorithm': 'Ed25519',
+          'signature': base64UrlEncode(Uint8List(64)),
+        },
+      );
+
+      await expectLater(
+        channel.queryAuthorizationStatus('sync-instance-1'),
+        throwsFormatException,
+      );
+    });
   });
 }
 

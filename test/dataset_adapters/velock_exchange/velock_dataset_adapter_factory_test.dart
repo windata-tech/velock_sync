@@ -7,6 +7,7 @@ import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_dataset_adapter_factory.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_discovery.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 
@@ -151,6 +152,23 @@ void main() {
       );
     },
   );
+
+  test('rejects a profile whose Velock authorization was revoked', () async {
+    final factory = PlatformVelockDatasetAdapterFactory(
+      discovery: _FakeDiscovery(() async => _available()),
+      androidExchange: _FakeAndroidExchangeChannel(),
+      appleRootLocator: _locator('/unused', isApplePlatform: false),
+      pairingControl: _FakePairingControl(
+        () async => VelockDeviceAuthorizationStatus.revoked,
+      ),
+      platform: () => VelockExchangePlatform.android,
+    );
+
+    await _expectUnavailable(
+      factory.create(_profile()),
+      VelockExchangeAvailability.accessRevoked,
+    );
+  });
 }
 
 Future<void> _expectUnavailable(
@@ -210,7 +228,27 @@ class _FakeDiscovery implements VelockExchangeDiscovery {
   Future<VelockExchangeDiscoveryResult> discover() => _discover();
 }
 
-class _FakeAndroidExchangeChannel implements AndroidExchangeChannel {
+class _FakeAndroidExchangeChannel
+    implements AndroidExchangeChannel, AndroidPairingControlChannel {
+  @override
+  Future<VelockDeviceAuthorizationStatus> queryAuthorizationStatus(
+    String syncAppInstanceId,
+  ) async => VelockDeviceAuthorizationStatus.granted;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakePairingControl implements AndroidPairingControlChannel {
+  _FakePairingControl(this._status);
+
+  final Future<VelockDeviceAuthorizationStatus> Function() _status;
+
+  @override
+  Future<VelockDeviceAuthorizationStatus> queryAuthorizationStatus(
+    String syncAppInstanceId,
+  ) => _status();
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

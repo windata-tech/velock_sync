@@ -1,9 +1,12 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/core/app_repository.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
@@ -18,6 +21,7 @@ import 'package:velock_sync/providers/oauth/oauth_remote_folder_picker.dart';
 import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 /// Creates a Google Drive or OneDrive connection through system-browser PKCE.
@@ -35,6 +39,21 @@ class NewOAuthConnection extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formKey = useMemoized(GlobalKey<FormState>.new);
+    final localDataManager = ref.read(localDataManagerProvider);
+    final clientIdController = useTextEditingController();
+    final savedClientId = useFuture(
+      useMemoized(
+        () => localDataManager.getStringAsync(_oauthClientIdKey(providerType)),
+        [providerType],
+      ),
+    );
+    useListenable(clientIdController);
+    useEffect(() {
+      if (savedClientId.hasData && clientIdController.text.isEmpty) {
+        clientIdController.text = savedClientId.data ?? '';
+      }
+      return null;
+    }, [savedClientId.data]);
     final rootController = useTextEditingController(
       text: providerType == RemoteProviderType.googleDrive
           ? 'appDataFolder'
@@ -47,11 +66,39 @@ class NewOAuthConnection extends HookConsumerWidget {
     try {
       config = OAuthPublicClientConfiguration.forProvider(providerType);
     } on Object catch (error) {
-      registrationError = error;
+      final clientId = clientIdController.text.trim();
+      if (clientId.isEmpty) {
+        registrationError = error;
+      } else {
+        try {
+          config = OAuthPublicClientConfiguration.fromClientId(
+            providerType: providerType,
+            clientId: clientId,
+          );
+        } on Object catch (runtimeError) {
+          registrationError = runtimeError;
+        }
+      }
+    }
+
+    Future<void> saveClientId() async {
+      final clientId = clientIdController.text.trim();
+      if (clientId.isEmpty) {
+        showPlatformMessage(context, '请输入公开 OAuth Client ID。');
+        return;
+      }
+      await localDataManager.setStringAsync(
+        _oauthClientIdKey(providerType),
+        clientId,
+      );
+      if (context.mounted) {
+        showPlatformMessage(context, 'Client ID 已保存，可以开始授权。');
+      }
     }
 
     Future<void> authorizeAndSave() async {
       if (config == null || formKey.currentState?.validate() != true) return;
+      final authorizationConfig = config;
       isLoading.value = true;
       String? credentialRef;
       var saved = false;
@@ -66,7 +113,7 @@ class NewOAuthConnection extends HookConsumerWidget {
           ),
         );
         credentialRef = await authorization.authorize(
-          config: config,
+          config: authorizationConfig,
           callbackReceiver: oauthCallbackLinkReceiver,
         );
         if (!context.mounted) return;
@@ -76,7 +123,7 @@ class NewOAuthConnection extends HookConsumerWidget {
           credentialStore: ref.read(credentialStoreProvider),
           target: OAuthRemoteTargetConfig(
             providerType: providerType,
-            clientId: config.clientId,
+            clientId: authorizationConfig.clientId,
             credentialRef: credentialRef,
             rootId: rootController.text.trim(),
           ),
@@ -85,15 +132,19 @@ class NewOAuthConnection extends HookConsumerWidget {
         rootController.text = selectedRootId;
         final protocol = ProtocolModel.oauth(
           providerType: providerType,
-          clientId: config.clientId,
+          clientId: authorizationConfig.clientId,
           credentialRef: credentialRef,
           rootId: selectedRootId,
           accountLabel: accountController.text.trim().isEmpty
               ? null
               : accountController.text.trim(),
         );
-        final connected = await ref.read(
-          protocolConnectCheckerProvider(protocol).future,
+        // Plain probe: avoids the Riverpod 3 UnmountedRefException race that
+        // an autoDispose provider's `.future` can hit when the provider is
+        // disposed while the await is pending.
+        final connected = await probeProtocolConnection(
+          credentials: ref.read(credentialStoreProvider),
+          protocol: protocol,
         );
         if (!connected) {
           throw StateError('Provider connection check failed.');
@@ -114,9 +165,7 @@ class NewOAuthConnection extends HookConsumerWidget {
         if (context.mounted) context.goNamed(AppRoutes.connections.name);
       } on Object catch (error) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('授权或连接检查失败：${error.runtimeType}')),
-          );
+          showPlatformMessage(context, '授权或连接检查失败：${error.runtimeType}');
         }
       } finally {
         if (!saved && credentialRef != null) {
@@ -135,6 +184,15 @@ class NewOAuthConnection extends HookConsumerWidget {
         ),
         trailingActions: [
           PlatformTextButton(
+            padding: EdgeInsets.zero,
+            onPressed: () => context.pushNamed(
+              AppRoutes.connectionHelp.name,
+              queryParameters: {'provider': providerType.name},
+            ),
+            child: const Text('说明'),
+          ),
+          PlatformTextButton(
+            padding: EdgeInsets.zero,
             onPressed: config == null || isLoading.value
                 ? null
                 : authorizeAndSave,
@@ -144,48 +202,87 @@ class NewOAuthConnection extends HookConsumerWidget {
                     width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text(replacementConnectionId == null ? '授权并保存' : '重新授权'),
+                : Text(replacementConnectionId == null ? '保存' : '重授权'),
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: config == null
-            ? _MissingOAuthRegistration(
-                providerType: providerType,
-                error: registrationError,
-              )
-            : Form(
-                key: formKey,
-                child: ListView(
-                  children: [
-                    Text(
-                      '将使用系统浏览器完成 PKCE 授权。Refresh Token 仅写入系统安全存储。',
-                      style: Theme.of(context).textTheme.bodyMedium,
+      body: Material(
+        type: MaterialType.transparency,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+          child: config == null
+              ? _MissingOAuthRegistration(
+                  providerType: providerType,
+                  error: registrationError,
+                  clientIdController: clientIdController,
+                  onSave: saveClientId,
+                )
+              : Form(
+                  key: formKey,
+                  child: ListView(
+                    padding: const EdgeInsets.only(
+                      top: AppSpacing.md,
+                      bottom: AppSpacing.xl,
                     ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: rootController,
-                      decoration: const InputDecoration(
-                        labelText: '远端根目录 ID',
-                        helperText:
-                            'Google 默认 appDataFolder；OneDrive 可填写已选目录 ID。',
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.page,
+                          0,
+                          AppSpacing.page,
+                          AppSpacing.sm,
+                        ),
+                        child: Text(
+                          '将使用系统浏览器完成安全授权。Refresh Token 仅写入系统安全存储。',
+                          style: TextStyle(
+                            color: context.appSecondaryLabel,
+                            height: 1.4,
+                          ),
+                        ),
                       ),
-                      validator: (value) =>
-                          value == null || value.trim().isEmpty
-                          ? '请输入远端根目录 ID'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: accountController,
-                      decoration: const InputDecoration(
-                        labelText: '账号显示名称（可选）',
+                      AdaptiveListSection(
+                        header: '远端空间',
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.md,
+                              AppSpacing.md,
+                              AppSpacing.md,
+                              AppSpacing.sm,
+                            ),
+                            child: TextFormField(
+                              controller: rootController,
+                              decoration: const InputDecoration(
+                                labelText: '远端根目录 ID',
+                                helperText:
+                                    'Google 默认 appDataFolder；OneDrive 可填写已选目录 ID。',
+                              ),
+                              validator: (value) =>
+                                  value == null || value.trim().isEmpty
+                                  ? '请输入远端根目录 ID'
+                                  : null,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.md,
+                              AppSpacing.sm,
+                              AppSpacing.md,
+                              AppSpacing.md,
+                            ),
+                            child: TextFormField(
+                              controller: accountController,
+                              decoration: const InputDecoration(
+                                labelText: '账号显示名称（可选）',
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }
@@ -331,16 +428,170 @@ class _MissingOAuthRegistration extends StatelessWidget {
   const _MissingOAuthRegistration({
     required this.providerType,
     required this.error,
+    required this.clientIdController,
+    required this.onSave,
   });
 
   final RemoteProviderType providerType;
   final Object? error;
+  final TextEditingController clientIdController;
+  final Future<void> Function() onSave;
 
   @override
-  Widget build(BuildContext context) => Text(
-    '未配置 ${_providerLabel(providerType)} 的公开 OAuth Client ID。\n\n'
-    '请使用 --dart-define=${providerType == RemoteProviderType.googleDrive ? 'GOOGLE_OAUTH_CLIENT_ID' : 'ONEDRIVE_OAUTH_CLIENT_ID'}=<client-id> 构建，并在 Provider 控制台登记回调地址 velocksync://oauth/callback。\n\n'
-    '配置错误：${error.runtimeType}',
+  Widget build(BuildContext context) {
+    final provider = _providerLabel(providerType);
+    final clientIdKey = providerType == RemoteProviderType.googleDrive
+        ? 'GOOGLE_OAUTH_CLIENT_ID'
+        : 'ONEDRIVE_OAUTH_CLIENT_ID';
+    return ListView(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.page,
+            0,
+            AppSpacing.page,
+            AppSpacing.sm,
+          ),
+          child: Text(
+            '先提供公开 OAuth Client ID，再在系统浏览器中安全授权 $provider。',
+            style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
+          ),
+        ),
+        AdaptiveListSection(
+          header: '需要配置',
+          children: [
+            AdaptiveListTile(
+              leading: AdaptiveIconBadge(
+                icon: adaptiveIcon(
+                  context,
+                  material: Icons.lock_outline,
+                  cupertino: CupertinoIcons.lock,
+                ),
+                color: context.appPrimary,
+              ),
+              title: Text('$provider 授权未就绪'),
+              subtitle: const Text('提供公开 OAuth Client ID 后即可继续。'),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.md,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '授权配置',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: context.appSecondaryLabel,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  TextField(
+                    controller: clientIdController,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: InputDecoration(
+                      labelText: '公开 Client ID',
+                      hintText: '<client-id>',
+                      helperText: '只填写公开 Client ID，不要填写 Client Secret。',
+                      helperMaxLines: 2,
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: PlatformTextButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: onSave,
+                      child: const Text('保存 Client ID'),
+                    ),
+                  ),
+                  _OAuthConfigValue(label: '构建变量', value: clientIdKey),
+                  const SizedBox(height: AppSpacing.sm),
+                  const _OAuthConfigValue(
+                    label: '回调地址',
+                    value: 'velocksync://oauth/callback',
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    '如果你管理自己的构建，也可以使用 --dart-define 传入同一个变量；本页保存的值只写入本机普通配置，不包含任何用户令牌。',
+                    style: TextStyle(
+                      color: context.appSecondaryLabel,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        AdaptiveListSection(
+          header: '当前状态',
+          children: [
+            AdaptiveListTile(
+              leading: AdaptiveIconBadge(
+                icon: adaptiveIcon(
+                  context,
+                  material: Icons.info_outline,
+                  cupertino: CupertinoIcons.info,
+                ),
+                color: AppColors.warning,
+              ),
+              title: const Text('无法开始授权'),
+              subtitle: Text('${error.runtimeType}'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _OAuthConfigValue extends StatelessWidget {
+  const _OAuthConfigValue({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.labelMedium?.copyWith(color: context.appSecondaryLabel),
+      ),
+      const SizedBox(height: AppSpacing.xxs),
+      DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.appPageBackground,
+          borderRadius: BorderRadius.circular(AppRadii.small),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: SelectableText(
+              value,
+              style: const TextStyle(
+                fontFamily: 'Menlo',
+                fontSize: 13,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
   );
 }
 
@@ -351,4 +602,11 @@ String _providerLabel(RemoteProviderType providerType) =>
       RemoteProviderType.baiduNetdisk => '百度网盘',
       RemoteProviderType.aliyunDrive => '阿里云盘',
       RemoteProviderType.webDav => 'WebDAV',
+    };
+
+String _oauthClientIdKey(RemoteProviderType providerType) =>
+    switch (providerType) {
+      RemoteProviderType.googleDrive => AppKeys.googleOAuthClientId,
+      RemoteProviderType.oneDrive => AppKeys.oneDriveOAuthClientId,
+      _ => throw ArgumentError.value(providerType, 'providerType'),
     };

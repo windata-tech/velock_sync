@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/infrastructure/secure_storage/in_memory_credential_store.dart';
+import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_credentials.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_bundle.dart';
 
 void main() {
@@ -52,6 +53,36 @@ void main() {
 
       await store.delete(ref);
       expect(await store.readOAuthTokens(ref), isNull);
+    },
+  );
+
+  test(
+    'stores Baidu credentials separately from connection credentials',
+    () async {
+      final store = InMemoryCredentialStore();
+      final expiresAt = DateTime.utc(2030, 1, 2);
+
+      await store.writeBaiduNetdiskCredentials(
+        BaiduNetdiskCredentialBundle(
+          appKey: 'app-key',
+          secretKey: 'secret-key',
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+          expiresAt: expiresAt,
+          scopes: const {'basic', 'netdisk'},
+        ),
+      );
+
+      final credentials = await store.readBaiduNetdiskCredentials();
+      expect(credentials?.appKey, 'app-key');
+      expect(credentials?.secretKey, 'secret-key');
+      expect(credentials?.accessToken, 'access-token');
+      expect(credentials?.refreshToken, 'refresh-token');
+      expect(credentials?.expiresAt, expiresAt);
+      expect(credentials?.scopes, contains('netdisk'));
+
+      await store.deleteBaiduNetdiskCredentials();
+      expect(await store.readBaiduNetdiskCredentials(), isNull);
     },
   );
 }

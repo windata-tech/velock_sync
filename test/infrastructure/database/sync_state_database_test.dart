@@ -55,7 +55,7 @@ void main() {
         "INSERT INTO conflicts VALUES ('old-conflict', 'profile-1', 'entity-1', 'modify-modify', NULL, 0, NULL)",
       );
       old.execute('PRAGMA user_version = 5');
-      old.dispose();
+      old.close();
 
       final upgraded = await SyncStateDatabase.open(file);
       try {

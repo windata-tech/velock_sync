@@ -11,7 +11,7 @@ Velock Sync est un outil de synchronisation bidirectionnelle incrémentale, mult
 
 - Synchronisation bidirectionnelle incrémentale : seuls les contenus nouveaux ou modifiés sont transférés, avec restauration par checkpoint, reprise des téléversements et nettoyage ; les données existantes ne sont jamais retéléversées.
 - Chiffrement de bout en bout : en mode Velock, seuls des deltas chiffrés opaques générés par Velock sont déplacés. Velock Sync ne détient ni la clé maîtresse ni les clés de synchronisation de Velock et ne lit jamais sa base de données.
-- Synchronisation de dossiers génériques : les utilisateurs non Velock peuvent choisir un dossier local, chiffré de bout en bout par défaut, avec un mode miroir simple.
+ mode miroir simple.
 - Plusieurs cibles cloud : WebDAV, Google Drive et OneDrive sont pris en charge ; d’autres services comme Baidu Netdisk et Aliyun Drive arrivent via des adaptateurs de Provider.
 - Collaboration multi-appareils : les vecteurs de version et les tombstones garantissent que les modifications simultanées ne sont jamais perdues silencieusement ; en cas de conflit, les deux versions sont conservées et vous choisissez.
 - Synchronisation en arrière-plan : déclenchement manuel, au premier plan et à la reprise du réseau, plus Android WorkManager / iOS BGTask.

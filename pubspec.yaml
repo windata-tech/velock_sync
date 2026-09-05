@@ -44,13 +44,13 @@ dependencies:
   json_annotation: ^4.9.0
   freezed_annotation: ^3.1.0
 
-  dio: ^5.9.0
+  dio: ^5.11.0
 
   # https://pub.dev/packages/webdav_client_plus
   webdav_client_plus: ^1.0.2
 
   # https://pub.dev/packages/flutter_platform_widgets
-  flutter_platform_widgets: ^9.0.0
+  flutter_platform_widgets: ^10.0.1
 
   # https://pub.dev/packages/go_router
   go_router: ^17.0.0
@@ -62,7 +62,7 @@ dependencies:
   logger: ^2.6.2
 
   # https://pub.dev/packages/fluttertoast
-  fluttertoast: ^9.0.0
+  fluttertoast: ^10.0.0
 
   # https://pub.dev/packages/url_launcher
   url_launcher: ^6.3.2
@@ -76,20 +76,20 @@ dependencies:
   # https://pub.dev/packages/path
   path: ^1.9.1
 
-  # https://pub.dev/packages/open_filex
-  open_filex: ^4.7.0
+  # https://pub.dev/packages/open_file
+  open_file: ^4.0.0
   flutter_secure_storage: ^10.0.0
-  uuid: ^4.5.2
-  sqlite3: ^2.9.4
-  sqlite3_flutter_libs: ^0.5.32
+  uuid: ^4.6.0
+  sqlite3: ^3.5.1
+  sqlite3_flutter_libs: ^0.6.0+eol
   xml: ^6.6.1
   crypto: ^3.0.6
   cryptography: ^2.9.0
-  connectivity_plus: ^7.2.0
+  connectivity_plus: ^7.3.1
   # Native directory selection for Selected Folder datasets.
   file_selector: ^1.0.4
   # Android WorkManager and iOS BGTaskScheduler background sync.
-  workmanager: ^0.9.0+3
+  workmanager: ^0.10.6
 
 dev_dependencies:
   flutter_test:

@@ -47,7 +47,7 @@ void main() {
     final adapters = document['adapters'] as List<dynamic>;
     expect(
       adapters.map((item) => (item as Map<String, dynamic>)['id']).toSet(),
-      {'selected_folder', 'velock_exchange'},
+      {'velock_exchange'},
     );
 
     final expectedIds = DatasetAdapterContract.values

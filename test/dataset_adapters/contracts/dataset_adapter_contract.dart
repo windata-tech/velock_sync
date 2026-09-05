@@ -69,7 +69,7 @@ class DatasetAdapterContractFixture {
 
 /// Registers one independently reportable test for every V1 dataset contract.
 ///
-/// The fixture must use a real Selected Folder or Velock Exchange adapter in
+/// The fixture must use a real dataset adapter in
 /// its checks. The harness does not permit `skip` so coverage cannot be
 /// silently downgraded when a new adapter is enabled.
 void defineDatasetAdapterContractSuite(DatasetAdapterContractFixture fixture) {

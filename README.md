@@ -5,13 +5,12 @@
 
 ---
 
-Velock Sync is an open-source, cross-platform, incremental bidirectional sync tool. For Velock (格间) users, it is the standalone companion app that syncs encrypted vault data between your own devices. It also supports syncing user-selected folders with end-to-end encryption, without requiring a Velock account.
+Velock Sync is an open-source, cross-platform, incremental bidirectional sync companion for Velock. It transports data already encrypted and authenticated by Velock to the remote storage you choose, without handling plaintext or Velock keys.
 
 ## Key Features
 
 - Incremental bidirectional sync: only new or changed content is transferred, with checkpoint recovery, resumable uploads, and garbage collection; existing data is never re-uploaded.
-- End-to-end encryption: in Velock mode it only moves opaque encrypted deltas produced by Velock. Velock Sync never holds Velock's master key or sync keys and never reads Velock's database.
-- Generic folder sync: non-Velock users can choose a local folder, encrypted end-to-end by default, with a plain mirror mode as well.
+- Ciphertext sync: Velock Sync only moves opaque encrypted deltas produced by Velock. It never holds Velock's master key or sync keys and never reads Velock's database.
 - Multiple cloud targets: WebDAV, Google Drive, and OneDrive are supported; more clouds such as Baidu Netdisk and Aliyun Drive are being added through provider adapters.
 - Multi-device collaboration: version vectors and tombstones ensure concurrent edits are never silently lost; conflicts keep both versions and let you choose.
 - Background sync: manual, foreground, and network-recovery triggers, plus Android WorkManager / iOS BGTask scheduling.
@@ -20,7 +19,7 @@ Velock Sync is an open-source, cross-platform, incremental bidirectional sync to
 ## Platforms
 
 - Velock managed data V1: iOS/iPadOS, exchanging data with Velock through a dedicated App Group.
-- Selected folders and cloud providers: Android and iOS/iPadOS.
+- iOS/iPadOS.
 - Desktop: planned.
 
 ## Open Source & Commercial Statement

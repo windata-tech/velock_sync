@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/apple_pairing_control_channel.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/apple_velock_companion_probe.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 
 /// Public, privacy-safe availability returned before a pairing or sync attempt.
@@ -142,27 +144,57 @@ class AndroidVelockExchangeDiscovery implements VelockExchangeDiscovery {
       );
 }
 
-/// Apple discovery accesses only the dedicated exchange App Group root exposed
-/// by [AppleExchangeRootLocator]. It never follows arbitrary file paths.
+/// Apple discovery revalidates the paired producer against the descriptor in
+/// the dedicated Exchange App Group. The App Group root can also be opened by
+/// Sync, so its existence alone does not prove that Velock has initialized it.
 class AppleVelockExchangeDiscovery implements VelockExchangeDiscovery {
   AppleVelockExchangeDiscovery({
     required AppleExchangeRootLocator rootLocator,
     required VelockExchangeCandidate candidate,
-  }) : _rootLocator = rootLocator,
+    VelockPairingControlChannel? control,
+    AppleVelockCompanionProbe? companionProbe,
+  }) : _control =
+           control ?? ApplePairingControlChannel(rootLocator: rootLocator),
+       _companionProbe =
+           companionProbe ?? const MethodChannelAppleVelockCompanionProbe(),
        _candidate = candidate;
 
-  final AppleExchangeRootLocator _rootLocator;
+  final VelockPairingControlChannel _control;
+  final AppleVelockCompanionProbe _companionProbe;
   final VelockExchangeCandidate _candidate;
 
   @override
   Future<VelockExchangeDiscoveryResult> discover() async {
     if (!_candidate.isWellFormed) return _configurationMissing();
     try {
-      final root = await _rootLocator.locate();
-      if (!await root.exists()) return _configurationMissing();
+      if (!await _companionProbe.isInstalled()) {
+        return const VelockExchangeDiscoveryResult(
+          availability: VelockExchangeAvailability.appNotInstalled,
+        );
+      }
+      final descriptor = await _control.pairingDescriptor();
+      final discovered = VelockExchangeCandidate(
+        producerId: descriptor.producerId,
+        producerPublicKeyId: descriptor.producerPublicKeyId,
+        producerSigningPublicKey: descriptor.producerSigningPublicKey,
+        exchangeBindingId: descriptor.exchangeBindingId,
+      );
+      if (!_candidate.sameIdentityAs(discovered)) {
+        return const VelockExchangeDiscoveryResult(
+          availability: VelockExchangeAvailability.accessRevoked,
+        );
+      }
       return VelockExchangeDiscoveryResult(
         availability: VelockExchangeAvailability.available,
-        candidate: _candidate,
+        candidate: discovered,
+      );
+    } on PlatformException catch (error) {
+      return VelockExchangeDiscoveryResult(
+        availability: _availabilityForPlatformError(error.code),
+      );
+    } on MissingPluginException {
+      return const VelockExchangeDiscoveryResult(
+        availability: VelockExchangeAvailability.unsupportedVersion,
       );
     } on UnsupportedError {
       return const VelockExchangeDiscoveryResult(

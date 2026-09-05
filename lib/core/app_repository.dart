@@ -10,6 +10,10 @@ abstract class AppKeys {
   static const String connections = 'connections';
   static const String protocols = 'protocols';
   static const String deviceId = 'velock_sync_device_id';
+  static const String googleOAuthClientId =
+      'velock_sync_google_oauth_client_id';
+  static const String oneDriveOAuthClientId =
+      'velock_sync_onedrive_oauth_client_id';
 }
 
 class AppSetting {

@@ -64,9 +64,18 @@ class SyncProfileRepository {
   Future<void> setState(String profileId, SyncProfileState state) =>
       _database.setSyncProfileState(profileId: profileId, state: state.name);
 
-  Future<void> remove(String profileId) async {
-    if (await _database.hasRunningSyncRun(profileId)) {
+  /// [forceRunning] is reserved for an explicit local removal after the
+  /// profile's dataset capability has been confirmed unavailable. It closes
+  /// interrupted runs so a removed profile cannot remain permanently locked.
+  Future<void> remove(String profileId, {bool forceRunning = false}) async {
+    if (!forceRunning && await _database.hasRunningSyncRun(profileId)) {
       throw SyncProfileRemovalWhileRunningException(profileId);
+    }
+    if (forceRunning) {
+      await _database.failRunningSyncRunsForProfile(
+        profileId: profileId,
+        errorCode: 'profile_removed',
+      );
     }
     await _database.setSyncProfileState(profileId: profileId, state: 'removed');
   }

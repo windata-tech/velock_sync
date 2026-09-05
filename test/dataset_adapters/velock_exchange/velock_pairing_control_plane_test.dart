@@ -132,6 +132,47 @@ void main() {
         );
       },
     );
+
+    test('parses and verifies a signed device revocation', () async {
+      final revokedAt = now.add(const Duration(hours: 1));
+      final unsigned = {
+        'deviceId': 'sync-instance-1',
+        'revokedAt': revokedAt.toIso8601String(),
+      };
+      final signature = await Ed25519().sign(
+        _bytes(unsigned),
+        keyPair: signingKey,
+      );
+      final revocation = VelockPairingRevocation.parse(
+        _bytes({
+          ...unsigned,
+          'signatureAlgorithm': 'Ed25519',
+          'signature': base64UrlEncode(signature.bytes),
+        }),
+      );
+
+      expect(revocation.deviceId, 'sync-instance-1');
+      expect(await revocation.verify(descriptor: descriptor), isTrue);
+
+      final forged = VelockPairingRevocation.parse(
+        _bytes({
+          ...unsigned,
+          'signatureAlgorithm': 'Ed25519',
+          'signature': base64UrlEncode(Uint8List(64)),
+        }),
+      );
+      expect(await forged.verify(descriptor: descriptor), isFalse);
+      expect(
+        () => VelockPairingRevocation.parse(
+          _bytes({
+            ...unsigned,
+            'signatureAlgorithm': 'Ed25519',
+            'signature': base64UrlEncode(Uint8List(32)),
+          }),
+        ),
+        throwsFormatException,
+      );
+    });
   });
 }
 

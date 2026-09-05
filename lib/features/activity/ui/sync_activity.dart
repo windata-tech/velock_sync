@@ -1,13 +1,15 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/sync_core/conflicts/conflict_resolution_service.dart';
 import 'package:velock_sync/sync_core/conflicts/conflict_resolution_strategy.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 /// Privacy-safe activity and conflict centre. Object IDs are opaque protocol
@@ -26,7 +28,7 @@ class SyncActivity extends HookConsumerWidget {
     ]);
 
     Future<void> resolve(
-      BuildContext messengerContext,
+      BuildContext messageContext,
       SyncConflictRecord conflict,
       ConflictResolutionStrategy strategy,
     ) async {
@@ -50,103 +52,223 @@ class SyncActivity extends HookConsumerWidget {
         // Resolution service failures are deliberately reduced to the same
         // generic UI state as non-completion results below.
       }
-      if (messengerContext.mounted) {
-        ScaffoldMessenger.of(
-          messengerContext,
-        ).showSnackBar(SnackBar(content: Text(message)));
+      if (messageContext.mounted) {
+        showPlatformMessage(messageContext, message);
       }
+    }
+
+    Future<void> refresh() async {
+      revision.value++;
+      await _loadActivity(database, profiles);
     }
 
     return Material(
       type: MaterialType.transparency,
       child: ScaffoldMessenger(
-        child: PlatformScaffold(
-          iosContentPadding:
-              Theme.of(context).platform == TargetPlatform.iOS ||
-              Theme.of(context).platform == TargetPlatform.macOS,
-          appBar: WDAppBar(
-            title: const Text('活动与冲突'),
-            trailingActions: [
-              PlatformIconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () => revision.value++,
+        child: FutureBuilder<_ActivityData>(
+          future: activity,
+          builder: (context, snapshot) => AdaptiveSliverScaffold(
+            title: '活动',
+            showTitle: false,
+            actions: [
+              AdaptiveIconButton(
+                tooltip: '刷新活动记录',
+                onPressed: refresh,
+                icon: Icon(
+                  adaptiveIcon(
+                    context,
+                    material: Icons.refresh_rounded,
+                    cupertino: CupertinoIcons.refresh,
+                  ),
+                ),
               ),
             ],
-          ),
-          body: FutureBuilder<_ActivityData>(
-            future: activity,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return const Center(child: PlatformCircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return const Center(child: Text('无法读取活动记录。'));
-              }
-              final values = snapshot.requireData;
-              if (values.runs.isEmpty &&
-                  values.transfers.isEmpty &&
-                  values.conflicts.isEmpty) {
-                return const Center(child: Text('还没有同步活动。'));
-              }
-              return ListView(
-                children: [
-                  if (values.runs.isNotEmpty) ...[
-                    const _ActivityHeader('最近同步'),
-                    for (final run in values.runs)
-                      ListTile(
-                        leading: Icon(
-                          run.state == 'completed'
-                              ? Icons.check_circle_outline
-                              : Icons.error_outline,
-                        ),
-                        title: Text(run.state == 'completed' ? '同步完成' : '同步失败'),
-                        subtitle: Text(
-                          '配置 ${_shortId(run.profileId)} · ${_formatTime(run.completedAt ?? run.startedAt)}${_runErrorDetails(run)}',
-                        ),
-                        isThreeLine: _runErrorDetails(run).isNotEmpty,
-                      ),
-                  ],
-                  if (values.transfers.isNotEmpty) ...[
-                    const _ActivityHeader('待恢复传输'),
-                    for (final transfer in values.transfers)
-                      ListTile(
-                        leading: Icon(
-                          transfer.direction == TransferJobDirection.upload
-                              ? Icons.upload_outlined
-                              : Icons.download_outlined,
-                        ),
-                        title: Text(_transferTitle(transfer)),
-                        subtitle: Text(
-                          '配置 ${_shortId(transfer.profileId)} · ${_transferProgress(transfer)}${transfer.errorCode == null ? '' : '\n${transfer.errorCode}'}',
-                        ),
-                        isThreeLine: transfer.errorCode != null,
-                      ),
-                  ],
-                  const _ActivityHeader('待处理冲突'),
-                  if (values.conflicts.isEmpty)
-                    const ListTile(title: Text('没有待处理冲突。')),
-                  for (final conflict in values.conflicts)
-                    ListTile(
-                      leading: const Icon(Icons.warning_amber_rounded),
-                      title: Text(_conflictType(conflict.type)),
-                      subtitle: Text(
-                        '对象 ${_shortId(conflict.entityId)} · 设备 ${_shortId(conflict.sourceDeviceId ?? '未知')}\n${_formatTime(conflict.createdAt)}',
-                      ),
-                      isThreeLine: true,
-                      trailing: _ConflictResolutionActions(
-                        kind: values.kindFor(conflict.profileId),
-                        onSelected: (strategy) =>
-                            resolve(context, conflict, strategy),
-                      ),
-                    ),
-                ],
-              );
-            },
+            slivers: _activitySlivers(
+              context,
+              snapshot,
+              onRetry: refresh,
+              onResolve: resolve,
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+List<Widget> _activitySlivers(
+  BuildContext context,
+  AsyncSnapshot<_ActivityData> snapshot, {
+  required VoidCallback onRetry,
+  required Future<void> Function(
+    BuildContext context,
+    SyncConflictRecord conflict,
+    ConflictResolutionStrategy strategy,
+  )
+  onResolve,
+}) {
+  if (snapshot.connectionState != ConnectionState.done) {
+    return const [
+      SliverFillRemaining(
+        hasScrollBody: false,
+        child: AdaptiveLoadingState(label: '正在加载活动记录'),
+      ),
+    ];
+  }
+  if (snapshot.hasError) {
+    return [
+      SliverFillRemaining(
+        hasScrollBody: false,
+        child: AdaptiveErrorState(message: '无法读取活动记录。', onRetry: onRetry),
+      ),
+    ];
+  }
+  final values = snapshot.requireData;
+  if (values.runs.isEmpty &&
+      values.transfers.isEmpty &&
+      values.conflicts.isEmpty) {
+    return [
+      SliverFillRemaining(
+        hasScrollBody: false,
+        child: AdaptiveEmptyState(
+          icon: adaptiveIcon(
+            context,
+            material: Icons.history_rounded,
+            cupertino: CupertinoIcons.clock,
+          ),
+          title: '还没有同步活动',
+          message: '同步运行、待恢复传输和需要处理的冲突会集中显示在这里。',
+        ),
+      ),
+    ];
+  }
+
+  return [
+    SliverToBoxAdapter(child: _ActivityOverview(values: values)),
+    if (values.runs.isNotEmpty)
+      SliverToBoxAdapter(
+        child: AdaptiveListSection(
+          header: '最近同步',
+          children: [
+            for (final run in values.runs)
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: run.state == 'completed'
+                        ? Icons.check_rounded
+                        : Icons.error_outline_rounded,
+                    cupertino: run.state == 'completed'
+                        ? CupertinoIcons.check_mark
+                        : CupertinoIcons.exclamationmark,
+                  ),
+                  color: run.state == 'completed'
+                      ? AppColors.success
+                      : Theme.of(context).colorScheme.error,
+                ),
+                title: Text(run.state == 'completed' ? '同步完成' : '同步失败'),
+                subtitle: Text(
+                  '配置 ${_shortId(run.profileId)} · ${_formatTime(run.completedAt ?? run.startedAt)}${_runErrorDetails(run)}',
+                ),
+                isThreeLine: _runErrorDetails(run).isNotEmpty,
+              ),
+          ],
+        ),
+      ),
+    if (values.transfers.isNotEmpty)
+      SliverToBoxAdapter(
+        child: AdaptiveListSection(
+          header: '待恢复传输',
+          children: [
+            for (final transfer in values.transfers)
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: transfer.direction == TransferJobDirection.upload
+                        ? Icons.upload_rounded
+                        : Icons.download_rounded,
+                    cupertino: transfer.direction == TransferJobDirection.upload
+                        ? CupertinoIcons.arrow_up
+                        : CupertinoIcons.arrow_down,
+                  ),
+                  color: context.appPrimary,
+                ),
+                title: Text(_transferTitle(transfer)),
+                subtitle: Text(
+                  '配置 ${_shortId(transfer.profileId)} · ${_transferProgress(transfer)}${transfer.errorCode == null ? '' : '\n${transfer.errorCode}'}',
+                ),
+                isThreeLine: transfer.errorCode != null,
+              ),
+          ],
+        ),
+      ),
+    SliverToBoxAdapter(
+      child: AdaptiveListSection(
+        header: '待处理冲突',
+        children: values.conflicts.isEmpty
+            ? [
+                AdaptiveListTile(
+                  leading: AdaptiveIconBadge(
+                    icon: adaptiveIcon(
+                      context,
+                      material: Icons.check_rounded,
+                      cupertino: CupertinoIcons.check_mark,
+                    ),
+                    color: AppColors.success,
+                  ),
+                  title: const Text('没有待处理冲突。'),
+                ),
+              ]
+            : [
+                for (final conflict in values.conflicts)
+                  AdaptiveListTile(
+                    leading: AdaptiveIconBadge(
+                      icon: adaptiveIcon(
+                        context,
+                        material: Icons.warning_amber_rounded,
+                        cupertino: CupertinoIcons.exclamationmark_triangle,
+                      ),
+                      color: AppColors.warning,
+                    ),
+                    title: Text(_conflictType(conflict.type)),
+                    subtitle: Text(
+                      '对象 ${_shortId(conflict.entityId)} · 设备 ${_shortId(conflict.sourceDeviceId ?? '未知')}\n${_formatTime(conflict.createdAt)}',
+                    ),
+                    isThreeLine: true,
+                    trailing: _ConflictResolutionActions(
+                      kind: values.kindFor(conflict.profileId),
+                      onSelected: (strategy) =>
+                          onResolve(context, conflict, strategy),
+                    ),
+                  ),
+              ],
+      ),
+    ),
+  ];
+}
+
+class _ActivityOverview extends StatelessWidget {
+  const _ActivityOverview({required this.values});
+
+  final _ActivityData values;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveSummaryCard(
+    icon: adaptiveIcon(
+      context,
+      material: Icons.insights_outlined,
+      cupertino: CupertinoIcons.chart_bar,
+    ),
+    color: context.appPrimary,
+    eyebrow: '活动概览',
+    title: '同步记录与待处理项',
+    metrics: [
+      AdaptiveSummaryMetric(value: '${values.runs.length}', label: '最近运行'),
+      AdaptiveSummaryMetric(value: '${values.transfers.length}', label: '待恢复'),
+      AdaptiveSummaryMetric(value: '${values.conflicts.length}', label: '冲突'),
+    ],
+  );
 }
 
 Future<_ActivityData> _loadActivity(
@@ -209,12 +331,12 @@ class _ConflictResolutionActions extends StatelessWidget {
     if (strategies.isEmpty) {
       return const Text('不可用');
     }
-    return PopupMenuButton<ConflictResolutionStrategy>(
+    return AdaptiveActionMenu<ConflictResolutionStrategy>(
       tooltip: '解决冲突',
       onSelected: onSelected,
-      itemBuilder: (context) => [
+      items: [
         for (final strategy in strategies)
-          PopupMenuItem(value: strategy, child: Text(_strategyLabel(strategy))),
+          AdaptiveActionItem(value: strategy, label: _strategyLabel(strategy)),
       ],
     );
   }
@@ -222,11 +344,6 @@ class _ConflictResolutionActions extends StatelessWidget {
 
 List<ConflictResolutionStrategy> _strategiesFor(SyncDatasetKind? kind) =>
     switch (kind) {
-      SyncDatasetKind.selectedFolder => const [
-        ConflictResolutionStrategy.keepLocal,
-        ConflictResolutionStrategy.keepRemote,
-        ConflictResolutionStrategy.keepBoth,
-      ],
       SyncDatasetKind.velockManaged => const [
         ConflictResolutionStrategy.openInVelock,
       ],
@@ -240,18 +357,6 @@ String _strategyLabel(ConflictResolutionStrategy strategy) =>
       ConflictResolutionStrategy.keepBoth => '保留两个版本',
       ConflictResolutionStrategy.openInVelock => '在 Velock 中处理',
     };
-
-class _ActivityHeader extends StatelessWidget {
-  const _ActivityHeader(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
-    child: Text(text, style: Theme.of(context).textTheme.titleSmall),
-  );
-}
 
 String _conflictType(String value) => switch (value.split(':').first) {
   'modify-modify' => '两个设备都修改了内容',

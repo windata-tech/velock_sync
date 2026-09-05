@@ -35,6 +35,25 @@ class ApplePairingControlChannel implements VelockPairingControlChannel {
   }
 
   @override
+  Future<VelockDeviceAuthorizationStatus> queryAuthorizationStatus(
+    String syncAppInstanceId,
+  ) async {
+    final root = await _root();
+    final id = _opaque(syncAppInstanceId);
+    final file = File('${root.path}/Control/Revocations/$id.json');
+    if (!await file.exists()) {
+      return VelockDeviceAuthorizationStatus.granted;
+    }
+    final descriptor = await pairingDescriptor();
+    final revocation = VelockPairingRevocation.parse(await _readBounded(file));
+    if (revocation.deviceId != syncAppInstanceId ||
+        !await revocation.verify(descriptor: descriptor)) {
+      throw const FormatException('Invalid pairing revocation.');
+    }
+    return VelockDeviceAuthorizationStatus.revoked;
+  }
+
+  @override
   Future<VelockPairingControlStatus> submitPairingRequest(
     VelockPairingControlRequest request,
   ) async {

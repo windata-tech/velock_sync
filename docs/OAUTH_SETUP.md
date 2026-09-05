@@ -34,7 +34,7 @@ record.
 | --- | --- | --- | --- |
 | Google Drive | PKCE public client | `drive.file` | `appDataFolder` by default, or a folder selected after authorization |
 | OneDrive | PKCE public client | `Files.ReadWrite`, `offline_access` | `root` by default, or a folder selected after authorization |
-| 百度网盘 | Deferred | N/A | Requires an independently operated official Token Broker |
+| 百度网盘 | Deferred; credential pre-configuration only | `basic,netdisk` | The app can store an existing token bundle in secure storage, but a usable connection still requires an independently operated official Token Broker and a RemoteObjectStore adapter |
 | 阿里云盘 | Deferred | N/A | Requires an independently operated official Token Broker |
 
 For Google Drive, `appDataFolder` is the safe default for a managed vault. For

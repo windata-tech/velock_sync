@@ -5,7 +5,7 @@
 
 ---
 
-O Velock Sync é uma ferramenta de sincronização bidirecional incremental, multiplataforma e de código aberto. Para os utilizadores do Velock, é a app complementar autónoma que sincroniza os dados cifrados do seu cofre entre os seus próprios dispositivos. Também suporta a sincronização de pastas escolhidas pelo utilizador com cifragem de ponta a ponta, sem necessidade de conta Velock.
+ta Velock.
 
 ## Principais funcionalidades
 

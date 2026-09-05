@@ -187,6 +187,37 @@ class MethodChannelAndroidExchangeChannel
       );
 
   @override
+  Future<VelockDeviceAuthorizationStatus> queryAuthorizationStatus(
+    String syncAppInstanceId,
+  ) async {
+    final value = await _channel.invokeMapMethod<String, Object?>(
+      VelockExchangeV1Contract.androidQueryAuthorizationStatusMethod,
+      {'deviceId': syncAppInstanceId},
+    );
+    final status = value?['status'];
+    final artifact = value?['artifact'];
+    if (status == 'granted') {
+      if (artifact != null) {
+        throw StateError('Unexpected revocation artifact for granted access.');
+      }
+      return VelockDeviceAuthorizationStatus.granted;
+    }
+    if (status == 'revoked') {
+      if (artifact is! Uint8List) {
+        throw StateError('Revocation artifact is missing.');
+      }
+      final descriptor = await pairingDescriptor();
+      final revocation = VelockPairingRevocation.parse(artifact);
+      if (revocation.deviceId != syncAppInstanceId ||
+          !await revocation.verify(descriptor: descriptor)) {
+        throw StateError('Invalid Velock authorization revocation.');
+      }
+      return VelockDeviceAuthorizationStatus.revoked;
+    }
+    throw StateError('Invalid Velock authorization status.');
+  }
+
+  @override
   Future<VelockPairingControlStatus> submitPairingRequest(
     VelockPairingControlRequest request,
   ) async {

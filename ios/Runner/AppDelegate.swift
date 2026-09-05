@@ -53,6 +53,22 @@ import workmanager_apple
     }
   }
 
+  private func registerCompanionInstalledChannel(
+    _ messenger: FlutterBinaryMessenger
+  ) {
+    let channel = FlutterMethodChannel(
+      name: "tech.windata.velock.sync/companion_installed",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "isInstalled" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      result(UIApplication.shared.canOpenURL(URL(string: "velock://")!))
+    }
+  }
+
   private func registerDiskSpaceChannel(_ messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
       name: "tech.windata.velock.sync/disk_space",
@@ -86,6 +102,7 @@ import workmanager_apple
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     let messenger = engineBridge.applicationRegistrar.messenger()
     registerExchangeChannel(messenger)
+    registerCompanionInstalledChannel(messenger)
     registerDiskSpaceChannel(messenger)
     registerPowerStateChannel(messenger)
     selectedFolderAccess = SelectedFolderAccessController(messenger: messenger)

@@ -175,7 +175,6 @@ class DurableSyncSettingsService implements SyncSettingsService {
         'byDataset': _counts(
           profiles.map(
             (profile) => switch (profile.kind) {
-              SyncDatasetKind.selectedFolder => 'selectedFolder',
               SyncDatasetKind.velockManaged => 'velockManaged',
               null => 'unavailable',
             },
@@ -275,7 +274,6 @@ class DurableSyncSettingsService implements SyncSettingsService {
       'oauth.',
       'provider.',
       'remote.',
-      'selected_folder.',
       'staging.',
       'sync.',
       'velock.',

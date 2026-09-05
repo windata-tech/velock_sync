@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
+import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_credentials.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_bundle.dart';
 
 /// Test-only credential store. Production code must use [SecureCredentialStore].
@@ -10,6 +11,7 @@ class InMemoryCredentialStore implements CredentialStore {
 
   final Uuid _uuid;
   final Map<String, String> _values = {};
+  BaiduNetdiskCredentialBundle? _baiduNetdiskCredentials;
 
   @override
   Future<void> delete(String credentialRef) async {
@@ -93,5 +95,25 @@ class InMemoryCredentialStore implements CredentialStore {
       'tokenType': tokens.tokenType,
       'scopes': tokens.scopes.toList(growable: false),
     });
+  }
+
+  @override
+  Future<void> writeBaiduNetdiskCredentials(
+    BaiduNetdiskCredentialBundle credentials,
+  ) async {
+    if (credentials.appKey.trim().isEmpty ||
+        credentials.accessToken.trim().isEmpty) {
+      throw ArgumentError('Baidu AppKey and access token must not be empty.');
+    }
+    _baiduNetdiskCredentials = credentials;
+  }
+
+  @override
+  Future<BaiduNetdiskCredentialBundle?> readBaiduNetdiskCredentials() async =>
+      _baiduNetdiskCredentials;
+
+  @override
+  Future<void> deleteBaiduNetdiskCredentials() async {
+    _baiduNetdiskCredentials = null;
   }
 }

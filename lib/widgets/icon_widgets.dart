@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:velock_sync/core/extensions.dart';
 
 class ProtocolIcon extends StatelessWidget {
@@ -10,32 +9,22 @@ class ProtocolIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = iconColor ?? context.primaryColor;
     return Container(
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
-        color: iconColor ?? context.primaryColor,
+        borderRadius: BorderRadius.circular(9),
+        color: color.withValues(alpha: 0.12),
       ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(
-            PlatformIcons(context).folderSolid,
-            size: 24,
-            color: Colors.white,
-          ),
-          Positioned(
-            bottom: 7,
-            child: Text(
-              protocolName,
-              style: context.titleStyle?.copyWith(
-                color: context.primaryColor,
-                fontSize: 8,
-              ),
-            ),
-          ),
-        ],
+      alignment: Alignment.center,
+      child: Text(
+        protocolName,
+        style: context.titleStyle?.copyWith(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

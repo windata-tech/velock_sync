@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/apple_velock_companion_probe.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 
@@ -39,12 +40,58 @@ void main() {
           isApplePlatform: () => true,
         ),
         applePairingControl: _ProbePairingControl(),
+        appleCompanionProbe: _ProbeCompanionInstalled(() async => true),
         isAndroid: () => false,
         isApple: () => true,
       ).inspect();
 
       expect(result.availability, VelockWizardAvailability.ready);
       expect(result.descriptor?.producerId, 'producer-1');
+    },
+  );
+
+  test(
+    'Apple App Group leftovers never report ready when Velock is uninstalled',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'velock-apple-uninstalled-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final result = await PlatformVelockWizardReadinessService(
+        appleRoot: AppleExchangeRootLocator(
+          channel: _AppleRootChannel(root.path),
+          isApplePlatform: () => true,
+        ),
+        applePairingControl: _ProbePairingControl(),
+        appleCompanionProbe: _ProbeCompanionInstalled(() async => false),
+        isAndroid: () => false,
+        isApple: () => true,
+      ).inspect();
+
+      expect(result.availability, VelockWizardAvailability.appNotInstalled);
+      expect(result.canCreate, isFalse);
+      expect(result.canRetry, isTrue);
+    },
+  );
+
+  test(
+    'Apple readiness fails closed when the install probe is unavailable',
+    () async {
+      final result = await PlatformVelockWizardReadinessService(
+        appleRoot: AppleExchangeRootLocator(
+          channel: _AppleRootChannel('/unused'),
+          isApplePlatform: () => true,
+        ),
+        applePairingControl: _ProbePairingControl(),
+        appleCompanionProbe: _ProbeCompanionInstalled(
+          () async => throw MissingPluginException(),
+        ),
+        isAndroid: () => false,
+        isApple: () => true,
+      ).inspect();
+
+      expect(result.availability, VelockWizardAvailability.unsupportedVersion);
+      expect(result.canCreate, isFalse);
     },
   );
 
@@ -89,6 +136,19 @@ void main() {
     },
   );
 
+  test('reports access revoked for an already-paired device', () async {
+    final result = await PlatformVelockWizardReadinessService(
+      androidExchange: _ProbeExchange(() async => const []),
+      androidPairingControl: _ProbePairingControl.revoked(),
+      isAndroid: () => true,
+      isApple: () => false,
+    ).inspect(syncAppInstanceId: 'sync-instance-1');
+
+    expect(result.availability, VelockWizardAvailability.accessRevoked);
+    expect(result.canCreate, isFalse);
+    expect(result.canRetry, isTrue);
+  });
+
   test('unconfigured desktop platform is explicitly unsupported', () async {
     final result = await PlatformVelockWizardReadinessService(
       androidExchange: _ProbeExchange(() async => const []),
@@ -122,7 +182,22 @@ class _AppleRootChannel implements AppleExchangeRootChannel {
   Future<String?> readExchangeRoot() async => path;
 }
 
+class _ProbeCompanionInstalled implements AppleVelockCompanionProbe {
+  const _ProbeCompanionInstalled(this._installed);
+
+  final Future<bool> Function() _installed;
+
+  @override
+  Future<bool> isInstalled() => _installed();
+}
+
 class _ProbePairingControl implements AndroidPairingControlChannel {
+  _ProbePairingControl({this.revoked = false});
+
+  factory _ProbePairingControl.revoked() => _ProbePairingControl(revoked: true);
+
+  final bool revoked;
+
   @override
   Future<VelockPairingDescriptor> pairingDescriptor() async =>
       VelockPairingDescriptor.parse(
@@ -145,6 +220,13 @@ class _ProbePairingControl implements AndroidPairingControlChannel {
           ),
         ),
       );
+
+  @override
+  Future<VelockDeviceAuthorizationStatus> queryAuthorizationStatus(
+    String syncAppInstanceId,
+  ) async => revoked
+      ? VelockDeviceAuthorizationStatus.revoked
+      : VelockDeviceAuthorizationStatus.granted;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

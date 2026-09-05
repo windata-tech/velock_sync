@@ -1,16 +1,17 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
-import 'package:velock_sync/core/extensions.dart';
+import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/wd_routes.dart';
 import 'package:velock_sync/features/connection/ui/connection.dart';
 import 'package:velock_sync/features/connection/ui/connections.dart';
+import 'package:velock_sync/features/connection/ui/connection_guidance.dart';
 import 'package:velock_sync/features/connection/ui/new_connection.dart';
+import 'package:velock_sync/features/connection/ui/new_baidu_token.dart';
 import 'package:velock_sync/features/connection/ui/new_oauth.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/features/activity/ui/sync_activity.dart';
-import 'package:velock_sync/features/selected_folder/ui/selected_folder_profiles.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 
@@ -54,13 +55,13 @@ class AppRoutes {
     name: 'syncProfilesNew',
     path: '/sync-profiles/new',
   );
+  static const ({String name, String path}) velockDatasetWizard = (
+    name: 'velockDatasetWizard',
+    path: '/sync-profiles/new/velock',
+  );
   static const ({String name, String path}) syncProfileDetail = (
     name: 'syncProfileDetail',
     path: '/sync-profiles/:profileId',
-  );
-  static const ({String name, String path}) selectedFolderProfiles = (
-    name: 'selectedFolderProfiles',
-    path: '/selected-folder-profiles',
   );
 
   static const ({String name, String path}) about = (
@@ -76,6 +77,10 @@ class AppRoutes {
     name: 'protocols',
     path: '/protocols',
   );
+  static const ({String name, String path}) connectionHelp = (
+    name: 'connectionHelp',
+    path: '/protocols/help',
+  );
   static const ({String name, String path}) newWebDav = (
     name: 'newWebDav',
     path: '/protocol/webdav/new',
@@ -83,6 +88,10 @@ class AppRoutes {
   static const ({String name, String path}) newOAuth = (
     name: 'newOAuth',
     path: '/protocol/oauth/:provider',
+  );
+  static const ({String name, String path}) newBaiduToken = (
+    name: 'newBaiduToken',
+    path: '/protocol/baidu-netdisk/token',
   );
   static const ({String name, String path}) connection = (
     name: 'connectionDetail',
@@ -145,9 +154,9 @@ final goRouter = GoRouter(
       ],
     ),
     WdRoute(
-      name: AppRoutes.syncProfilesNew.name,
-      path: AppRoutes.syncProfilesNew.path,
-      builder: (context, state) => const SyncProfileWizard(),
+      name: AppRoutes.velockDatasetWizard.name,
+      path: AppRoutes.velockDatasetWizard.path,
+      builder: (context, state) => const VelockDatasetWizard(),
     ),
     WdRoute(
       name: AppRoutes.syncProfileDetail.name,
@@ -159,11 +168,6 @@ final goRouter = GoRouter(
         }
         return SyncProfileDetail(profileId: profileId);
       },
-    ),
-    WdRoute(
-      name: AppRoutes.selectedFolderProfiles.name,
-      path: AppRoutes.selectedFolderProfiles.path,
-      builder: (context, state) => const SelectedFolderProfiles(),
     ),
     WdRoute(
       name: AppRoutes.about.name,
@@ -179,6 +183,22 @@ final goRouter = GoRouter(
       name: AppRoutes.protocols.name,
       path: AppRoutes.protocols.path,
       builder: (context, state) => Protocols(),
+    ),
+    WdRoute(
+      name: AppRoutes.connectionHelp.name,
+      path: AppRoutes.connectionHelp.path,
+      builder: (context, state) {
+        final providerName = state.uri.queryParameters['provider'];
+        final provider = switch (providerName) {
+          'webDav' => RemoteProviderType.webDav,
+          'googleDrive' => RemoteProviderType.googleDrive,
+          'oneDrive' => RemoteProviderType.oneDrive,
+          'baiduNetdisk' => RemoteProviderType.baiduNetdisk,
+          'aliyunDrive' => RemoteProviderType.aliyunDrive,
+          _ => null,
+        };
+        return ConnectionHelpPage(providerType: provider);
+      },
     ),
     WdRoute(
       name: AppRoutes.newWebDav.name,
@@ -207,6 +227,11 @@ final goRouter = GoRouter(
       },
     ),
     WdRoute(
+      name: AppRoutes.newBaiduToken.name,
+      path: AppRoutes.newBaiduToken.path,
+      builder: (context, state) => const NewBaiduToken(),
+    ),
+    WdRoute(
       name: AppRoutes.connection.name,
       path: AppRoutes.connection.path,
       builder: (context, state) {
@@ -227,69 +252,187 @@ class WDShellPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PlatformScaffold(
-      body: navigationShell,
-      widgetKey:
-          (Theme.of(context).platform == TargetPlatform.iOS ||
-              Theme.of(context).platform == TargetPlatform.macOS)
-          ? ValueKey(navigationShell.currentIndex)
-          : null,
-      bottomNavBar: PlatformNavBar(
-        backgroundColor: context.backgroundColor,
-        items: [
-          BottomNavigationBarItem(icon: Icon(Icons.sync), label: 'Sync'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.cable),
-            label: 'Connections',
+    void selectBranch(int index) {
+      navigationShell.goBranch(
+        index,
+        initialLocation: index == navigationShell.currentIndex,
+      );
+    }
+
+    if (isApplePlatform(context)) {
+      return CupertinoPageScaffold(
+        backgroundColor: context.appPageBackground,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(
+            children: [
+              Expanded(child: navigationShell),
+              _CompactCupertinoTabBar(
+                currentIndex: navigationShell.currentIndex,
+                activeColor: context.appPrimary,
+                inactiveColor: context.appSecondaryLabel,
+                iconSize: 24,
+                height: AppSizes.bottomNavigation,
+                backgroundColor: context.appGroupedSurface,
+                border: Border(
+                  top: BorderSide(
+                    color: context.appSeparator.withValues(
+                      alpha: AppOpacity.navigationRule,
+                    ),
+                    width: 0.5,
+                  ),
+                ),
+                onTap: selectBranch,
+                items: const [
+                  BottomNavigationBarItem(
+                    icon: Icon(CupertinoIcons.arrow_2_circlepath),
+                    label: '同步',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(CupertinoIcons.link),
+                    label: '连接',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(CupertinoIcons.clock),
+                    label: '活动',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(CupertinoIcons.gear_alt),
+                    label: '设置',
+                  ),
+                ],
+              ),
+            ],
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Activity'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: navigationShell,
+      bottomNavigationBar: NavigationBar(
+        height: AppSizes.materialBottomNavigation,
+        selectedIndex: navigationShell.currentIndex,
+        onDestinationSelected: selectBranch,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.sync_outlined),
+            selectedIcon: Icon(Icons.sync_rounded),
+            label: '同步',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.link_outlined),
+            selectedIcon: Icon(Icons.link_rounded),
+            label: '连接',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.history_outlined),
+            selectedIcon: Icon(Icons.history_rounded),
+            label: '活动',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings_rounded),
+            label: '设置',
           ),
         ],
-        currentIndex: navigationShell.currentIndex,
-        itemChanged: (int index) {
-          navigationShell.goBranch(index /*, initialLocation: true*/);
-        },
-        material: (context, platform) {
-          // TODO：Material颜色需要后面的theme覆盖或在theme中设置。
-          return MaterialNavBarData(
-            selectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.w500,
-            ) /*文字style，颜色被selectedItemColor覆盖，所以设置后无效。*/,
-            unselectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.normal,
+      ),
+    );
+  }
+}
+
+class _CompactCupertinoTabBar extends StatelessWidget {
+  const _CompactCupertinoTabBar({
+    required this.items,
+    required this.currentIndex,
+    required this.onTap,
+    required this.backgroundColor,
+    required this.activeColor,
+    required this.inactiveColor,
+    required this.iconSize,
+    required this.height,
+    required this.border,
+  });
+
+  final List<BottomNavigationBarItem> items;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+  final Color backgroundColor;
+  final Color activeColor;
+  final Color inactiveColor;
+  final double iconSize;
+  final double height;
+  final Border border;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
+    final labelStyle = CupertinoTheme.of(context).textTheme.tabLabelTextStyle;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(color: backgroundColor, border: border),
+      child: SizedBox(
+        height: height + bottomPadding,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: bottomPadding),
+          child: Semantics(
+            explicitChildNodes: true,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var index = 0; index < items.length; index++)
+                  Expanded(
+                    child: Semantics(
+                      selected: index == currentIndex,
+                      button: true,
+                      label: items[index].label,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onTap(index),
+                        child: Padding(
+                          // Lift the icon + label group while preserving the
+                          // full-height tab hit target and the home-indicator
+                          // safe area.
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: _buildItem(
+                            context,
+                            items[index],
+                            index == currentIndex,
+                            labelStyle,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            selectedFontSize: 14.0,
-            unselectedFontSize: 13.0,
-            selectedIconTheme: IconThemeData(
-              color: Colors.grey[700],
-              opacity: 1,
-              size: 21,
-            ),
-            unselectedIconTheme: IconThemeData(
-              color: Colors.grey[500],
-              opacity: 0.9,
-              size: 20,
-            ),
-            selectedItemColor: Colors.grey[700],
-            unselectedItemColor: Colors.grey[500],
-            showSelectedLabels: true,
-            showUnselectedLabels: true,
-            type: BottomNavigationBarType.fixed,
-            // landscapeLayout: BottomNavigationBarLandscapeLayout.linear
-            elevation: 2.0,
-          );
-        },
-        cupertino: (context, platform) {
-          return CupertinoTabBarData(
-            iconSize: 24,
-            // height: 55
-            // activeColor: Colors.grey[700],
-            // inactiveColor: Colors.grey[500],
-          );
-        },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItem(
+    BuildContext context,
+    BottomNavigationBarItem item,
+    bool active,
+    TextStyle labelStyle,
+  ) {
+    final color = active ? activeColor : inactiveColor;
+    return IconTheme.merge(
+      data: IconThemeData(color: color, size: iconSize),
+      child: DefaultTextStyle.merge(
+        style: labelStyle.copyWith(color: color),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            active ? item.activeIcon : item.icon,
+            if (item.label != null) ...[
+              const SizedBox(height: AppSpacing.bottomNavigationItemGap),
+              Text(item.label!, semanticsLabel: item.semanticsLabel),
+            ],
+          ],
+        ),
       ),
     );
   }

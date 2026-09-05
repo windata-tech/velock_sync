@@ -11,7 +11,7 @@ Velock Sync to wieloplatformowe, otwartoźródłowe narzędzie do przyrostowej d
 
 - Przyrostowa dwukierunkowa synchronizacja: przesyłana jest tylko nowa lub zmieniona zawartość; z odzyskiwaniem z checkpointów, wznawianiem wysyłania i odśmiecaniem; istniejące dane nie są przesyłane ponownie.
 - Szyfrowanie end-to-end: w trybie Velock przenoszone są tylko nieprzezroczyste zaszyfrowane delty utworzone przez Velock. Velock Sync nigdy nie przechowuje klucza głównego ani kluczy synchronizacji Velock i nie czyta jego bazy danych.
-- Synchronizacja zwykłych folderów: użytkownicy spoza Velock mogą wybrać folder lokalny, domyślnie szyfrowany end-to-end, z prostym trybem lustrzanym.
+ym.
 - Wiele celów w chmurze: obsługiwane są WebDAV, Google Drive i OneDrive; kolejne chmury, takie jak Baidu Netdisk i Aliyun Drive, są dodawane przez adaptery Provider.
 - Współpraca na wielu urządzeniach: wektory wersji i tombstone zapewniają, że równoczesne zmiany nigdy nie są po cichu tracone; w razie konfliktu obie wersje są zachowywane i to Ty wybierasz.
 - Synchronizacja w tle: wyzwalacze ręczne, na pierwszym planie i po przywróceniu sieci, a także Android WorkManager / iOS BGTask.

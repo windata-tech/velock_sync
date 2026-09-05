@@ -106,7 +106,13 @@
     "producerKeyOwnership": "existing-velock-device-key-only",
     "syncMayCreateProducerIdentityOrKey": false,
     "remoteMembersAutoTrusted": false,
-    "replayBehavior": "requestId-and-challenge-single-use"
+    "replayBehavior": "requestId-and-challenge-single-use",
+    "revocationDirectory": "Control/Revocations",
+    "revocationFields": ["deviceId", "revokedAt", "signatureAlgorithm", "signature"],
+    "revocationSignaturePayload": "UTF-8 JSON with deviceId and revokedAt, keys in lexicographic order, no whitespace",
+    "revocationCheck": "sync-verifies-signed-marker-with-published-descriptor-key-before-running",
+    "userRevocation": "required-in-unlocked-velock-app",
+    "revocationPersistence": "marker-published-before-local-member-revoked"
   },
   "sequence": {
     "firstSequence": 1,

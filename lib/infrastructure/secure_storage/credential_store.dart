@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
+import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_credentials.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_bundle.dart';
 
 /// Stores provider secrets outside regular application preferences and sync
@@ -19,6 +20,17 @@ abstract interface class CredentialStore {
   /// Replaces a token bundle at its existing opaque reference after refresh.
   Future<void> updateOAuthTokens(String credentialRef, OAuthTokenBundle tokens);
 
+  /// Stores the optional, manually configured Baidu OAuth bundle outside the
+  /// connection database. This is a staging credential only; the Baidu
+  /// RemoteObjectStore is not enabled yet.
+  Future<void> writeBaiduNetdiskCredentials(
+    BaiduNetdiskCredentialBundle credentials,
+  );
+
+  Future<BaiduNetdiskCredentialBundle?> readBaiduNetdiskCredentials();
+
+  Future<void> deleteBaiduNetdiskCredentials();
+
   Future<void> delete(String credentialRef);
 }
 
@@ -29,6 +41,7 @@ class SecureCredentialStore implements CredentialStore {
 
   static const _webDavPrefix = 'velock-sync/webdav/';
   static const _oauthPrefix = 'velock-sync/oauth/';
+  static const _baiduNetdiskKey = 'velock-sync/baidu-netdisk/credentials';
 
   final FlutterSecureStorage _storage;
   final Uuid _uuid;
@@ -125,6 +138,37 @@ class SecureCredentialStore implements CredentialStore {
       }),
     );
   }
+
+  @override
+  Future<void> writeBaiduNetdiskCredentials(
+    BaiduNetdiskCredentialBundle credentials,
+  ) async {
+    if (credentials.appKey.trim().isEmpty ||
+        credentials.accessToken.trim().isEmpty) {
+      throw ArgumentError('Baidu AppKey and access token must not be empty.');
+    }
+    await _storage.write(
+      key: _baiduNetdiskKey,
+      value: jsonEncode(credentials.toSecureJson()),
+    );
+  }
+
+  @override
+  Future<BaiduNetdiskCredentialBundle?> readBaiduNetdiskCredentials() async {
+    final encoded = await _storage.read(key: _baiduNetdiskKey);
+    if (encoded == null) return null;
+    try {
+      final json = jsonDecode(encoded);
+      if (json is! Map<String, dynamic>) return null;
+      return BaiduNetdiskCredentialBundle.fromSecureJson(json);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> deleteBaiduNetdiskCredentials() =>
+      _storage.delete(key: _baiduNetdiskKey);
 
   @override
   Future<void> delete(String credentialRef) =>

@@ -179,7 +179,10 @@ class WebDavObjectStore implements RemoteObjectStore {
     cancellation?.throwIfCancelled();
     final objectUri = _objectUri(logicalKey);
     await _ensureParentCollections(logicalKey, cancellation: cancellation);
-    final headers = <String, String>{'Content-Length': '$contentLength'};
+    final headers = <String, String>{
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': '$contentLength',
+    };
     if (ifAbsent) {
       headers['If-None-Match'] = '*';
     }

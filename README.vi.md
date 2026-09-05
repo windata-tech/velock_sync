@@ -5,13 +5,13 @@
 
 ---
 
-Velock Sync là công cụ đồng bộ hai chiều gia tăng, mã nguồn mở và đa nền tảng. Với người dùng Velock, đây là ứng dụng đồng hành độc lập giúp đồng bộ dữ liệu két đã mã hóa giữa các thiết bị của chính bạn. Nó cũng hỗ trợ đồng bộ các thư mục do người dùng chọn với mã hóa đầu cuối, không cần tài khoản Velock.
+ Velock.
 
 ## Tính năng chính
 
 - Đồng bộ hai chiều gia tăng: chỉ truyền nội dung mới hoặc đã thay đổi; hỗ trợ khôi phục checkpoint, tải lên tiếp tục và thu gom rác; dữ liệu hiện có không bị tải lại.
 - Mã hóa đầu cuối: ở chế độ Velock, chỉ di chuyển các delta mã hóa không rõ ràng do Velock tạo ra. Velock Sync không bao giờ nắm khóa chính hoặc khóa đồng bộ của Velock và không đọc cơ sở dữ liệu của Velock.
-- Đồng bộ thư mục thông thường: người dùng không dùng Velock có thể chọn thư mục cục bộ, được mã hóa đầu cuối theo mặc định, kèm chế độ phản chiếu đơn giản.
+.
 - Nhiều đích đám mây: đã hỗ trợ WebDAV, Google Drive và OneDrive; nhiều đám mây khác như Baidu Netdisk và Aliyun Drive sẽ được bổ sung qua bộ điều hợp Provider.
 - Cộng tác đa thiết bị: vector phiên bản và cơ chế tombstone đảm bảo các thay đổi đồng thời không bao giờ bị mất âm thầm; khi xung đột, cả hai phiên bản đều được giữ lại và bạn lựa chọn.
 - Đồng bộ nền: kích hoạt thủ công, ở tiền cảnh và khi khôi phục mạng, cùng lập lịch Android WorkManager / iOS BGTask.
@@ -20,7 +20,7 @@ Velock Sync là công cụ đồng bộ hai chiều gia tăng, mã nguồn mở 
 ## Nền tảng
 
 - Dữ liệu do Velock quản lý V1: iOS/iPadOS, trao đổi dữ liệu với Velock qua App Group chuyên dụng.
-- Thư mục đã chọn và Provider đám mây: Android và iOS/iPadOS.
+Android và iOS/iPadOS.
 - Máy tính để bàn: đang lên kế hoạch.
 
 ## Mã nguồn mở và ghi chú thương mại

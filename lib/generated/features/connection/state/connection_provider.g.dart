@@ -20,7 +20,7 @@ final class ConnectionsProvider
         argument: null,
         retry: null,
         name: r'connectionsProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -33,7 +33,7 @@ final class ConnectionsProvider
   Connections create() => Connections();
 }
 
-String _$connectionsHash() => r'19f69069212b3d570de1ddce0957ce51c6770561';
+String _$connectionsHash() => r'9cd7c15b61c009cf778b39c37a0cb371b02153a5';
 
 abstract class _$Connections extends $AsyncNotifier<List<ConnectionModel>> {
   FutureOr<List<ConnectionModel>> build();
@@ -70,7 +70,7 @@ final class ConnectionCreationProvider
         argument: null,
         retry: null,
         name: r'connectionCreationProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -92,7 +92,7 @@ final class ConnectionCreationProvider
 }
 
 String _$connectionCreationHash() =>
-    r'9e6a80fd11291adf23cc1760aff2bf6fc3245fd5';
+    r'6e82cfd76ce7b29895c22df08138a2a4d5f98e87';
 
 abstract class _$ConnectionCreation extends $Notifier<CreateConnectionDto?> {
   CreateConnectionDto? build();

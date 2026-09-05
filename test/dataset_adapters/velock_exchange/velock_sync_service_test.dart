@@ -162,7 +162,7 @@ void main() {
       final profile = fixture.profile;
       await fixture.profiles.save(
         SyncProfileEnvelope(
-          kind: SyncDatasetKind.selectedFolder,
+          kind: SyncDatasetKind.velockManaged,
           profileId: profile.profileId,
           datasetId: profile.datasetId,
           vaultId: profile.vaultId,
@@ -258,6 +258,38 @@ void main() {
       );
 
       expect(adapterFactory.createCalls, 1);
+      expect(remoteFactoryCalls, 0);
+    },
+  );
+
+  test(
+    'marks the profile accessRequired when Velock revokes authorization',
+    () async {
+      final fixture = await _Fixture.create();
+      addTearDown(fixture.dispose);
+      final adapterFactory = _FakeAdapterFactory(
+        _RecordingDataset(),
+        error: const VelockDatasetAdapterUnavailableException(
+          VelockExchangeAvailability.accessRevoked,
+        ),
+      );
+      var remoteFactoryCalls = 0;
+
+      await expectLater(
+        fixture
+            .service(
+              adapterFactory: adapterFactory,
+              remoteFactory: ({required protocol, required password}) {
+                remoteFactoryCalls += 1;
+                return InMemoryObjectStore();
+              },
+            )
+            .run(fixture.profile.profileId),
+        throwsA(isA<VelockDatasetAdapterUnavailableException>()),
+      );
+
+      final envelope = await fixture.profiles.read(fixture.profile.profileId);
+      expect(envelope?.state, SyncProfileState.accessRequired);
       expect(remoteFactoryCalls, 0);
     },
   );

@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/files_provider.dart';
 import 'package:velock_sync/providers/provider_capability_summary.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
@@ -24,15 +26,11 @@ class Connection extends HookConsumerWidget {
       try {
         await ref.read(connectionsProvider.notifier).refreshStatuses();
         if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('已更新连接状态。')));
+          showPlatformMessage(context, '已更新连接状态。');
         }
       } on Object {
         if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('无法测试连接，请检查网络和授权。')));
+          showPlatformMessage(context, '无法测试连接，请检查网络和授权。');
         }
       }
     }
@@ -62,9 +60,7 @@ class Connection extends HookConsumerWidget {
             await notifier.goBack();
           },
           child: PlatformScaffold(
-            iosContentPadding:
-                Theme.of(context).platform == TargetPlatform.iOS ||
-                Theme.of(context).platform == TargetPlatform.macOS,
+            iosContentPadding: false,
             appBar: WDAppBar(
               title: Row(
                 children: [
@@ -119,44 +115,68 @@ class Connection extends HookConsumerWidget {
                         protocol: connectionModel.protocol,
                       ),
                     ),
-                    SliverGrid(
-                      delegate: SliverChildBuilderDelegate((
-                        BuildContext context,
-                        int index,
-                      ) {
-                        final file = fileBrowserState.files[index];
-                        double? progress;
-                        return StatefulBuilder(
-                          builder:
-                              (BuildContext context, StateSetter setState) {
-                                return CupertinoButton(
-                                  minimumSize: const Size(0, 0),
-                                  padding: EdgeInsets.zero,
-                                  child: RemoteFileItem(
-                                    file: file,
-                                    progress: progress,
-                                  ),
-                                  onPressed: () async {
-                                    notifier.onRemoteFileItemTapped(file, (
-                                      a,
-                                      b,
-                                    ) {
-                                      setState(() {
-                                        progress = a.toDouble() / b.toDouble();
-                                      });
-                                    });
+                    if (fileBrowserState.files.isEmpty)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: AdaptiveEmptyState(
+                          icon: CupertinoIcons.folder,
+                          title: '这个目录还是空的',
+                          message: '远端文件和文件夹会显示在这里。',
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.page,
+                          AppSpacing.sm,
+                          AppSpacing.page,
+                          AppSpacing.xl,
+                        ),
+                        sliver: SliverGrid(
+                          delegate: SliverChildBuilderDelegate((
+                            BuildContext context,
+                            int index,
+                          ) {
+                            final file = fileBrowserState.files[index];
+                            double? progress;
+                            return StatefulBuilder(
+                              builder:
+                                  (BuildContext context, StateSetter setState) {
+                                    return SizedBox.expand(
+                                      child: CupertinoButton(
+                                        minimumSize: Size.zero,
+                                        padding: EdgeInsets.zero,
+                                        child: SizedBox.expand(
+                                          child: RemoteFileItem(
+                                            file: file,
+                                            progress: progress,
+                                          ),
+                                        ),
+                                        onPressed: () async {
+                                          notifier.onRemoteFileItemTapped(
+                                            file,
+                                            (a, b) {
+                                              setState(() {
+                                                progress =
+                                                    a.toDouble() / b.toDouble();
+                                              });
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    );
                                   },
-                                );
-                              },
-                        );
-                      }, childCount: fileBrowserState.files.length),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        childAspectRatio: 1.5,
-                        mainAxisSpacing: 1,
-                        crossAxisSpacing: 1,
+                            );
+                          }, childCount: fileBrowserState.files.length),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4,
+                                childAspectRatio: 1,
+                                mainAxisSpacing: AppSpacing.sm,
+                                crossAxisSpacing: AppSpacing.sm,
+                              ),
+                        ),
                       ),
-                    ),
                   ],
                 );
               },
@@ -205,9 +225,7 @@ class _OAuthConnectionDetails extends StatelessWidget {
   Widget build(BuildContext context) {
     final protocol = connection.protocol as OAuthProtocolModel;
     return PlatformScaffold(
-      iosContentPadding:
-          Theme.of(context).platform == TargetPlatform.iOS ||
-          Theme.of(context).platform == TargetPlatform.macOS,
+      iosContentPadding: false,
       appBar: WDAppBar(
         title: Text(connection.name),
         trailingActions: [
@@ -226,18 +244,38 @@ class _OAuthConnectionDetails extends StatelessWidget {
         ],
       ),
       body: ListView(
+        padding: const EdgeInsets.only(
+          top: AppSpacing.md,
+          bottom: AppSpacing.xl,
+        ),
         children: [
-          ListTile(
-            leading: const Icon(Icons.account_circle_outlined),
-            title: Text(protocol.accountLabel ?? connection.target),
-            subtitle: const Text('授权账号或远端目录摘要'),
+          AdaptiveListSection(
+            header: '账号与目录',
+            children: [
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: Icons.account_circle_outlined,
+                    cupertino: CupertinoIcons.person_crop_circle,
+                  ),
+                ),
+                title: Text(protocol.accountLabel ?? connection.target),
+                subtitle: const Text('授权账号或远端目录摘要'),
+              ),
+            ],
           ),
           _ProviderCapabilityDetails(protocol: protocol),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              AppSpacing.xs,
+              AppSpacing.page,
+              0,
+            ),
             child: Text(
               '同步内容使用所选远端目录保存为协议对象；这里不会显示或读取 OAuth Token。',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: TextStyle(color: context.appSecondaryLabel, height: 1.35),
             ),
           ),
         ],
@@ -254,34 +292,36 @@ class _ProviderCapabilityDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = providerCapabilitySummary(protocol);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${summary.providerName} 能力与限制'),
-              const SizedBox(height: 8),
-              if (summary.features.isNotEmpty)
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final feature in summary.features)
-                      Chip(label: Text(feature)),
-                  ],
-                ),
-              for (final limitation in summary.limitations)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text('限制：$limitation'),
-                ),
-            ],
+    return AdaptiveListSection(
+      header: '${summary.providerName} 能力与限制',
+      children: [
+        if (summary.features.isNotEmpty)
+          AdaptiveListTile(
+            leading: AdaptiveIconBadge(
+              icon: adaptiveIcon(
+                context,
+                material: Icons.check_circle_outline,
+                cupertino: CupertinoIcons.check_mark_circled,
+              ),
+              color: AppColors.success,
+            ),
+            title: const Text('支持能力'),
+            subtitle: Text(summary.features.join(' · ')),
           ),
-        ),
-      ),
+        for (final limitation in summary.limitations)
+          AdaptiveListTile(
+            leading: AdaptiveIconBadge(
+              icon: adaptiveIcon(
+                context,
+                material: Icons.info_outline,
+                cupertino: CupertinoIcons.info,
+              ),
+              color: AppColors.warning,
+            ),
+            title: const Text('使用限制'),
+            subtitle: Text(limitation),
+          ),
+      ],
     );
   }
 }
@@ -298,55 +338,79 @@ class RemoteFileItem extends StatelessWidget {
     final isApple =
         platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
 
-    return Container(
-      padding: EdgeInsets.all(4),
-      child: Stack(
-        children: [
-          Column(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    final radius = BorderRadius.circular(AppRadii.medium);
+    final textColor = Theme.of(context).textTheme.bodyMedium?.color;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.appGroupedSurface.withValues(alpha: 0.82),
+        borderRadius: radius,
+        border: Border.all(
+          color: context.appSeparator.withValues(
+            alpha: AppOpacity.groupedBorder,
+          ),
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xs),
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              if (file.isDir)
-                Icon(
-                  isApple ? CupertinoIcons.folder_solid : Icons.folder,
-                  size: 32,
-                )
-              else
-                Icon(
-                  isApple ? CupertinoIcons.doc_text_fill : Icons.description,
-                  size: 32,
-                ),
-              Text(
-                file.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    file.isDir
+                        ? (isApple ? CupertinoIcons.folder_solid : Icons.folder)
+                        : (isApple
+                              ? CupertinoIcons.doc_text_fill
+                              : Icons.description),
+                    size: 26,
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    file.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      height: 1.15,
+                    ).copyWith(color: textColor),
+                  ),
+                ],
               ),
+              if (progress != null && progress! < 1.0)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withAlpha(187),
+                    borderRadius: radius,
+                  ),
+                  child: Center(
+                    child: Stack(
+                      fit: StackFit.loose,
+                      alignment: Alignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: progress,
+                          color: Colors.white,
+                        ),
+                        Text(
+                          '${(progress! * 100).toInt()}%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
-          if (progress != null && progress! < 1.0)
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.all(Radius.circular(4)),
-                color: Colors.grey.withAlpha(187),
-              ),
-              child: Center(
-                child: Stack(
-                  fit: StackFit.loose,
-                  alignment: Alignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      value: progress,
-                      color: Colors.white,
-                    ),
-                    Text(
-                      "${(progress! * 100).toInt()}%",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
