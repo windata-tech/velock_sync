@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
@@ -141,11 +142,26 @@ class NewWebDav extends HookConsumerWidget {
     return PlatformScaffold(
       iosContentPadding: false,
       appBar: WDAppBar(
+        leading: PlatformIconButton(
+          padding: EdgeInsets.zero,
+          cupertino: (context, platform) =>
+              CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
+          material: (context, platform) =>
+              MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
+          onPressed: () => context.goNamed(
+            replacementConnectionId == null
+                ? AppRoutes.newConnection.name
+                : AppRoutes.connection.name,
+            pathParameters: replacementConnectionId == null
+                ? const {}
+                : {'id': replacementConnectionId!},
+          ),
+        ),
         title: Text(existingWebDav == null ? '新建 WebDAV 连接' : '编辑 WebDAV 连接'),
         trailingActions: [
           PlatformTextButton(
             padding: EdgeInsets.zero,
-            onPressed: () => context.pushNamed(
+            onPressed: () => context.goNamed(
               AppRoutes.connectionHelp.name,
               queryParameters: {'provider': RemoteProviderType.webDav.name},
             ),

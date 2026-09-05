@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -15,6 +16,14 @@ class Protocols extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return AdaptiveScaffold(
       title: '选择远端协议',
+      leading: PlatformIconButton(
+        padding: EdgeInsets.zero,
+        cupertino: (context, platform) =>
+            CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
+        material: (context, platform) =>
+            MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
+        onPressed: () => context.goNamed(AppRoutes.newConnection.name),
+      ),
       body: ListView(
         padding: const EdgeInsets.only(
           top: AppSpacing.md,
@@ -44,7 +53,7 @@ class Protocols extends HookConsumerWidget {
                 title: const Text('WebDAV'),
                 subtitle: const Text('填写地址、端口和凭据，保存时自动测试连接'),
                 showChevron: true,
-                onTap: () => context.pushNamed(AppRoutes.newWebDav.name),
+                onTap: () => context.goNamed(AppRoutes.newWebDav.name),
               ),
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
@@ -57,7 +66,7 @@ class Protocols extends HookConsumerWidget {
                 title: const Text('Google Drive'),
                 subtitle: const Text('准备 OAuth Client ID，浏览器授权后选择同步目录'),
                 showChevron: true,
-                onTap: () => context.pushNamed(
+                onTap: () => context.goNamed(
                   AppRoutes.newOAuth.name,
                   pathParameters: {
                     'provider': RemoteProviderType.googleDrive.name,
@@ -75,7 +84,7 @@ class Protocols extends HookConsumerWidget {
                 title: const Text('OneDrive'),
                 subtitle: const Text('准备 OAuth Client ID，浏览器授权后选择同步目录'),
                 showChevron: true,
-                onTap: () => context.pushNamed(
+                onTap: () => context.goNamed(
                   AppRoutes.newOAuth.name,
                   pathParameters: {
                     'provider': RemoteProviderType.oneDrive.name,
@@ -99,7 +108,7 @@ class Protocols extends HookConsumerWidget {
                 title: const Text('百度网盘'),
                 subtitle: const Text('可配置 AppKey 和 Token；同步适配器尚未开放'),
                 showChevron: true,
-                onTap: () => context.pushNamed(AppRoutes.newBaiduToken.name),
+                onTap: () => context.goNamed(AppRoutes.newBaiduToken.name),
               ),
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(

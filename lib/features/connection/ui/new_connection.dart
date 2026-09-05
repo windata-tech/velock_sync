@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -47,6 +48,14 @@ class NewConnection extends HookConsumerWidget {
 
     return AdaptiveScaffold(
       title: '新建连接',
+      leading: PlatformIconButton(
+        padding: EdgeInsets.zero,
+        cupertino: (context, platform) =>
+            CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
+        material: (context, platform) =>
+            MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
+        onPressed: () => context.goNamed(AppRoutes.connections.name),
+      ),
       body: ListView(
         padding: const EdgeInsets.only(
           top: AppSpacing.md,
@@ -97,7 +106,7 @@ class NewConnection extends HookConsumerWidget {
                 title: Text(connectionData.target ?? '选择协议'),
                 subtitle: const Text('WebDAV、Google Drive 或 OneDrive'),
                 showChevron: true,
-                onTap: () => context.pushNamed(AppRoutes.protocols.name),
+                onTap: () => context.goNamed(AppRoutes.protocols.name),
               ),
             ],
           ),

@@ -20,7 +20,7 @@ class Connections extends HookConsumerWidget {
     final isRefreshing = useState(false);
 
     void createConnection() {
-      context.pushNamed(AppRoutes.newConnection.name);
+      context.goNamed(AppRoutes.newConnection.name);
     }
 
     Future<void> refreshConnections() async {
