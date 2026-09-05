@@ -143,11 +143,13 @@ class DurableConflictResolutionService implements ConflictResolutionService {
     final conflict = await _database.readUnresolvedConflict(conflictId);
     if (conflict == null) return const ConflictResolutionResult.missing();
     final profile = await _profiles.read(conflict.profileId);
-    if (profile == null)
+    if (profile == null) {
       return const ConflictResolutionResult.rejected('profile-unavailable');
+    }
     if (profile.kind != SyncDatasetKind.velockManaged ||
-        strategy != ConflictResolutionStrategy.openInVelock)
+        strategy != ConflictResolutionStrategy.openInVelock) {
       return const ConflictResolutionResult.rejected('invalid-strategy');
+    }
     final owner = _uuid.v4();
     final a = await _database.acquireConflictResolutionIntent(
       conflictId: conflictId,
@@ -177,10 +179,12 @@ class DurableConflictResolutionService implements ConflictResolutionService {
         profile: profile,
         conflict: conflict,
         receipt: receipt,
-      ))
+      )) {
         throw const ConflictResolutionFailure('untrusted-velock-receipt');
-      if (receipt.artifact.isEmpty)
+      }
+      if (receipt.artifact.isEmpty) {
         throw const ConflictResolutionFailure('missing-resolution-artifact');
+      }
       await _database.completeConflictResolution(
         conflictId: conflictId,
         owner: owner,
@@ -192,7 +196,9 @@ class DurableConflictResolutionService implements ConflictResolutionService {
           conflict: conflict,
           receipt: receipt,
         );
-      } on Object {}
+      } on Object {
+        // The durable local completion is authoritative; acknowledgement is best effort.
+      }
       return const ConflictResolutionResult.completed();
     } on Object catch (e) {
       final c = e is ConflictResolutionFailure
