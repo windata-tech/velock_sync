@@ -50,71 +50,79 @@ class NewConnection extends HookConsumerWidget {
       );
     }
 
-    return AdaptiveScaffold(
-      title: '新建连接',
-      leading: PlatformIconButton(
-        padding: EdgeInsets.zero,
-        cupertino: (context, platform) =>
-            CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
-        material: (context, platform) =>
-            MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-        onPressed: () => context.goNamed(AppRoutes.connections.name),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.only(
-          top: AppSpacing.md,
-          bottom: AppSpacing.xl,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && context.mounted) {
+          context.goNamed(AppRoutes.connections.name);
+        }
+      },
+      child: AdaptiveScaffold(
+        title: '新建连接',
+        leading: PlatformIconButton(
+          padding: EdgeInsets.zero,
+          cupertino: (context, platform) =>
+              CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
+          material: (context, platform) =>
+              MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
+          onPressed: () => context.goNamed(AppRoutes.connections.name),
         ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.page,
-              0,
-              AppSpacing.page,
-              AppSpacing.sm,
-            ),
-            child: Text(
-              '先选择本地目标，再连接一个远端空间。凭据会保存在系统安全存储中。',
-              style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
-            ),
+        body: ListView(
+          padding: const EdgeInsets.only(
+            top: AppSpacing.md,
+            bottom: AppSpacing.xl,
           ),
-          AdaptiveListSection(
-            header: '本地目标',
-            children: [
-              AdaptiveListTile(
-                leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.folder_rounded,
-                    cupertino: CupertinoIcons.folder_fill,
-                  ),
-                  color: context.appPrimary,
-                ),
-                title: Text(connectionData.source ?? '选择源'),
-                subtitle: const Text('当前设备上的格间数据'),
-                additionalInfo: const Icon(Icons.check_rounded),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                0,
+                AppSpacing.page,
+                AppSpacing.sm,
               ),
-            ],
-          ),
-          AdaptiveListSection(
-            header: '远端目标',
-            children: [
-              AdaptiveListTile(
-                leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.add_link_rounded,
-                    cupertino: CupertinoIcons.link,
-                  ),
-                ),
-                title: Text(connectionData.target ?? '选择协议'),
-                subtitle: const Text('WebDAV、Google Drive 或 OneDrive'),
-                showChevron: true,
-                onTap: () => context.goNamed(AppRoutes.protocols.name),
+              child: Text(
+                '先选择本地目标，再连接一个远端空间。凭据会保存在系统安全存储中。',
+                style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
               ),
-            ],
-          ),
-        ],
+            ),
+            AdaptiveListSection(
+              header: '本地目标',
+              children: [
+                AdaptiveListTile(
+                  leading: AdaptiveIconBadge(
+                    icon: adaptiveIcon(
+                      context,
+                      material: Icons.folder_rounded,
+                      cupertino: CupertinoIcons.folder_fill,
+                    ),
+                    color: context.appPrimary,
+                  ),
+                  title: Text(connectionData.source ?? '选择源'),
+                  subtitle: const Text('当前设备上的格间数据'),
+                  additionalInfo: const Icon(Icons.check_rounded),
+                ),
+              ],
+            ),
+            AdaptiveListSection(
+              header: '远端目标',
+              children: [
+                AdaptiveListTile(
+                  leading: AdaptiveIconBadge(
+                    icon: adaptiveIcon(
+                      context,
+                      material: Icons.add_link_rounded,
+                      cupertino: CupertinoIcons.link,
+                    ),
+                  ),
+                  title: Text(connectionData.target ?? '选择协议'),
+                  subtitle: const Text('WebDAV、Google Drive 或 OneDrive'),
+                  showChevron: true,
+                  onTap: () => context.goNamed(AppRoutes.protocols.name),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
