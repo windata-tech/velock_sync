@@ -50,16 +50,20 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     if (protocol is! WebDavProtocolModel) {
       throw UnsupportedError('Remote file browsing is currently WebDAV-only.');
     }
-    _currentPath = protocol.path ?? '/';
+    _currentPath = _normalisePath(protocol.path ?? '/');
     return _fetchState(_currentPath);
   }
 
   /// 获取文件列表
   Future<FileBrowserState> _fetchState(String path) async {
     // 规范化输入路径
-    path = p.canonicalize(path);
+    path = _normalisePath(path);
     final files = await (await _client()).readDir(path);
-    final fileBrowserState = FileBrowserState(path: path, files: files);
+    final fileBrowserState = FileBrowserState(
+      path: path,
+      rootPath: _currentRootPath,
+      files: files,
+    );
 
     // 只保留当前路径和父路径之上的
     _unstableStack.removeWhere(
@@ -178,20 +182,37 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
   void printCurrentStack() {
     logger.i('Remote browser history depth: ${_unstableStack.length}.');
   }
+
+  String get _currentRootPath {
+    final protocol = connectionModel.protocol;
+    return _normalisePath(
+      protocol is WebDavProtocolModel ? protocol.path ?? '/' : '/',
+    );
+  }
+
+  String _normalisePath(String path) {
+    final normalised = p.canonicalize(path.isEmpty ? '/' : path);
+    return normalised == '.' ? '/' : normalised;
+  }
 }
 
 class FileBrowserState {
   final String path;
+  final String rootPath;
   final List<WebdavFile> files;
 
-  const FileBrowserState({required this.path, required this.files});
+  const FileBrowserState({
+    required this.path,
+    required this.rootPath,
+    required this.files,
+  });
 
   // 根目录的初始状态
   factory FileBrowserState.root() =>
-      const FileBrowserState(path: '/', files: []);
+      const FileBrowserState(path: '/', rootPath: '/', files: []);
 
   // 辅助判断
-  bool get isRoot => path == '/' || path == '\\';
+  bool get isRoot => path == rootPath;
 
   @override
   bool operator ==(Object other) =>
@@ -199,8 +220,9 @@ class FileBrowserState {
       other is FileBrowserState &&
           runtimeType == other.runtimeType &&
           path == other.path &&
+          rootPath == other.rootPath &&
           files == other.files; // 注意：List 比较通常需要 listEquals，这里简化处理
 
   @override
-  int get hashCode => path.hashCode ^ files.hashCode;
+  int get hashCode => path.hashCode ^ rootPath.hashCode ^ files.hashCode;
 }
