@@ -18,7 +18,7 @@ part '../../../generated/features/connection/state/files_provider.g.dart';
 class RemoteFileBrowser extends _$RemoteFileBrowser {
   String _currentPath = '/';
 
-  bool get canGoBack => _currentPath != '/' && _currentPath != '\\';
+  bool get canGoBack => _currentPath != _currentRootPath;
 
   CancelToken? cancelToken;
 
