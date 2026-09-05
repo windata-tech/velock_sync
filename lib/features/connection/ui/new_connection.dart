@@ -21,9 +21,11 @@ class NewConnection extends HookConsumerWidget {
       final connectionCreationNotifier = ref.read(
         connectionCreationProvider.notifier,
       );
+      var disposed = false;
 
       if (connectionData == null) {
         Future.microtask(() {
+          if (disposed || !context.mounted) return;
           connectionCreationNotifier.prepareNewConnection(
             name: '新建连接',
             source: '格间',
@@ -32,10 +34,12 @@ class NewConnection extends HookConsumerWidget {
         });
       }
       return () {
-        Future.microtask(() {
-          logi('dispose NewConnection, cancel creation');
-          connectionCreationNotifier.cancelCreation();
-        });
+        // Clear the draft synchronously. Deferring this with a microtask lets
+        // an old NewConnection route cancel the draft created by a newly
+        // opened route immediately after returning to the list.
+        disposed = true;
+        logi('dispose NewConnection, cancel creation');
+        connectionCreationNotifier.cancelCreation();
       };
     }, const []);
 
