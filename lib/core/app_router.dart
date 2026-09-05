@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/wd_routes.dart';
@@ -252,186 +253,42 @@ class WDShellPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    void selectBranch(int index) {
-      navigationShell.goBranch(
-        index,
-        initialLocation: index == navigationShell.currentIndex,
-      );
-    }
-
-    if (isApplePlatform(context)) {
-      return CupertinoPageScaffold(
-        backgroundColor: context.appPageBackground,
-        child: Material(
-          type: MaterialType.transparency,
-          child: Column(
-            children: [
-              Expanded(child: navigationShell),
-              _CompactCupertinoTabBar(
-                currentIndex: navigationShell.currentIndex,
-                activeColor: context.appPrimary,
-                inactiveColor: context.appSecondaryLabel,
-                iconSize: 24,
-                height: AppSizes.bottomNavigation,
-                backgroundColor: context.appGroupedSurface,
-                border: Border(
-                  top: BorderSide(
-                    color: context.appSeparator.withValues(
-                      alpha: AppOpacity.navigationRule,
-                    ),
-                    width: 0.5,
-                  ),
-                ),
-                onTap: selectBranch,
-                items: const [
-                  BottomNavigationBarItem(
-                    icon: Icon(CupertinoIcons.arrow_2_circlepath),
-                    label: '同步',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(CupertinoIcons.link),
-                    label: '连接',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(CupertinoIcons.clock),
-                    label: '活动',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(CupertinoIcons.gear_alt),
-                    label: '设置',
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
+    return PlatformScaffold(
       body: navigationShell,
-      bottomNavigationBar: NavigationBar(
-        height: AppSizes.materialBottomNavigation,
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: selectBranch,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.sync_outlined),
-            selectedIcon: Icon(Icons.sync_rounded),
+      widgetKey: isApplePlatform(context)
+          ? ValueKey(navigationShell.currentIndex)
+          : null,
+      bottomNavBar: PlatformNavBar(
+        backgroundColor: context.appGroupedSurface,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.arrow_2_circlepath),
             label: '同步',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.link_outlined),
-            selectedIcon: Icon(Icons.link_rounded),
-            label: '连接',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.history_outlined),
-            selectedIcon: Icon(Icons.history_rounded),
+          BottomNavigationBarItem(icon: Icon(CupertinoIcons.link), label: '连接'),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.clock),
             label: '活动',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings_rounded),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.gear_alt),
             label: '设置',
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CompactCupertinoTabBar extends StatelessWidget {
-  const _CompactCupertinoTabBar({
-    required this.items,
-    required this.currentIndex,
-    required this.onTap,
-    required this.backgroundColor,
-    required this.activeColor,
-    required this.inactiveColor,
-    required this.iconSize,
-    required this.height,
-    required this.border,
-  });
-
-  final List<BottomNavigationBarItem> items;
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-  final Color backgroundColor;
-  final Color activeColor;
-  final Color inactiveColor;
-  final double iconSize;
-  final double height;
-  final Border border;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
-    final labelStyle = CupertinoTheme.of(context).textTheme.tabLabelTextStyle;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(color: backgroundColor, border: border),
-      child: SizedBox(
-        height: height + bottomPadding,
-        child: Padding(
-          padding: EdgeInsets.only(bottom: bottomPadding),
-          child: Semantics(
-            explicitChildNodes: true,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (var index = 0; index < items.length; index++)
-                  Expanded(
-                    child: Semantics(
-                      selected: index == currentIndex,
-                      button: true,
-                      label: items[index].label,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => onTap(index),
-                        child: Padding(
-                          // Lift the icon + label group while preserving the
-                          // full-height tab hit target and the home-indicator
-                          // safe area.
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: _buildItem(
-                            context,
-                            items[index],
-                            index == currentIndex,
-                            labelStyle,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+        currentIndex: navigationShell.currentIndex,
+        itemChanged: (index) => navigationShell.goBranch(index),
+        material: (_, _) => MaterialNavBarData(
+          type: BottomNavigationBarType.fixed,
+          showSelectedLabels: true,
+          showUnselectedLabels: true,
+          selectedItemColor: context.appPrimary,
+          unselectedItemColor: context.appSecondaryLabel,
+          elevation: 2,
         ),
-      ),
-    );
-  }
-
-  Widget _buildItem(
-    BuildContext context,
-    BottomNavigationBarItem item,
-    bool active,
-    TextStyle labelStyle,
-  ) {
-    final color = active ? activeColor : inactiveColor;
-    return IconTheme.merge(
-      data: IconThemeData(color: color, size: iconSize),
-      child: DefaultTextStyle.merge(
-        style: labelStyle.copyWith(color: color),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            active ? item.activeIcon : item.icon,
-            if (item.label != null) ...[
-              const SizedBox(height: AppSpacing.bottomNavigationItemGap),
-              Text(item.label!, semanticsLabel: item.semanticsLabel),
-            ],
-          ],
+        cupertino: (_, _) => CupertinoTabBarData(
+          activeColor: context.appPrimary,
+          inactiveColor: context.appSecondaryLabel,
+          iconSize: 24,
         ),
       ),
     );

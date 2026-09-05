@@ -14,127 +14,118 @@ class Protocols extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && context.mounted) {
-          context.goNamed(AppRoutes.newConnection.name);
-        }
-      },
-      child: AdaptiveScaffold(
-        title: '选择远端协议',
-        leading: PlatformIconButton(
-          padding: EdgeInsets.zero,
-          cupertino: (context, platform) =>
-              CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
-          material: (context, platform) =>
-              MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-          onPressed: () => context.goNamed(AppRoutes.newConnection.name),
+    return AdaptiveScaffold(
+      title: '选择远端协议',
+      leading: PlatformIconButton(
+        padding: EdgeInsets.zero,
+        cupertino: (context, platform) =>
+            CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
+        material: (context, platform) =>
+            MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
+        onPressed: () => context.pop(),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.only(
+          top: AppSpacing.md,
+          bottom: AppSpacing.xl,
         ),
-        body: ListView(
-          padding: const EdgeInsets.only(
-            top: AppSpacing.md,
-            bottom: AppSpacing.xl,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              0,
+              AppSpacing.page,
+              AppSpacing.sm,
+            ),
+            child: Text(
+              '选择一个远端空间保存加密同步数据。',
+              style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
+            ),
           ),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.page,
-                0,
-                AppSpacing.page,
-                AppSpacing.sm,
-              ),
-              child: Text(
-                '选择一个远端空间保存加密同步数据。',
-                style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
-              ),
+          AdaptiveListSection(
+            header: '可用协议',
+            headerTrailing: _InlineHelpAction(
+              onPressed: () => context.pushNamed(AppRoutes.connectionHelp.name),
             ),
-            AdaptiveListSection(
-              header: '可用协议',
-              headerTrailing: _InlineHelpAction(
-                onPressed: () =>
-                    context.pushNamed(AppRoutes.connectionHelp.name),
+            children: [
+              AdaptiveListTile(
+                leading: const ProtocolIcon(protocolName: 'DAV'),
+                title: const Text('WebDAV'),
+                subtitle: const Text('填写地址、端口和凭据，保存时自动测试连接'),
+                showChevron: true,
+                onTap: () => context.pushNamed(AppRoutes.newWebDav.name),
               ),
-              children: [
-                AdaptiveListTile(
-                  leading: const ProtocolIcon(protocolName: 'DAV'),
-                  title: const Text('WebDAV'),
-                  subtitle: const Text('填写地址、端口和凭据，保存时自动测试连接'),
-                  showChevron: true,
-                  onTap: () => context.goNamed(AppRoutes.newWebDav.name),
-                ),
-                AdaptiveListTile(
-                  leading: AdaptiveIconBadge(
-                    icon: adaptiveIcon(
-                      context,
-                      material: Icons.cloud_outlined,
-                      cupertino: CupertinoIcons.cloud,
-                    ),
-                  ),
-                  title: const Text('Google Drive'),
-                  subtitle: const Text('准备 OAuth Client ID，浏览器授权后选择同步目录'),
-                  showChevron: true,
-                  onTap: () => context.goNamed(
-                    AppRoutes.newOAuth.name,
-                    pathParameters: {
-                      'provider': RemoteProviderType.googleDrive.name,
-                    },
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: Icons.cloud_outlined,
+                    cupertino: CupertinoIcons.cloud,
                   ),
                 ),
-                AdaptiveListTile(
-                  leading: AdaptiveIconBadge(
-                    icon: adaptiveIcon(
-                      context,
-                      material: Icons.cloud_outlined,
-                      cupertino: CupertinoIcons.cloud,
-                    ),
-                  ),
-                  title: const Text('OneDrive'),
-                  subtitle: const Text('准备 OAuth Client ID，浏览器授权后选择同步目录'),
-                  showChevron: true,
-                  onTap: () => context.goNamed(
-                    AppRoutes.newOAuth.name,
-                    pathParameters: {
-                      'provider': RemoteProviderType.oneDrive.name,
-                    },
+                title: const Text('Google Drive'),
+                subtitle: const Text('准备 OAuth Client ID，浏览器授权后选择同步目录'),
+                showChevron: true,
+                onTap: () => context.pushNamed(
+                  AppRoutes.newOAuth.name,
+                  pathParameters: {
+                    'provider': RemoteProviderType.googleDrive.name,
+                  },
+                ),
+              ),
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: Icons.cloud_outlined,
+                    cupertino: CupertinoIcons.cloud,
                   ),
                 ),
-              ],
-            ),
-            AdaptiveListSection(
-              header: '其他服务',
-              children: [
-                AdaptiveListTile(
-                  leading: AdaptiveIconBadge(
-                    icon: adaptiveIcon(
-                      context,
-                      material: Icons.key_outlined,
-                      cupertino: CupertinoIcons.lock,
-                    ),
-                    color: context.appSecondaryLabel,
-                  ),
-                  title: const Text('百度网盘'),
-                  subtitle: const Text('可配置 AppKey 和 Token；同步适配器尚未开放'),
-                  showChevron: true,
-                  onTap: () => context.goNamed(AppRoutes.newBaiduToken.name),
+                title: const Text('OneDrive'),
+                subtitle: const Text('准备 OAuth Client ID，浏览器授权后选择同步目录'),
+                showChevron: true,
+                onTap: () => context.pushNamed(
+                  AppRoutes.newOAuth.name,
+                  pathParameters: {
+                    'provider': RemoteProviderType.oneDrive.name,
+                  },
                 ),
-                AdaptiveListTile(
-                  leading: AdaptiveIconBadge(
-                    icon: adaptiveIcon(
-                      context,
-                      material: Icons.lock_outline,
-                      cupertino: CupertinoIcons.lock,
-                    ),
-                    color: context.appSecondaryLabel,
+              ),
+            ],
+          ),
+          AdaptiveListSection(
+            header: '其他服务',
+            children: [
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: Icons.key_outlined,
+                    cupertino: CupertinoIcons.lock,
                   ),
-                  title: const Text('阿里云盘'),
-                  subtitle: const Text('需要官方 Token Broker，当前未开放'),
-                  enabled: false,
+                  color: context.appSecondaryLabel,
                 ),
-              ],
-            ),
-          ],
-        ),
+                title: const Text('百度网盘'),
+                subtitle: const Text('可配置 AppKey 和 Token；同步适配器尚未开放'),
+                showChevron: true,
+                onTap: () => context.pushNamed(AppRoutes.newBaiduToken.name),
+              ),
+              AdaptiveListTile(
+                leading: AdaptiveIconBadge(
+                  icon: adaptiveIcon(
+                    context,
+                    material: Icons.lock_outline,
+                    cupertino: CupertinoIcons.lock,
+                  ),
+                  color: context.appSecondaryLabel,
+                ),
+                title: const Text('阿里云盘'),
+                subtitle: const Text('需要官方 Token Broker，当前未开放'),
+                enabled: false,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

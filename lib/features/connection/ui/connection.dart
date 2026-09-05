@@ -63,7 +63,7 @@ class Connection extends HookConsumerWidget {
               ),
               material: (context, platform) =>
                   MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-              onPressed: () => context.goNamed(AppRoutes.connections.name),
+              onPressed: () => context.pop(),
             ),
             title: Row(
               children: [
@@ -235,7 +235,7 @@ class _OAuthConnectionDetails extends StatelessWidget {
               CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
           material: (context, platform) =>
               MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-          onPressed: () => context.goNamed(AppRoutes.connections.name),
+          onPressed: () => context.pop(),
         ),
         title: Text(connection.name),
         trailingActions: [

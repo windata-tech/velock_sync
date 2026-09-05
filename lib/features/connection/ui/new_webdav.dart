@@ -148,20 +148,13 @@ class NewWebDav extends HookConsumerWidget {
               CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
           material: (context, platform) =>
               MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-          onPressed: () => context.goNamed(
-            replacementConnectionId == null
-                ? AppRoutes.newConnection.name
-                : AppRoutes.connection.name,
-            pathParameters: replacementConnectionId == null
-                ? const {}
-                : {'id': replacementConnectionId!},
-          ),
+          onPressed: () => context.pop(),
         ),
         title: Text(existingWebDav == null ? '新建 WebDAV 连接' : '编辑 WebDAV 连接'),
         trailingActions: [
           PlatformTextButton(
             padding: EdgeInsets.zero,
-            onPressed: () => context.goNamed(
+            onPressed: () => context.pushNamed(
               AppRoutes.connectionHelp.name,
               queryParameters: {'provider': RemoteProviderType.webDav.name},
             ),

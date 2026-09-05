@@ -20,7 +20,15 @@ class Connections extends HookConsumerWidget {
     final isRefreshing = useState(false);
 
     void createConnection() {
-      context.goNamed(AppRoutes.newConnection.name);
+      // Prepare the draft from the user action, before pushing the route.
+      // Updating a Riverpod notifier from NewConnection.build/useEffect causes
+      // Riverpod 3 to throw "Tried to modify a provider while the widget tree
+      // was building", which leaves the iOS page showing a red error overlay
+      // and makes every button appear unresponsive.
+      ref
+          .read(connectionCreationProvider.notifier)
+          .prepareNewConnection(name: '新建连接', source: '格间', target: null);
+      context.pushNamed(AppRoutes.newConnection.name);
     }
 
     Future<void> refreshConnections() async {
@@ -143,7 +151,7 @@ class Connections extends HookConsumerWidget {
             for (final connection in connections)
               _ConnectionTile(
                 connection: connection,
-                onOpen: () => context.goNamed(
+                onOpen: () => context.pushNamed(
                   AppRoutes.connection.name,
                   pathParameters: {'id': connection.id},
                 ),
