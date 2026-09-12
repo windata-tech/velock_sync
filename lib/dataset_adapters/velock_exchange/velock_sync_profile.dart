@@ -8,7 +8,7 @@ import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 /// dedicated exchange binding. They are identifiers only: this profile never
 /// stores a Velock key, an authorization credential, or an Exchange path.
 class VelockSyncProfile {
-  const VelockSyncProfile({
+  VelockSyncProfile({
     required this.profileId,
     required this.datasetId,
     required this.vaultId,
@@ -18,10 +18,14 @@ class VelockSyncProfile {
     required this.pairedProducerId,
     required this.pairedProducerPublicKeyId,
     required this.exchangeBindingId,
+    List<String>? trustedProducerIds,
     required this.backgroundPolicy,
     required this.state,
     required this.createdAt,
-  });
+  }) : trustedProducerIds = _canonicalTrustedProducerIds(
+         trustedProducerIds ?? [pairedProducerId],
+         pairedProducerId: pairedProducerId,
+       );
 
   final String profileId;
   final String datasetId;
@@ -32,6 +36,10 @@ class VelockSyncProfile {
   final String pairedProducerId;
   final String pairedProducerPublicKeyId;
   final String exchangeBindingId;
+
+  /// Remote producer IDs this profile may download. The paired producer is
+  /// always included; restored cards can authorize previous iPhones too.
+  final List<String> trustedProducerIds;
   final SyncProfileBackgroundPolicy backgroundPolicy;
   final SyncProfileState state;
   final DateTime createdAt;
@@ -52,6 +60,7 @@ class VelockSyncProfile {
         'pairedProducerId': pairedProducerId,
         'pairedProducerPublicKeyId': pairedProducerPublicKeyId,
         'exchangeBindingId': exchangeBindingId,
+        'trustedProducerIds': trustedProducerIds,
       },
       createdAt: createdAt.toUtc(),
     );
@@ -67,6 +76,7 @@ class VelockSyncProfile {
     pairedProducerId: pairedProducerId,
     pairedProducerPublicKeyId: pairedProducerPublicKeyId,
     exchangeBindingId: exchangeBindingId,
+    trustedProducerIds: trustedProducerIds,
     backgroundPolicy: backgroundPolicy,
     state: state ?? this.state,
     createdAt: createdAt,
@@ -76,12 +86,16 @@ class VelockSyncProfile {
     if (envelope.kind != SyncDatasetKind.velockManaged) {
       throw const FormatException('Sync profile is not a Velock profile.');
     }
-    const allowedDatasetFields = {
+    const requiredDatasetFields = {
       'pairedProducerId',
       'pairedProducerPublicKeyId',
       'exchangeBindingId',
     };
-    if (!envelope.dataset.keys.toSet().containsAll(allowedDatasetFields) ||
+    const allowedDatasetFields = {
+      ...requiredDatasetFields,
+      'trustedProducerIds',
+    };
+    if (!envelope.dataset.keys.toSet().containsAll(requiredDatasetFields) ||
         envelope.dataset.keys.any(
           (key) => !allowedDatasetFields.contains(key),
         )) {
@@ -100,6 +114,7 @@ class VelockSyncProfile {
         'pairedProducerPublicKeyId',
       ),
       exchangeBindingId: _requiredDatasetString(envelope, 'exchangeBindingId'),
+      trustedProducerIds: _trustedProducerIdsFromEnvelope(envelope),
       backgroundPolicy: envelope.backgroundPolicy,
       state: envelope.state,
       createdAt: envelope.createdAt,
@@ -117,6 +132,36 @@ class VelockSyncProfile {
       throw const FormatException('Velock profile pairing field is invalid.');
     }
     return value;
+  }
+
+  static List<String>? _trustedProducerIdsFromEnvelope(
+    SyncProfileEnvelope envelope,
+  ) {
+    final value = envelope.dataset['trustedProducerIds'];
+    if (value == null) return null; // Legacy profile: paired producer only.
+    if (value is! List ||
+        value.isEmpty ||
+        value.any((item) => item is! String)) {
+      throw const FormatException(
+        'Velock profile trusted producers are invalid.',
+      );
+    }
+    return value.cast<String>();
+  }
+
+  static List<String> _canonicalTrustedProducerIds(
+    Iterable<String> ids, {
+    required String pairedProducerId,
+  }) {
+    final values = ids.toSet().toList()..sort();
+    if (values.isEmpty ||
+        !values.contains(pairedProducerId) ||
+        values.any((value) => value.trim().isEmpty)) {
+      throw const FormatException(
+        'Velock profile trusted producers are invalid.',
+      );
+    }
+    return List.unmodifiable(values);
   }
 
   void _validate() {

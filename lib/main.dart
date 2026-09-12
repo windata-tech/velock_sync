@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -135,13 +136,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         themeMode: themeMode,
         builder: (context) => PlatformApp.router(
           builder: FToastBuilder(),
-          localizationsDelegates: <LocalizationsDelegate<dynamic>>[
-            DefaultMaterialLocalizations.delegate,
-            DefaultWidgetsLocalizations.delegate,
-            DefaultCupertinoLocalizations.delegate,
+          // The product UI is Chinese-first: system-provided widget strings
+          // (license page, action sheets, pickers) must not fall back to English.
+          locale: const Locale('zh', 'CN'),
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
           ],
           title: 'Velock Sync',
           onGenerateTitle: (BuildContext context) => 'Velock Sync',
+          debugShowCheckedModeBanner: false,
           routerConfig: goRouter,
         ),
       ),

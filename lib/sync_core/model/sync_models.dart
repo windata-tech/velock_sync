@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
 /// The source of a synchronised dataset. These values are provider-neutral.
-enum DatasetKind { velockManaged }
+enum DatasetKind { velockManaged, selectedFolder }
 
 enum DatasetAccessState { available, needsAuthorization, unavailable }
 
-enum EncryptionMode { velockManaged }
+enum EncryptionMode { velockManaged, endToEnd }
 
 enum RemoteProviderType {
   webDav,

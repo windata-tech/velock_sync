@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -12,8 +13,16 @@ import 'package:velock_sync/infrastructure/storage/staging_disk_preflight.dart';
 import 'package:velock_sync/providers/webdav/webdav_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
+import 'package:velock_sync/sync_core/engine/logical_keys.dart';
 import 'package:velock_sync/sync_core/engine/sync_download_engine.dart';
+import 'package:uuid/uuid.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
+import 'package:velock_sync/sync_core/engine/join_approval_applier.dart';
+import 'package:velock_sync/sync_core/engine/join_request_transport.dart';
 import 'package:velock_sync/sync_core/engine/sync_profile_runner.dart';
+import 'package:velock_sync/sync_core/model/sync_failure.dart';
+import 'package:velock_sync/sync_core/engine/sync_root_readme.dart';
 import 'package:velock_sync/sync_core/engine/vault_protocol.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
@@ -60,7 +69,10 @@ class VelockSyncService implements VelockSyncRunner {
     VelockOAuthRemoteFactory? oauthRemoteFactory,
     AvailableSpaceProbe? availableSpace,
     int minimumFreeStagingBytes = 64 * 1024 * 1024,
-  }) : _profiles = profiles,
+    DateTime Function()? now,
+    String Function()? nextRunId,
+  }) : _database = database,
+       _profiles = profiles,
        _connections = connections,
        _adapterFactory = adapterFactory,
        _stagingRoot = stagingRoot,
@@ -71,8 +83,11 @@ class VelockSyncService implements VelockSyncRunner {
        _diskPreflight = StagingDiskPreflight(
          availableSpace ?? const PlatformAvailableSpaceProbe(),
          minimumFreeBytes: minimumFreeStagingBytes,
-       );
+       ),
+       _now = now ?? DateTime.now,
+       _nextRunId = nextRunId ?? const Uuid().v4;
 
+  final SyncStateDatabase _database;
   final SyncProfileRepository _profiles;
   final ConnectionRepository _connections;
   final VelockDatasetAdapterFactory _adapterFactory;
@@ -81,12 +96,61 @@ class VelockSyncService implements VelockSyncRunner {
   final VelockRemoteFactory _remoteFactory;
   final VelockOAuthRemoteFactory _oauthRemoteFactory;
   final StagingDiskPreflight _diskPreflight;
+  final DateTime Function() _now;
+  final String Function() _nextRunId;
 
   @override
   Future<SyncProfileRunResult> run(
     String profileId, {
     BatchLimits uploadLimits = const BatchLimits(),
     DownloadLimits downloadLimits = const DownloadLimits(),
+  }) async {
+    // Failures raised while preparing the run (missing connection, revoked
+    // pairing, unreachable remote during the root README write, …) happen
+    // before the runner opens its own run row. Without this guard the attempt
+    // would leave no trace in the run history while the overview kept showing
+    // the previous successful run, which violates “status must be truthful”.
+    var runnerStarted = false;
+    try {
+      final result = await _runPrepared(
+        profileId,
+        uploadLimits: uploadLimits,
+        downloadLimits: downloadLimits,
+        onRunnerStarted: () => runnerStarted = true,
+      );
+      return result;
+    } on Object catch (error) {
+      if (!runnerStarted) {
+        await _recordPreRunFailure(profileId, error);
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _recordPreRunFailure(String profileId, Object error) async {
+    try {
+      final runId = _nextRunId();
+      await _database.startSyncRun(
+        runId: runId,
+        profileId: profileId,
+        startedAt: _now(),
+      );
+      await _database.finishSyncRun(
+        runId: runId,
+        state: 'failed',
+        completedAt: _now(),
+        failure: SyncFailureClassifier.classify(error),
+      );
+    } on Object {
+      // Recording history must never hide the original failure.
+    }
+  }
+
+  Future<SyncProfileRunResult> _runPrepared(
+    String profileId, {
+    required BatchLimits uploadLimits,
+    required DownloadLimits downloadLimits,
+    required void Function() onRunnerStarted,
   }) async {
     final envelope = await _profiles.read(profileId);
     if (envelope == null) {
@@ -124,7 +188,56 @@ class VelockSyncService implements VelockSyncRunner {
     // even protocol bootstrap traffic.
     await _diskPreflight.ensureAvailable(_stagingRoot);
     final remote = await _remoteForConnection(connection.protocol);
-
+    await _publishRootReadme(remote: remote, profile: profile);
+    // Best-effort exchange of signed join requests: peers surface new devices
+    // for user approval, and this device publishes its own request. A failure
+    // here must never block the sync run itself.
+    var trustedProducerIds = profile.trustedProducerIds;
+    if (dataset is VelockExchangeDatasetAdapter) {
+      try {
+        final exchangeRoot = dataset.exchangeRoot;
+        final transport = JoinRequestTransport(exchangeRoot);
+        await transport.uploadLocal(
+          vaultId: profile.vaultId,
+          remote: remote,
+        );
+        await transport.downloadRemote(
+          vaultId: profile.vaultId,
+          remote: remote,
+        );
+        // Apply user-approved decisions: the Velock app signs the updated
+        // allow-list, and this machine merges it into the profile so the new
+        // device's batches become downloadable here.
+        final descriptorFile = File(
+          '${exchangeRoot.path}/Control/descriptor.json',
+        );
+        if (await descriptorFile.exists()) {
+          final descriptor = VelockPairingDescriptor.parse(
+            await descriptorFile.readAsBytes(),
+          );
+          if (descriptor.exchangeBindingId == profile.exchangeBindingId) {
+            trustedProducerIds = await JoinApprovalApplier(
+              profiles: _profiles,
+              database: _database,
+            ).apply(
+              profile: profile,
+              exchangeRoot: exchangeRoot,
+              velockSigningPublicKey: descriptor.producerSigningPublicKey,
+            );
+          }
+        }
+      } on Object {
+        // Ignored on purpose.
+      }
+    }
+    // The paired producer is the local Velock device. Its batches leave
+    // through the outbox upload path; importing those same commits back into
+    // the local inbox would create a self-download loop and a false recovery
+    // prompt. Only historical/remote producers belong in the download list.
+    final remoteProducerIds = trustedProducerIds
+        .where((id) => id != profile.pairedProducerId)
+        .toList(growable: false);
+    onRunnerStarted();
     return _runner.run(
       profileId: profile.profileId,
       vaultId: profile.vaultId,
@@ -139,7 +252,28 @@ class VelockSyncService implements VelockSyncRunner {
       downloadLimits: downloadLimits,
       preflight: () => _diskPreflight.ensureAvailable(_stagingRoot),
       // Pairing is the only local source of a Velock producer allow-list.
-      trustedProducerDeviceIds: [profile.pairedProducerId],
+      trustedProducerDeviceIds: remoteProducerIds,
+      enableGarbageCollection: true,
+    );
+  }
+
+  Future<void> _publishRootReadme({
+    required RemoteObjectStore remote,
+    required VelockSyncProfile profile,
+  }) async {
+    final content = buildSyncRootReadme(
+      vaultId: profile.vaultId,
+      datasetId: profile.datasetId,
+      displayName: profile.displayName,
+      producerDeviceId: profile.pairedProducerId,
+      consumerDeviceId: profile.deviceId,
+      generatedAt: _now(),
+    );
+    final bytes = utf8.encode(content);
+    await remote.put(
+      LogicalKeys.readme(),
+      Stream<List<int>>.value(bytes),
+      contentLength: bytes.length,
     );
   }
 

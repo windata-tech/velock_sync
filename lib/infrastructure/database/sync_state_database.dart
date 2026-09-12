@@ -13,7 +13,7 @@ import 'package:velock_sync/sync_core/model/sync_models.dart';
 class SyncStateDatabase {
   SyncStateDatabase._(this._database);
 
-  static const _schemaVersion = 9;
+  static const _schemaVersion = 10;
   static late SyncStateDatabase _instance;
 
   final Database _database;
@@ -240,6 +240,111 @@ class SyncStateDatabase {
       ],
     );
     if (updated.isEmpty) throw StateError('Sync run is not active.');
+  }
+
+  Future<void> startGarbageCollectionRun({
+    required String runId,
+    required String profileId,
+    required String vaultId,
+    required DateTime startedAt,
+  }) async {
+    _database.execute(
+      'INSERT INTO garbage_collection_runs '
+      '(run_id, profile_id, vault_id, state, started_at, active_device_count, '
+      'unacked_device_count, candidate_count, eligible_candidate_count, '
+      'deleted_object_count) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0)',
+      [
+        runId,
+        profileId,
+        vaultId,
+        'running',
+        startedAt.toUtc().millisecondsSinceEpoch,
+      ],
+    );
+  }
+
+  Future<void> finishGarbageCollectionRun({
+    required String runId,
+    required String state,
+    required DateTime completedAt,
+    String? checkpointId,
+    DateTime? retentionCutoff,
+    int activeDeviceCount = 0,
+    int unackedDeviceCount = 0,
+    int candidateCount = 0,
+    int eligibleCandidateCount = 0,
+    int deletedObjectCount = 0,
+    bool? retentionManifestComplete,
+    String? planId,
+    String? skipReason,
+  }) async {
+    if (state != 'completed' && state != 'skipped' && state != 'failed') {
+      throw ArgumentError.value(state, 'state');
+    }
+    final updated = _database.select(
+      'UPDATE garbage_collection_runs SET state = ?, completed_at = ?, '
+      'checkpoint_id = ?, retention_cutoff = ?, active_device_count = ?, '
+      'unacked_device_count = ?, candidate_count = ?, '
+      'eligible_candidate_count = ?, deleted_object_count = ?, '
+      'retention_manifest_complete = ?, plan_id = ?, skip_reason = ? '
+      'WHERE run_id = ? AND state = ? RETURNING run_id',
+      [
+        state,
+        completedAt.toUtc().millisecondsSinceEpoch,
+        checkpointId,
+        retentionCutoff?.toUtc().millisecondsSinceEpoch,
+        activeDeviceCount,
+        unackedDeviceCount,
+        candidateCount,
+        eligibleCandidateCount,
+        deletedObjectCount,
+        retentionManifestComplete == null
+            ? null
+            : (retentionManifestComplete ? 1 : 0),
+        planId,
+        skipReason,
+        runId,
+        'running',
+      ],
+    );
+    if (updated.isEmpty) {
+      throw StateError('Garbage collection run is not active.');
+    }
+  }
+
+  Future<GarbageCollectionDiagnostics?>
+  latestGarbageCollectionDiagnostics() async {
+    final rows = _database.select(
+      'SELECT run_id, profile_id, vault_id, state, started_at, completed_at, '
+      'checkpoint_id, retention_cutoff, active_device_count, '
+      'unacked_device_count, candidate_count, eligible_candidate_count, '
+      'deleted_object_count, retention_manifest_complete, plan_id, skip_reason '
+      'FROM garbage_collection_runs ORDER BY started_at DESC LIMIT 1',
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    return GarbageCollectionDiagnostics(
+      runId: row['run_id']! as String,
+      profileId: row['profile_id']! as String,
+      vaultId: row['vault_id']! as String,
+      state: row['state']! as String,
+      startedAt: DateTime.fromMillisecondsSinceEpoch(
+        row['started_at']! as int,
+        isUtc: true,
+      ),
+      completedAt: _dateFromMillis(row['completed_at'] as int?),
+      checkpointId: row['checkpoint_id'] as String?,
+      retentionCutoff: _dateFromMillis(row['retention_cutoff'] as int?),
+      activeDeviceCount: row['active_device_count']! as int,
+      unackedDeviceCount: row['unacked_device_count']! as int,
+      candidateCount: row['candidate_count']! as int,
+      eligibleCandidateCount: row['eligible_candidate_count']! as int,
+      deletedObjectCount: row['deleted_object_count']! as int,
+      retentionManifestComplete:
+          (row['retention_manifest_complete'] as int?) == 1,
+      planId: row['plan_id'] as String?,
+      skipReason: row['skip_reason'] as String?,
+    );
   }
 
   Future<SyncRunRecord?> latestSyncRun(String profileId) async {
@@ -1688,6 +1793,16 @@ class SyncStateDatabase {
         );
         _database.execute('PRAGMA user_version = 9');
       }
+      if (version < 10) {
+        for (final statement in _v10Schema) {
+          _database.execute(statement);
+        }
+        _database.execute(
+          'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+          [10, DateTime.now().toUtc().millisecondsSinceEpoch],
+        );
+        _database.execute('PRAGMA user_version = 10');
+      }
       _database.execute('COMMIT');
     } on Object {
       _database.execute('ROLLBACK');
@@ -1753,6 +1868,18 @@ const _v9Schema = <String>[
   'CREATE TABLE IF NOT EXISTS conflict_resolution_intents (conflict_id TEXT PRIMARY KEY, strategy TEXT NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, lease_owner TEXT, lease_expires_at INTEGER, error_code TEXT, receipt_artifact TEXT)',
 ];
 
+const _v10Schema = <String>[
+  'CREATE TABLE IF NOT EXISTS garbage_collection_runs ('
+      'run_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, vault_id TEXT NOT NULL, '
+      'state TEXT NOT NULL, started_at INTEGER NOT NULL, completed_at INTEGER, '
+      'checkpoint_id TEXT, retention_cutoff INTEGER, active_device_count INTEGER NOT NULL DEFAULT 0, '
+      'unacked_device_count INTEGER NOT NULL DEFAULT 0, candidate_count INTEGER NOT NULL DEFAULT 0, '
+      'eligible_candidate_count INTEGER NOT NULL DEFAULT 0, deleted_object_count INTEGER NOT NULL DEFAULT 0, '
+      'retention_manifest_complete INTEGER, plan_id TEXT, skip_reason TEXT)',
+  'CREATE INDEX IF NOT EXISTS idx_gc_runs_profile_started '
+      'ON garbage_collection_runs(profile_id, started_at DESC)',
+];
+
 class OutgoingBatchReservation {
   const OutgoingBatchReservation({
     required this.sequence,
@@ -1801,6 +1928,44 @@ class SyncRunRecord {
   final Duration? retryAfter;
   final String? suggestedAction;
   final int? providerStatusCode;
+}
+
+class GarbageCollectionDiagnostics {
+  const GarbageCollectionDiagnostics({
+    required this.runId,
+    required this.profileId,
+    required this.vaultId,
+    required this.state,
+    required this.startedAt,
+    required this.completedAt,
+    required this.checkpointId,
+    required this.retentionCutoff,
+    required this.activeDeviceCount,
+    required this.unackedDeviceCount,
+    required this.candidateCount,
+    required this.eligibleCandidateCount,
+    required this.deletedObjectCount,
+    required this.retentionManifestComplete,
+    required this.planId,
+    required this.skipReason,
+  });
+
+  final String runId;
+  final String profileId;
+  final String vaultId;
+  final String state;
+  final DateTime startedAt;
+  final DateTime? completedAt;
+  final String? checkpointId;
+  final DateTime? retentionCutoff;
+  final int activeDeviceCount;
+  final int unackedDeviceCount;
+  final int candidateCount;
+  final int eligibleCandidateCount;
+  final int deletedObjectCount;
+  final bool? retentionManifestComplete;
+  final String? planId;
+  final String? skipReason;
 }
 
 class SyncProfileActivitySummary {

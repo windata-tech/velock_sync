@@ -1,3 +1,4 @@
+import 'package:crypto/crypto.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
 import 'package:velock_sync/sync_core/engine/logical_keys.dart';
@@ -38,6 +39,13 @@ class CheckpointPublishResult {
   final int uploadedPartCount;
   final bool didUploadEnvelope;
   final bool didPublishCommit;
+}
+
+/// Optional dataset capability for producing an opaque, already-signed local
+/// checkpoint. The runner only transports the bytes; the dataset remains the
+/// sole owner of signature, coverage and recovery semantics.
+abstract interface class CheckpointPreparingDatasetAdapter {
+  Future<PreparedCheckpoint?> prepareCheckpoint();
 }
 
 /// Publishes a V1 checkpoint with `checkpoint.commit` as its sole visibility
@@ -103,7 +111,8 @@ class SyncCheckpointPublisher {
   ) async {
     final existing = await remote.stat(logicalKey);
     if (existing != null) {
-      if (existing.size != artifact.length) {
+      if (existing.size != artifact.length ||
+          !await _matchesDigest(remote, logicalKey, artifact)) {
         throw ImmutableRemoteObjectMismatchException(logicalKey);
       }
       return false;
@@ -119,10 +128,21 @@ class SyncCheckpointPublisher {
     } on RemoteObjectAlreadyExistsException {
       final concurrentlyCreated = await remote.stat(logicalKey);
       if (concurrentlyCreated == null ||
-          concurrentlyCreated.size != artifact.length) {
+          concurrentlyCreated.size != artifact.length ||
+          !await _matchesDigest(remote, logicalKey, artifact)) {
         throw ImmutableRemoteObjectMismatchException(logicalKey);
       }
       return false;
     }
+  }
+
+  Future<bool> _matchesDigest(
+    RemoteObjectStore remote,
+    String logicalKey,
+    ImmutableArtifact artifact,
+  ) async {
+    final remoteDigest = await sha256.bind(remote.read(logicalKey)).first;
+    final localDigest = await sha256.bind(await artifact.openRead()).first;
+    return remoteDigest == localDigest;
   }
 }

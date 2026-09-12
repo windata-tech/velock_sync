@@ -92,6 +92,27 @@ void main() {
       },
     );
 
+    test('accepts a signed historical producer allow-list', () async {
+      final unsigned = _unsignedResponse(publicKey, now)
+        ..['trustedProducerIds'] = ['previous-iphone', 'producer-1'];
+      final signature = await Ed25519().sign(
+        _bytes(unsigned),
+        keyPair: signingKey,
+      );
+      final response = VelockPairingControlResponse.parse(
+        _bytes({...unsigned, 'signature': base64UrlEncode(signature.bytes)}),
+      );
+      expect(response.trustedProducerIds, ['previous-iphone', 'producer-1']);
+      expect(
+        await response.verify(
+          descriptor: descriptor,
+          request: request,
+          now: () => now.add(const Duration(minutes: 1)),
+        ),
+        isTrue,
+      );
+    });
+
     test(
       'fails closed for expired response and mismatched challenge',
       () async {

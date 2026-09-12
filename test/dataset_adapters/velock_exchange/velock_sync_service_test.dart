@@ -19,6 +19,7 @@ import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/infrastructure/secure_storage/in_memory_credential_store.dart';
 import 'package:velock_sync/infrastructure/storage/available_space_probe.dart';
 import 'package:velock_sync/infrastructure/storage/staging_disk_preflight.dart';
+import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
 import 'package:velock_sync/sync_core/engine/logical_keys.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
@@ -39,12 +40,27 @@ void main() {
   test(
     'runs active paired profiles through the standard runner using the secure WebDAV credential reference',
     () async {
-      final fixture = await _Fixture.create();
+      final profile = VelockSyncProfile(
+        profileId: 'profile-1',
+        datasetId: 'dataset-1',
+        vaultId: 'vault-1',
+        deviceId: 'consumer-1',
+        displayName: 'Velock vault',
+        connectionId: 'connection-1',
+        pairedProducerId: 'paired-producer',
+        pairedProducerPublicKeyId: 'paired-producer-key',
+        exchangeBindingId: 'exchange-1',
+        trustedProducerIds: const ['paired-producer', 'previous-iphone'],
+        backgroundPolicy: const SyncProfileBackgroundPolicy(),
+        state: SyncProfileState.active,
+        createdAt: DateTime.utc(2026, 7, 17),
+      );
+      final fixture = await _Fixture.create(profile: profile);
       addTearDown(fixture.dispose);
       final remote = InMemoryObjectStore();
       await _publishIncomingFixture(
         remote,
-        producerId: fixture.profile.pairedProducerId,
+        producerId: 'previous-iphone',
         batchId: 'paired-batch',
       );
       final dataset = _RecordingDataset();
@@ -77,7 +93,7 @@ void main() {
       expect(
         await fixture.database.appliedSequence(
           profileId: fixture.profile.profileId,
-          producerDeviceId: fixture.profile.pairedProducerId,
+          producerDeviceId: 'previous-iphone',
         ),
         1,
       );
@@ -89,6 +105,102 @@ void main() {
       );
     },
   );
+
+  test(
+    'does not re-import a remote commit produced by the local paired producer',
+    () async {
+      final fixture = await _Fixture.create();
+      addTearDown(fixture.dispose);
+      final remote = InMemoryObjectStore();
+      await _publishIncomingFixture(
+        remote,
+        producerId: fixture.profile.pairedProducerId,
+        batchId: 'self-uploaded',
+      );
+      final dataset = _RecordingDataset();
+
+      final result = await fixture
+          .service(
+            adapterFactory: _FakeAdapterFactory(dataset),
+            remoteFactory: ({required protocol, required password}) => remote,
+          )
+          .run(fixture.profile.profileId);
+
+      expect(result.download.importedBatchCount, 0);
+      expect(dataset.imported, isEmpty);
+      expect(
+        await fixture.database.appliedSequence(
+          profileId: fixture.profile.profileId,
+          producerDeviceId: fixture.profile.pairedProducerId,
+        ),
+        0,
+      );
+    },
+  );
+
+  test('publishes and refreshes the remote root README on every run', () async {
+    final fixture = await _Fixture.create();
+    addTearDown(fixture.dispose);
+    final remote = InMemoryObjectStore();
+    var now = DateTime.utc(2026, 9, 9, 12);
+    final service = fixture.service(
+      adapterFactory: _FakeAdapterFactory(_RecordingDataset()),
+      remoteFactory: ({required protocol, required password}) => remote,
+      now: () => now,
+    );
+
+    await service.run(fixture.profile.profileId);
+    final first = utf8.decode(
+      await remote.read(LogicalKeys.readme()).expand((chunk) => chunk).toList(),
+    );
+    expect(first, contains('Velock Sync 远程同步目录说明'));
+    expect(first, contains(fixture.profile.vaultId));
+    expect(first, contains('2026-09-09T12:00:00.000Z'));
+
+    now = now.add(const Duration(minutes: 1));
+    await service.run(fixture.profile.profileId);
+    final second = utf8.decode(
+      await remote.read(LogicalKeys.readme()).expand((chunk) => chunk).toList(),
+    );
+    expect(second, contains('2026-09-09T12:01:00.000Z'));
+    expect(second, isNot(first));
+  });
+
+  test('downloads all signed trusted historical producers', () async {
+    final fixture = await _Fixture.create();
+    addTearDown(fixture.dispose);
+    final profile = VelockSyncProfile(
+      profileId: fixture.profile.profileId,
+      datasetId: fixture.profile.datasetId,
+      vaultId: fixture.profile.vaultId,
+      deviceId: fixture.profile.deviceId,
+      displayName: fixture.profile.displayName,
+      connectionId: fixture.profile.connectionId,
+      pairedProducerId: fixture.profile.pairedProducerId,
+      pairedProducerPublicKeyId: fixture.profile.pairedProducerPublicKeyId,
+      exchangeBindingId: fixture.profile.exchangeBindingId,
+      trustedProducerIds: const ['paired-producer', 'previous-iphone'],
+      backgroundPolicy: fixture.profile.backgroundPolicy,
+      state: fixture.profile.state,
+      createdAt: fixture.profile.createdAt,
+    );
+    await fixture.profiles.save(profile.toEnvelope());
+    final remote = InMemoryObjectStore();
+    await _publishIncomingFixture(
+      remote,
+      producerId: 'previous-iphone',
+      batchId: 'historical-batch',
+    );
+    final dataset = _RecordingDataset();
+    final result = await fixture
+        .service(
+          adapterFactory: _FakeAdapterFactory(dataset),
+          remoteFactory: ({required protocol, required password}) => remote,
+        )
+        .run(profile.profileId);
+    expect(result.download.importedBatchCount, 1);
+    expect(dataset.imported.single.sourceDeviceId, 'previous-iphone');
+  });
 
   for (final provider in [
     RemoteProviderType.googleDrive,
@@ -263,6 +375,35 @@ void main() {
   );
 
   test(
+    'records a failed run when the remote is unreachable before the runner starts',
+    () async {
+      final fixture = await _Fixture.create();
+      addTearDown(fixture.dispose);
+      final remote = _OfflineRemoteStore();
+
+      await expectLater(
+        fixture
+            .service(
+              adapterFactory: _FakeAdapterFactory(_RecordingDataset()),
+              remoteFactory: ({required protocol, required password}) => remote,
+            )
+            .run(fixture.profile.profileId),
+        throwsA(isA<SocketException>()),
+      );
+
+      final run = await fixture.database.latestSyncRun(
+        fixture.profile.profileId,
+      );
+      expect(
+        run,
+        isNotNull,
+        reason: 'an unreachable remote must still appear in the run history',
+      );
+      expect(run!.state, 'failed');
+    },
+  );
+
+  test(
     'marks the profile accessRequired when Velock revokes authorization',
     () async {
       final fixture = await _Fixture.create();
@@ -387,6 +528,7 @@ class _Fixture {
     VelockOAuthRemoteFactory? oauthRemoteFactory,
     AvailableSpaceProbe? availableSpace,
     int minimumFreeStagingBytes = 64 * 1024 * 1024,
+    DateTime Function()? now,
   }) => VelockSyncService(
     database: database,
     profiles: profiles,
@@ -397,6 +539,7 @@ class _Fixture {
     oauthRemoteFactory: oauthRemoteFactory,
     availableSpace: availableSpace,
     minimumFreeStagingBytes: minimumFreeStagingBytes,
+    now: now,
   );
 
   Future<void> dispose() async {
@@ -568,4 +711,47 @@ Future<void> _publishIncomingFixture(
     envelope,
   );
   await put(LogicalKeys.commit(vaultId, producerId, 1, batchId), commit);
+}
+
+/// Remote store whose first write fails the way an offline WebDAV client does.
+class _OfflineRemoteStore implements RemoteObjectStore {
+  @override
+  RemoteCapabilities get capabilities => RemoteCapabilities.unknown;
+
+  @override
+  Future<RemoteObjectMetadata?> stat(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async => null;
+
+  @override
+  Future<RemoteObjectPage> list({
+    String prefix = '',
+    String? cursor,
+    int limit = 100,
+    RemoteOperationCancellation? cancellation,
+  }) async => const RemoteObjectPage(items: [], nextCursor: null);
+
+  @override
+  Stream<List<int>> read(
+    String logicalKey, {
+    int? start,
+    int? endInclusive,
+    RemoteOperationCancellation? cancellation,
+  }) => Stream<List<int>>.error(const SocketException('offline'));
+
+  @override
+  Future<RemoteObjectMetadata> put(
+    String logicalKey,
+    Stream<List<int>> content, {
+    required int contentLength,
+    bool ifAbsent = false,
+    RemoteOperationCancellation? cancellation,
+  }) async => throw const SocketException('offline');
+
+  @override
+  Future<void> delete(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async => throw const SocketException('offline');
 }

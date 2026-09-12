@@ -85,6 +85,36 @@ void main() {
       },
     );
 
+    test('does not report pending when iOS rejects opening Velock', () async {
+      final failedLaunch = ApplePairingControlChannel(
+        rootLocator: AppleExchangeRootLocator(
+          channel: _RootChannel(root.path),
+          isApplePlatform: () => true,
+        ),
+        launchVelock: (_) async => false,
+        now: () => now,
+      );
+      final request = _request(await channel.pairingDescriptor(), now);
+      await expectLater(
+        failedLaunch.submitPairingRequest(request),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'Velock pairing launch failed.',
+          ),
+        ),
+      );
+      expect(
+        await File('${root.path}/Control/Responses/request-1.json').exists(),
+        isFalse,
+      );
+      expect(
+        await File('${root.path}/Control/Consumed/request-1.json').exists(),
+        isFalse,
+      );
+    });
+
     test(
       'reads a decision and consumes an approved response after ACK',
       () async {

@@ -121,7 +121,10 @@ class NewBaiduToken extends HookConsumerWidget {
                     width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('保存'),
+                : const Text(
+                    '保存',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
           ),
         ],
       ),

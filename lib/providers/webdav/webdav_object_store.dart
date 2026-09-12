@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:dio/dio.dart';
 import 'package:velock_sync/providers/provider_cancellation.dart';
 import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
@@ -186,25 +188,40 @@ class WebDavObjectStore implements RemoteObjectStore {
     if (ifAbsent) {
       headers['If-None-Match'] = '*';
     }
-    final response = await _request(
-      () => _dio.putUri<void>(
-        objectUri,
-        data: content,
-        cancelToken: dioCancelTokenFor(cancellation),
-        options: _options(
-          headers: headers,
-          validateStatus: (status) =>
-              status == 200 ||
-              status == 201 ||
-              status == 204 ||
-              status == 412 ||
-              status == 429,
+    late final Response<void> response;
+    try {
+      response = await _request(
+        () => _dio.putUri<void>(
+          objectUri,
+          data: content,
+          cancelToken: dioCancelTokenFor(cancellation),
+          options: _options(
+            headers: headers,
+            validateStatus: (status) =>
+                status == 200 ||
+                status == 201 ||
+                status == 204 ||
+                status == 412 ||
+                status == 429,
+          ),
         ),
-      ),
-      cancellation: cancellation,
-    );
+        cancellation: cancellation,
+      );
+    } on ProviderRequestException catch (error) {
+      if (kDebugMode) {
+        debugPrint(
+          'WEBDAV_DIAG method=PUT key=$logicalKey status=${error.statusCode}',
+        );
+      }
+      rethrow;
+    }
     if (response.statusCode == 412) {
       throw RemoteObjectAlreadyExistsException(logicalKey);
+    }
+    if (kDebugMode) {
+      debugPrint(
+        'WEBDAV_DIAG method=PUT key=$logicalKey status=${response.statusCode}',
+      );
     }
     return RemoteObjectMetadata(
       logicalKey: logicalKey,
@@ -225,18 +242,36 @@ class WebDavObjectStore implements RemoteObjectStore {
     for (final part in parts.take(parts.length - 1)) {
       cancellation?.throwIfCancelled();
       parentParts.add(part);
-      await _request(
-        () => _dio.requestUri<void>(
-          _objectUri(parentParts.join('/')),
-          cancelToken: dioCancelTokenFor(cancellation),
-          options: _options(
-            method: 'MKCOL',
-            validateStatus: (status) =>
-                status == 201 || status == 405 || status == 429,
+      final parentPath = parentParts.join('/');
+      try {
+        final response = await _request(
+          () => _dio.requestUri<void>(
+            _objectUri(parentPath),
+            cancelToken: dioCancelTokenFor(cancellation),
+            options: _options(
+              method: 'MKCOL',
+              validateStatus: (status) =>
+                  status == 201 ||
+                  status == 405 ||
+                  status == 409 ||
+                  status == 429,
+            ),
           ),
-        ),
-        cancellation: cancellation,
-      );
+          cancellation: cancellation,
+        );
+        if (kDebugMode) {
+          debugPrint(
+            'WEBDAV_DIAG method=MKCOL key=$parentPath status=${response.statusCode}',
+          );
+        }
+      } on ProviderRequestException catch (error) {
+        if (kDebugMode) {
+          debugPrint(
+            'WEBDAV_DIAG method=MKCOL key=$parentPath status=${error.statusCode}',
+          );
+        }
+        rethrow;
+      }
     }
   }
 

@@ -5,6 +5,7 @@ import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
 import 'package:velock_sync/sync_core/engine/logical_keys.dart';
 import 'package:velock_sync/sync_core/engine/sync_checkpoint_publisher.dart';
+import 'package:velock_sync/sync_core/engine/sync_upload_engine.dart';
 import 'package:velock_sync/sync_core/testing/in_memory_object_store.dart';
 
 void main() {
@@ -77,6 +78,26 @@ void main() {
         remote: remote,
       ),
       throwsArgumentError,
+    );
+    expect(remote.puts, isEmpty);
+  });
+
+  test('rejects same-size immutable content with a different digest', () async {
+    final remote = _RecordingStore();
+    await remote.put(
+      LogicalKeys.checkpointPart('vault-1', 'checkpoint-1', 1),
+      Stream.value(<int>[9]),
+      contentLength: 1,
+      ifAbsent: true,
+    );
+    remote.puts.clear();
+
+    await expectLater(
+      const SyncCheckpointPublisher().publish(
+        checkpoint: _checkpoint(),
+        remote: remote,
+      ),
+      throwsA(isA<ImmutableRemoteObjectMismatchException>()),
     );
     expect(remote.puts, isEmpty);
   });

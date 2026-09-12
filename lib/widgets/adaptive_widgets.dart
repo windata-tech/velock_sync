@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 
 import '../appearance/design_tokens.dart';
+import 'app_components.dart';
 import 'common_widgets.dart';
 
 IconData adaptiveIcon(
@@ -22,7 +25,7 @@ class AdaptiveSliverScaffold extends StatelessWidget {
     this.floatingActionButton,
     this.onRefresh,
     this.useLargeTitle = true,
-    this.showTitle = false,
+    this.showTitle = true,
   });
 
   final String title;
@@ -56,10 +59,12 @@ class AdaptiveSliverScaffold extends StatelessWidget {
                       backgroundColor: CupertinoColors.systemGroupedBackground,
                       transitionBetweenRoutes: false,
                     )
-                  : SliverToBoxAdapter(
-                      child: _CompactCupertinoTopBar(
+                  : SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _CompactCupertinoTopBarDelegate(
                         title: showTitle ? title : null,
                         actions: actions,
+                        topPadding: MediaQuery.paddingOf(context).top,
                       ),
                     ),
               if (onRefresh != null)
@@ -109,44 +114,94 @@ class AdaptiveSliverScaffold extends StatelessWidget {
   }
 }
 
-class _CompactCupertinoTopBar extends StatelessWidget {
-  const _CompactCupertinoTopBar({required this.title, required this.actions});
+/// Pinned, translucent top bar used by secondary Cupertino pages.
+///
+/// It stays on screen while the page scrolls so grouped content never slides
+/// under the status bar (the previous implementation scrolled away with the
+/// list, which made scrolled headers collide with the clock).
+class _CompactCupertinoTopBarDelegate extends SliverPersistentHeaderDelegate {
+  _CompactCupertinoTopBarDelegate({
+    required this.title,
+    required this.actions,
+    required this.topPadding,
+  });
 
   final String? title;
   final List<Widget> actions;
+  final double topPadding;
+
+  double get _height => topPadding + 44;
 
   @override
-  Widget build(BuildContext context) {
-    final topPadding = MediaQuery.paddingOf(context).top;
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: CupertinoColors.systemGroupedBackground,
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(top: topPadding, left: 8, right: 8),
-        child: SizedBox(
-          height: 44,
-          child: Row(
-            children: [
-              if (title != null)
-                Expanded(
-                  child: Text(
-                    title!,
-                    style: CupertinoTheme.of(
-                      context,
-                    ).textTheme.navTitleTextStyle,
-                  ),
-                )
-              else
-                const Spacer(),
-              if (actions.isNotEmpty)
-                Row(mainAxisSize: MainAxisSize.min, children: actions),
-            ],
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final showRule = overlapsContent;
+    return SizedBox(
+      height: _height,
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemGroupedBackground
+                  .resolveFrom(context)
+                  .withValues(alpha: overlapsContent ? 0.86 : 1),
+              border: Border(
+                bottom: BorderSide(
+                  color: showRule
+                      ? CupertinoColors.separator.resolveFrom(context)
+                      : CupertinoColors.separator
+                            .resolveFrom(context)
+                            .withValues(alpha: 0),
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.only(top: topPadding, left: 8, right: 8),
+              child: SizedBox(
+                height: 44,
+                child: Row(
+                  children: [
+                    if (title != null)
+                      Expanded(
+                        child: Text(
+                          title!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: CupertinoTheme.of(
+                            context,
+                          ).textTheme.navTitleTextStyle,
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    if (actions.isNotEmpty)
+                      Row(mainAxisSize: MainAxisSize.min, children: actions),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+
+  @override
+  bool shouldRebuild(covariant _CompactCupertinoTopBarDelegate oldDelegate) =>
+      oldDelegate.title != title ||
+      oldDelegate.actions != actions ||
+      oldDelegate.topPadding != topPadding;
 }
 
 class AdaptiveScaffold extends StatelessWidget {
@@ -157,7 +212,7 @@ class AdaptiveScaffold extends StatelessWidget {
     this.actions = const [],
     this.floatingActionButton,
     this.leading,
-    this.showTitle = false,
+    this.showTitle = true,
   });
 
   final String title;
@@ -218,18 +273,15 @@ class AdaptiveListSection extends StatelessWidget {
         children: [
           if (header != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+              padding: const EdgeInsets.only(bottom: AppSpacing.sectionHeaderGap),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
                     child: Text(
                       header!,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      style: AppType.caption.copyWith(
                         color: context.appSecondaryLabel,
-                        fontWeight: FontWeight.w600,
-                        height: 1.2,
-                        letterSpacing: 0.1,
                       ),
                     ),
                   ),
@@ -495,30 +547,53 @@ class AdaptiveIconBadge extends StatelessWidget {
   }
 }
 
+/// Status pill.
+///
+/// Prefer [tone]: the semantic tone is what keeps "已启用" green and
+/// "需处理" orange instead of letting both render in the same warning色.
 class AdaptiveStatusBadge extends StatelessWidget {
   const AdaptiveStatusBadge({
     super.key,
     required this.label,
-    required this.color,
-  });
+    this.tone,
+    this.color,
+    this.icon,
+  }) : assert(tone != null || color != null, 'Provide a tone or a color');
 
   final String label;
-  final Color color;
+  final AppTone? tone;
+  final Color? color;
+  final IconData? icon;
 
   @override
-  Widget build(BuildContext context) => Container(
-    constraints: const BoxConstraints(minHeight: AppSizes.statusBadge),
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final resolved = tone?.color(context) ?? color!;
+    return Container(
+      constraints: const BoxConstraints(minHeight: AppSizes.statusBadge),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: tone?.surface(context) ?? resolved.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: resolved),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: resolved,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Keeps a row's trailing controls on one predictable rhythm.
@@ -669,12 +744,16 @@ class AdaptiveEmptyState extends StatelessWidget {
     required this.title,
     required this.message,
     this.action,
+    this.secondaryAction,
+    this.tone = AppTone.brand,
   });
 
   final IconData icon;
   final String title;
   final String message;
   final Widget? action;
+  final Widget? secondaryAction;
+  final AppTone tone;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -686,14 +765,18 @@ class AdaptiveEmptyState extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 60,
-              height: 60,
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
-                color: context.appPrimary.withValues(alpha: 0.1),
+                color: tone.surface(context),
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(icon, size: 28, color: context.appPrimary),
+              child: Icon(
+                icon,
+                size: 30,
+                color: tone.color(context),
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
@@ -714,9 +797,9 @@ class AdaptiveEmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
             ),
-            if (action != null) ...[
+            if (action != null || secondaryAction != null) ...[
               const SizedBox(height: AppSpacing.md),
-              action!,
+              AppActionStack(primary: action, secondary: secondaryAction),
             ],
           ],
         ),
@@ -725,29 +808,190 @@ class AdaptiveEmptyState extends StatelessWidget {
   );
 }
 
-class AdaptiveErrorState extends StatelessWidget {
+/// Friendly, full-page error presentation.
+///
+/// The primary message stays human-readable; raw exception text is collapsed
+/// behind an optional details panel so a failed request never replaces the
+/// page with a wall of stack-trace text.
+class AdaptiveErrorState extends StatefulWidget {
   const AdaptiveErrorState({
     super.key,
     required this.message,
     required this.onRetry,
+    this.title = '暂时无法加载',
+    this.details,
+    this.retryLabel = '重试',
+    this.secondaryAction,
   });
 
+  final String title;
   final String message;
+  final String? details;
+  final String retryLabel;
   final VoidCallback onRetry;
+  final Widget? secondaryAction;
 
   @override
-  Widget build(BuildContext context) => AdaptiveEmptyState(
-    icon: adaptiveIcon(
-      context,
-      material: Icons.cloud_off_outlined,
-      cupertino: CupertinoIcons.exclamationmark_triangle,
-    ),
-    title: '暂时无法加载',
-    message: message,
-    action: isApplePlatform(context)
-        ? CupertinoButton.filled(onPressed: onRetry, child: const Text('重试'))
-        : FilledButton(onPressed: onRetry, child: const Text('重试')),
-  );
+  State<AdaptiveErrorState> createState() => _AdaptiveErrorStateState();
+}
+
+class _AdaptiveErrorStateState extends State<AdaptiveErrorState> {
+  bool _showDetails = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final errorColor = isApplePlatform(context)
+        ? CupertinoColors.systemRed.resolveFrom(context)
+        : Theme.of(context).colorScheme.error;
+    final titleStyle = isApplePlatform(context)
+        ? CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          )
+        : Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600);
+    final details = widget.details?.trim();
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: errorColor.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  adaptiveIcon(
+                    context,
+                    material: Icons.cloud_off_outlined,
+                    cupertino: CupertinoIcons.exclamationmark_triangle,
+                  ),
+                  size: 30,
+                  color: errorColor,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                widget.title,
+                textAlign: TextAlign.center,
+                style: titleStyle,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                widget.message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: context.appSecondaryLabel,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              // Match the message column width so the buttons line up with the
+              // copy instead of floating as a narrower block inside it.
+              AppActionStack(
+                maxWidth: 420 - AppSpacing.xl * 2,
+                primary: AppPrimaryButton(
+                  label: widget.retryLabel,
+                  onPressed: widget.onRetry,
+                ),
+                secondary: widget.secondaryAction,
+              ),
+              if (details != null && details.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                TextButton.icon(
+                  onPressed: () => setState(() => _showDetails = !_showDetails),
+                  icon: Icon(
+                    _showDetails
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 18,
+                  ),
+                  label: Text(_showDetails ? '收起错误详情' : '查看错误详情'),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  alignment: Alignment.topCenter,
+                  child: _showDetails
+                      ? _ErrorDetailsPanel(details: details)
+                      : const SizedBox(width: double.infinity),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorDetailsPanel extends StatelessWidget {
+  const _ErrorDetailsPanel({required this.details});
+
+  final String details;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: context.appGroupedSurface,
+        borderRadius: BorderRadius.circular(AppRadii.medium),
+        border: Border.all(
+          color: context.appSeparator.withValues(
+            alpha: AppOpacity.groupedBorder,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '技术详情',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: context.appSecondaryLabel,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: details));
+                  if (context.mounted) {
+                    showPlatformMessage(context, '错误详情已复制。');
+                  }
+                },
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('复制'),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xxs),
+          SelectableText(
+            details,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 11.5,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class AdaptiveLoadingState extends StatelessWidget {

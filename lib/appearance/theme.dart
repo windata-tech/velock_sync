@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import 'design_tokens.dart';
@@ -63,6 +64,11 @@ ThemeData _materialTheme(Brightness brightness) {
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
+      // A transparent bar makes Flutter estimate a dark background and pick
+      // white status-bar icons, which then vanish on the light page.
+      systemOverlayStyle: isDark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
       titleTextStyle: base.textTheme.titleLarge?.copyWith(
         color: scheme.onSurface,
         fontWeight: FontWeight.w600,

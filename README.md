@@ -5,7 +5,7 @@
 
 ---
 
-Velock Sync is an open-source, cross-platform, incremental bidirectional sync companion for Velock. It transports data already encrypted and authenticated by Velock to the remote storage you choose, without handling plaintext or Velock keys.
+Velock Sync is an open-source, cross-platform incremental sync app with two jobs: continuous, zero-knowledge remote backup for Velock, and general bidirectional folder sync for data you choose. Velock content is transported only after Velock has encrypted and authenticated it; Sync never handles Velock plaintext or keys.
 
 ## Key Features
 
@@ -14,12 +14,13 @@ Velock Sync is an open-source, cross-platform, incremental bidirectional sync co
 - Multiple cloud targets: WebDAV, Google Drive, and OneDrive are supported; more clouds such as Baidu Netdisk and Aliyun Drive are being added through provider adapters.
 - Multi-device collaboration: version vectors and tombstones ensure concurrent edits are never silently lost; conflicts keep both versions and let you choose.
 - Background sync: manual, foreground, and network-recovery triggers, plus Android WorkManager / iOS BGTask scheduling.
+- General folder sync: choose a local folder and a WebDAV, Google Drive, or OneDrive target, then keep devices synchronized with conflict-safe bidirectional updates.
 - Cross-platform: mobile-first (iOS/iPadOS, Android), with desktop support being gradually improved.
 
 ## Platforms
 
-- Velock managed data V1: iOS/iPadOS, exchanging data with Velock through a dedicated App Group.
-- iOS/iPadOS.
+- Velock backup: iOS/iPadOS, exchanging data with Velock through a dedicated App Group.
+- Selected folder sync: iOS/iPadOS and Android; desktop adapters are retained for development and testing.
 - Desktop: planned.
 
 ## Open Source & Commercial Statement

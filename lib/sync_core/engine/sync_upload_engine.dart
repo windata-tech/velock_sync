@@ -158,6 +158,17 @@ class SyncUploadEngine {
         ),
         artifact: batch.envelope,
       );
+      final retentionManifest = batch.retentionManifest;
+      if (retentionManifest != null) {
+        await _putImmutable(
+          profileId: profileId,
+          remote: remote,
+          logicalKey:
+              batch.retentionManifestKey ??
+              LogicalKeys.retentionManifest(batch.vaultId, batch.batchId),
+          artifact: retentionManifest,
+        );
+      }
       // This final write is the sole visibility transition for a batch.
       await _putImmutable(
         profileId: profileId,

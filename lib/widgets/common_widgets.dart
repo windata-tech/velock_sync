@@ -26,7 +26,7 @@ class WDAppBar extends PlatformAppBar {
     Widget? title,
     super.trailingActions,
     super.leading,
-    bool showTitle = false,
+    bool showTitle = true,
   }) : super(
          title: showTitle ? title : null,
          material: (_, _) => MaterialAppBarData(

@@ -132,6 +132,7 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
       pairedProducerId: approval.producerId,
       pairedProducerPublicKeyId: approval.producerPublicKeyId,
       exchangeBindingId: approval.exchangeBindingId,
+      trustedProducerIds: approval.trustedProducerIds ?? [approval.producerId],
       backgroundPolicy: backgroundPolicy,
       state: SyncProfileState.active,
       createdAt: _now().toUtc(),

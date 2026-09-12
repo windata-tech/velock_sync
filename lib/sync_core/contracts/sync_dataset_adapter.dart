@@ -1,5 +1,7 @@
+import 'package:cryptography/cryptography.dart';
 import 'dart:typed_data';
 
+import 'package:velock_sync/sync_core/engine/sync_garbage_collector.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 
 typedef ArtifactStreamOpener = Future<Stream<List<int>>> Function();
@@ -60,6 +62,8 @@ class PreparedOutgoingBatch {
     required this.operations,
     required this.commit,
     required this.blobs,
+    this.retentionManifest,
+    this.retentionManifestKey,
   });
 
   final String vaultId;
@@ -70,6 +74,8 @@ class PreparedOutgoingBatch {
   final ImmutableArtifact operations;
   final ImmutableArtifact commit;
   final List<PreparedBlob> blobs;
+  final ImmutableArtifact? retentionManifest;
+  final String? retentionManifestKey;
 }
 
 /// An integrity-checked batch that is ready for a dataset to authenticate,
@@ -141,6 +147,17 @@ class IncomingBatchReference {
   final String sourceDeviceId;
   final int sequence;
   final String batchId;
+}
+
+/// Optional capability for datasets that can provide authenticated GC
+/// candidates. Sync Core never derives deletion eligibility from remote listing
+/// data alone.
+abstract interface class GarbageCollectionCandidateProvider {
+  Future<List<GarbageCollectionCandidate>> garbageCollectionCandidates({
+    required String vaultId,
+    required GarbageCollectionEvidence evidence,
+    required Map<String, PublicKey> trustedDeviceKeys,
+  });
 }
 
 /// A checkpoint is an opaque, trusted-owner-validated snapshot. The sync core
@@ -253,3 +270,9 @@ abstract interface class SyncDatasetAdapter {
   /// validation inside the trusted Velock application.
   Future<ImportResult> acceptIncomingBatch(IncomingBatch batch);
 }
+
+/// Opt-in for a trusted owner that durably queues consecutive batches and
+/// validates/applies them in order after unlocking. Delivery is NOT application:
+/// the core must keep its applied cursor and ACKs behind the confirmed prefix.
+abstract interface class OrderedDeferredIncomingBatchAdapter
+    implements DeferredIncomingBatchAdapter {}

@@ -25,6 +25,7 @@ void main() {
             _candidate('eligible'),
             _candidate('missing-ack', sequence: 8),
             _candidate('referenced', isReferencedByActiveRevision: true),
+            _candidate('retention-hold', isReferencedByRetentionHold: true),
             _candidate('recent', tombstoneAt: DateTime.utc(2026, 7, 14)),
           ],
         );
@@ -66,6 +67,28 @@ void main() {
       },
     );
 
+    test('does not require a producer to ACK its own batch', () {
+      final collector = SyncGarbageCollector(
+        uuid: _FixedUuid(),
+        now: () => DateTime.utc(2026, 7, 15),
+      );
+      final plan = collector.plan(
+        vaultId: 'vault-1',
+        evidence: GarbageCollectionEvidence(
+          checkpointId: 'checkpoint-1',
+          checkpointCoveredSequences: {'producer-1': 7},
+          activeDeviceIds: {'producer-1'},
+          acknowledgedSequences: {'producer-1': <String, int>{}},
+          tombstoneRetentionCutoff: DateTime.utc(2026, 7, 1),
+        ),
+        candidates: [_candidate('producer-owned')],
+      );
+
+      expect(plan.candidates.map((candidate) => candidate.candidateId), [
+        'producer-owned',
+      ]);
+    });
+
     test('publishes the manifest before explicit deletion', () async {
       final remote = _RecordingStore();
       final collector = SyncGarbageCollector(
@@ -106,6 +129,7 @@ GarbageCollectionCandidate _candidate(
   String id, {
   int sequence = 7,
   bool isReferencedByActiveRevision = false,
+  bool isReferencedByRetentionHold = false,
   DateTime? tombstoneAt,
 }) => GarbageCollectionCandidate(
   candidateId: id,
@@ -116,6 +140,7 @@ GarbageCollectionCandidate _candidate(
   sequence: sequence,
   tombstoneAt: tombstoneAt ?? DateTime.utc(2026, 6, 1),
   isReferencedByActiveRevision: isReferencedByActiveRevision,
+  isReferencedByRetentionHold: isReferencedByRetentionHold,
   isReferencedByCheckpoint: false,
 );
 

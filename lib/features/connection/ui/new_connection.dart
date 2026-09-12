@@ -47,25 +47,29 @@ class NewConnection extends ConsumerWidget {
               AppSpacing.sm,
             ),
             child: Text(
-              '先选择本地目标，再连接一个远端空间。凭据会保存在系统安全存储中。',
-              style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
+              '本地数据始终留在设备上，只有加密后的同步对象会写入远端空间。',
+              style: AppType.footnote.copyWith(
+                color: context.appSecondaryLabel,
+              ),
             ),
           ),
           AdaptiveListSection(
-            header: '本地目标',
+            header: '本地数据',
+            footer: const Text('Velock Sync 不读取格间明文，也不保存格间密钥。'),
             children: [
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.folder_rounded,
-                    cupertino: CupertinoIcons.folder_fill,
-                  ),
-                  color: context.appPrimary,
+                  icon: CupertinoIcons.folder_fill,
+                  color: AppTone.brand.color(context),
                 ),
-                title: Text(connectionData.source ?? '选择源'),
-                subtitle: const Text('当前设备上的格间数据'),
-                additionalInfo: const Icon(Icons.check_rounded),
+                title: Text(
+                  connectionData.source ?? '格间',
+                  style: AppType.rowTitleStrong,
+                ),
+                subtitle: const Text(
+                  '当前设备上的格间数据',
+                  maxLines: 2,
+                ),
               ),
             ],
           ),
@@ -74,14 +78,17 @@ class NewConnection extends ConsumerWidget {
             children: [
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.add_link_rounded,
-                    cupertino: CupertinoIcons.link,
-                  ),
+                  icon: CupertinoIcons.link,
+                  color: AppTone.brand.color(context),
                 ),
-                title: Text(connectionData.target ?? '选择协议'),
-                subtitle: const Text('WebDAV、Google Drive 或 OneDrive'),
+                title: Text(
+                  connectionData.target ?? '选择远端协议',
+                  style: AppType.rowTitleStrong,
+                ),
+                subtitle: const Text(
+                  'WebDAV、Google Drive 或 OneDrive',
+                  maxLines: 2,
+                ),
                 showChevron: true,
                 onTap: () => context.pushNamed(AppRoutes.protocols.name),
               ),

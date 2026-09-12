@@ -48,9 +48,15 @@ class DownloadLimits {
 }
 
 class DownloadRunResult {
-  const DownloadRunResult(this.importedBatchCount);
+  const DownloadRunResult(
+    this.importedBatchCount, {
+    this.pendingBatchCount = 0,
+  });
 
   final int importedBatchCount;
+
+  /// Durably delivered but not yet confirmed by the trusted owner.
+  final int pendingBatchCount;
 }
 
 /// Provider-neutral V1 download half of the sync state machine.
@@ -94,6 +100,9 @@ class SyncDownloadEngine {
 
     try {
       var imported = 0;
+      var visited = 0;
+      var pending = 0;
+      final canQueue = dataset is OrderedDeferredIncomingBatchAdapter;
       final producers =
           trustedProducerDeviceIds
               .where((id) => id != consumerDeviceId)
@@ -108,7 +117,8 @@ class SyncDownloadEngine {
             ) +
             1;
         final commits = await _listCommits(remote, vaultId, producer);
-        while (imported < maxBatches) {
+        var awaitingReceipt = false;
+        while (visited < maxBatches) {
           final batchId = commits[expected];
           if (batchId == null) break; // Preserve same-device ordering on a gap.
           final applied = await _importOne(
@@ -121,14 +131,21 @@ class SyncDownloadEngine {
             dataset: dataset,
             remote: remote,
             limits: limits,
+            allowReconciliation: !awaitingReceipt,
           );
-          if (!applied) break;
-          imported++;
+          visited++;
+          if (applied) {
+            imported++;
+          } else {
+            pending++;
+            if (!canQueue) break;
+            awaitingReceipt = true;
+          }
           expected++;
         }
-        if (imported >= maxBatches) break;
+        if (visited >= maxBatches) break;
       }
-      return DownloadRunResult(imported);
+      return DownloadRunResult(imported, pendingBatchCount: pending);
     } finally {
       await _database.releaseProfileLock(profileId: profileId, owner: owner);
     }
@@ -172,6 +189,7 @@ class SyncDownloadEngine {
     required SyncDatasetAdapter dataset,
     required RemoteObjectStore remote,
     required DownloadLimits limits,
+    bool allowReconciliation = true,
   }) async {
     final reference = IncomingBatchReference(
       vaultId: vaultId,
@@ -180,7 +198,9 @@ class SyncDownloadEngine {
       batchId: batchId,
     );
     if (dataset case final DeferredIncomingBatchAdapter deferred) {
-      final reconciled = await deferred.reconcileIncomingBatch(reference);
+      final reconciled = allowReconciliation
+          ? await deferred.reconcileIncomingBatch(reference)
+          : null;
       if (reconciled != null) {
         if (!reconciled.isApplied) {
           throw StateError('Deferred import reconciliation must be applied.');
@@ -349,6 +369,11 @@ class SyncDownloadEngine {
         state: 'delivered',
       );
       return false;
+    }
+    if (!allowReconciliation) {
+      throw StateError(
+        'Queued delivery cannot advance beyond an unconfirmed batch.',
+      );
     }
     await _completeImport(
       result: result,

@@ -22,7 +22,7 @@ void main() {
       await tester.pump();
 
       expect(tester.takeException(), isNull);
-      expect(find.text('选择协议'), findsOneWidget);
+      expect(find.text('选择远端协议'), findsOneWidget);
     },
   );
 
@@ -55,15 +55,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('选择协议'));
+    await tester.tap(find.text('选择远端协议'));
     await tester.pumpAndSettle();
     expect(find.text('协议选择页'), findsOneWidget);
 
     router.pop();
     await tester.pumpAndSettle();
-    expect(find.text('选择协议'), findsOneWidget);
+    expect(find.text('选择远端协议'), findsOneWidget);
 
-    await tester.tap(find.text('选择协议'));
+    await tester.tap(find.text('选择远端协议'));
     await tester.pumpAndSettle();
     expect(find.text('协议选择页'), findsOneWidget);
     expect(tester.takeException(), isNull);

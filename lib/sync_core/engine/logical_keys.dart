@@ -1,12 +1,23 @@
 /// Generates and validates provider-neutral keys defined by Sync Protocol V1.
 abstract final class LogicalKeys {
-  static const _root = 'velock-sync/v1';
+  static const _syncRoot = 'velock-sync';
+  static const _root = '$_syncRoot/v1';
+
+  static String readme() => '$_syncRoot/README.md';
 
   static String protocol(String vaultId) =>
       '$_root/${_id(vaultId, 'vaultId')}/protocol.json';
 
   static String member(String vaultId, String deviceId) =>
       '$_root/${_id(vaultId, 'vaultId')}/members/${_id(deviceId, 'deviceId')}.member';
+
+  /// Signed notice published by a device that recovered this vault.
+  static String joinRequest(String vaultId, String deviceId) =>
+      '$_root/${_id(vaultId, 'vaultId')}/join-requests/${_id(deviceId, 'deviceId')}.json';
+
+  /// Signed approval that lets peers trust a newly joined producer.
+  static String joinApproval(String vaultId, String deviceId) =>
+      '$_root/${_id(vaultId, 'vaultId')}/join-approvals/${_id(deviceId, 'deviceId')}.json';
 
   static String blob(String vaultId, String blobId) {
     final id = _id(blobId, 'blobId');
@@ -71,6 +82,12 @@ abstract final class LogicalKeys {
 
   static String vaultPrefix(String vaultId) =>
       '$_root/${_id(vaultId, 'vaultId')}/';
+
+  static String retentionManifest(String vaultId, String trashBatchId) =>
+      '${vaultPrefix(vaultId)}retention/${_id(trashBatchId, 'trashBatchId')}.json';
+
+  static String retentionPrefix(String vaultId) =>
+      '${vaultPrefix(vaultId)}retention/';
 
   static String garbageCollectionManifest(String vaultId, String planId) =>
       '${vaultPrefix(vaultId)}gc/${_id(planId, 'planId')}.manifest.json';

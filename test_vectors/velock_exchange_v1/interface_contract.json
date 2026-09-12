@@ -9,7 +9,11 @@
     "batchKind": "incremental"
   },
   "artifacts": {
-    "required": ["envelope.json", "operations.enc", "READY"],
+    "required": [
+      "envelope.json",
+      "operations.enc",
+      "READY"
+    ],
     "blobPattern": "blobs/<blobId>.blob",
     "ackPattern": "ack/<deviceId>.ack",
     "maxEnvelopeBytes": 4194304,
@@ -42,7 +46,9 @@
       "cipherSize",
       "compression",
       "logicalName",
-      "operationCount"
+      "operationCount",
+      "deleteCount",
+      "upsertCount"
     ],
     "blobFields": [
       "blobId",
@@ -54,7 +60,11 @@
     ]
   },
   "identity": {
-    "producerFields": ["sourceDeviceId", "keyId", "signature"],
+    "producerFields": [
+      "sourceDeviceId",
+      "keyId",
+      "signature"
+    ],
     "trustedPublicKeyReference": "paired-member/sourceDeviceId",
     "syncMayDecryptPayload": false,
     "syncMaySignVelockAck": false
@@ -96,23 +106,36 @@
       "requestId",
       "signature",
       "vaultDisplayName",
-      "vaultId"
+      "vaultId",
+      "trustedProducerIds"
     ],
     "responseSignaturePayload": "UTF-8 JSON with responseFields except signature, keys in lexicographic order, no whitespace",
     "signatureAlgorithm": "Ed25519",
     "requestTtlSeconds": 300,
-    "statusValues": ["pending", "approved", "denied", "expired", "revoked"],
+    "statusValues": [
+      "pending",
+      "approved",
+      "denied",
+      "expired",
+      "revoked"
+    ],
     "userAuthorization": "required-in-unlocked-velock-app",
     "producerKeyOwnership": "existing-velock-device-key-only",
     "syncMayCreateProducerIdentityOrKey": false,
     "remoteMembersAutoTrusted": false,
     "replayBehavior": "requestId-and-challenge-single-use",
     "revocationDirectory": "Control/Revocations",
-    "revocationFields": ["deviceId", "revokedAt", "signatureAlgorithm", "signature"],
+    "revocationFields": [
+      "deviceId",
+      "revokedAt",
+      "signatureAlgorithm",
+      "signature"
+    ],
     "revocationSignaturePayload": "UTF-8 JSON with deviceId and revokedAt, keys in lexicographic order, no whitespace",
     "revocationCheck": "sync-verifies-signed-marker-with-published-descriptor-key-before-running",
     "userRevocation": "required-in-unlocked-velock-app",
-    "revocationPersistence": "marker-published-before-local-member-revoked"
+    "revocationPersistence": "marker-published-before-local-member-revoked",
+    "trustedProducerIds": "optional signed array of active Velock producer device IDs; legacy responses omit it and imply producerId only"
   },
   "sequence": {
     "firstSequence": 1,
@@ -124,8 +147,22 @@
     "forkBehavior": "reject"
   },
   "states": {
-    "outbox": ["Building", "Ready", "Claimed", "Published", "Receipt", "Cleaned", "Quarantine"],
-    "inbox": ["Staging", "Ready", "Imported", "Receipt", "Quarantine"],
+    "outbox": [
+      "Building",
+      "Ready",
+      "Claimed",
+      "Published",
+      "Receipt",
+      "Cleaned",
+      "Quarantine"
+    ],
+    "inbox": [
+      "Staging",
+      "Ready",
+      "Imported",
+      "Receipt",
+      "Quarantine"
+    ],
     "directories": [
       "Outbox/Ready",
       "Outbox/Claimed",
@@ -137,7 +174,12 @@
     ]
   },
   "readyMarker": {
-    "requiredFields": ["batchId", "envelopeSha256", "exchangeVersion", "publishedAt"],
+    "requiredFields": [
+      "batchId",
+      "envelopeSha256",
+      "exchangeVersion",
+      "publishedAt"
+    ],
     "publishedAt": "UTC ISO-8601",
     "publishedLast": true
   },

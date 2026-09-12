@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:velock_sync/core/local_data_manager.dart';
+import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_service.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_dataset_adapter_factory.dart';
@@ -12,6 +14,8 @@ import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_service
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
+import 'package:velock_sync/infrastructure/secure_storage/device_signing_key_store.dart';
+import 'package:velock_sync/infrastructure/secure_storage/vault_key_store.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
 import 'package:velock_sync/sync_core/engine/sync_download_engine.dart';
 import 'package:velock_sync/sync_profiles/execution/sync_profile_dispatcher.dart';
@@ -323,6 +327,17 @@ Future<bool> runEnabledBackgroundProfiles({
       database,
     );
     final profiles = SyncProfileRepository(database);
+    final selectedFolderProfiles = SelectedFolderSyncProfileRepository(
+      database,
+    );
+    final selectedFolderService = SelectedFolderSyncService(
+      database: database,
+      profiles: selectedFolderProfiles,
+      connections: connections,
+      vaultKeys: SecureVaultKeyStore(),
+      signingKeys: SecureDeviceSigningKeyStore(),
+      stagingRoot: Directory('${supportDirectory.path}/staging'),
+    );
     final velockService = VelockSyncService(
       database: database,
       profiles: profiles,
@@ -337,6 +352,7 @@ Future<bool> runEnabledBackgroundProfiles({
       profiles: profiles,
       dispatcher: SyncProfileDispatcherFactory.create(
         profiles: profiles,
+        selectedFolderService: selectedFolderService,
         velockService: velockService,
       ),
       networkPolicy: networkPolicy ?? ConnectivityBackgroundNetworkPolicy(),

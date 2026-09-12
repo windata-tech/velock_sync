@@ -9,6 +9,7 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
+import 'package:velock_sync/widgets/app_components.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 class Connections extends HookConsumerWidget {
@@ -48,7 +49,6 @@ class Connections extends HookConsumerWidget {
 
     return AdaptiveSliverScaffold(
       title: '连接',
-      showTitle: false,
       actions: [
         if (isApplePlatform(context))
           AdaptiveIconButton(
@@ -128,16 +128,10 @@ class Connections extends HookConsumerWidget {
             ),
             title: '还没有远端连接',
             message: '添加 WebDAV、Google Drive 或 OneDrive，作为加密同步的远端空间。',
-            action: isApplePlatform(context)
-                ? CupertinoButton.filled(
-                    onPressed: onCreate,
-                    child: const Text('添加远端连接'),
-                  )
-                : FilledButton.icon(
-                    onPressed: onCreate,
-                    icon: const Icon(Icons.add_link_rounded),
-                    label: const Text('添加远端连接'),
-                  ),
+            action: AppPrimaryButton(
+              label: '添加远端连接',
+              onPressed: onCreate,
+            ),
           ),
         ),
       ];
@@ -201,8 +195,9 @@ class _ConnectionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isOAuth = connection.protocol is OAuthProtocolModel;
-    final statusColor = _connectionStatusColor(context, connection.status);
+    final tone = _connectionStatusTone(connection.status);
     final statusLabel = _connectionStatusLabel(connection.status);
+    final target = connection.target.trim();
     return AdaptiveListTile(
       leading: AdaptiveIconBadge(
         icon: adaptiveIcon(
@@ -212,14 +207,24 @@ class _ConnectionTile extends StatelessWidget {
               ? CupertinoIcons.cloud
               : CupertinoIcons.rectangle_stack,
         ),
-        color: statusColor,
+        color: tone.color(context),
       ),
-      title: Text(connection.name),
-      subtitle: Text(connection.target),
+      title: Text(
+        connection.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppType.rowTitleStrong,
+      ),
+      subtitle: Text(
+        '${_connectionProtocolLabel(connection)}'
+        '${target.isEmpty ? '' : ' · $target'}',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
       onTap: onOpen,
       trailing: AdaptiveTrailingGroup(
         children: [
-          AdaptiveStatusBadge(label: statusLabel, color: statusColor),
+          AdaptiveStatusBadge(label: statusLabel, tone: tone),
           AdaptiveActionMenu<_ConnectionAction>(
             items: const [
               AdaptiveActionItem(
@@ -239,15 +244,26 @@ class _ConnectionTile extends StatelessWidget {
 
 String _connectionStatusLabel(ConnectionStatus status) => switch (status) {
   ConnectionStatus.pending => '检查中',
-  ConnectionStatus.active => '可用',
+  ConnectionStatus.active => '已连接',
   ConnectionStatus.inactive => '未连接',
-  ConnectionStatus.failed => '异常',
+  ConnectionStatus.failed => '连接失败',
 };
 
-Color _connectionStatusColor(BuildContext context, ConnectionStatus status) =>
-    switch (status) {
-      ConnectionStatus.pending => context.appPrimary,
-      ConnectionStatus.active => AppColors.success,
-      ConnectionStatus.inactive => context.appSecondaryLabel,
-      ConnectionStatus.failed => Theme.of(context).colorScheme.error,
-    };
+AppTone _connectionStatusTone(ConnectionStatus status) => switch (status) {
+  ConnectionStatus.pending => AppTone.brand,
+  ConnectionStatus.active => AppTone.ok,
+  ConnectionStatus.inactive => AppTone.neutral,
+  ConnectionStatus.failed => AppTone.danger,
+};
+
+String _connectionProtocolLabel(ConnectionModel connection) {
+  final protocol = connection.protocol;
+  if (protocol is OAuthProtocolModel) {
+    final name = protocol.providerType.name;
+    if (name.toLowerCase().contains('google')) return 'Google Drive';
+    if (name.toLowerCase().contains('one')) return 'OneDrive';
+    return 'OAuth';
+  }
+  if (protocol is WebDavProtocolModel) return 'WebDAV';
+  return '远端服务';
+}

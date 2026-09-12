@@ -223,6 +223,12 @@ class VelockExchangeStore {
     await _writeAtomic(File('${_inboxReceipts.path}/$batchId.json'), receipt);
   }
 
+  Future<Uint8List?> readGcCandidateManifest() async {
+    final file = File('${root.path}/gc-candidates.json');
+    if (!await file.exists()) return null;
+    return Uint8List.fromList(await file.readAsBytes());
+  }
+
   Future<Uint8List?> readInboxReceipt(String batchId) async {
     _id(batchId, 'batchId');
     final receipt = File('${_inboxReceipts.path}/$batchId.json');

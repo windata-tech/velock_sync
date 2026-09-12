@@ -113,6 +113,25 @@ class AndroidVelockExchangeDatasetAdapter
         'Android exchange operations integrity is invalid.',
       );
     }
+    ImmutableArtifact? retentionManifest;
+    try {
+      final retention = await _exchange.stageOutboxArtifact(
+        batchId: batchId,
+        relativePath: 'retention.json',
+      );
+      final retentionBytes = Uint8List.fromList(
+        await File(retention.path).readAsBytes(),
+      );
+      if (marker['retentionSha256'] !=
+          sha256.convert(retentionBytes).toString()) {
+        throw const FormatException(
+          'Android exchange retention manifest is invalid.',
+        );
+      }
+      retentionManifest = ImmutableArtifact.fromBytes(retentionBytes);
+    } on Object {
+      retentionManifest = null;
+    }
     final blobs = <PreparedBlob>[];
     for (final blob in identity.blobs) {
       final artifact = await _exchange.stageOutboxArtifact(
@@ -140,6 +159,10 @@ class AndroidVelockExchangeDatasetAdapter
         Uint8List.fromList(utf8.encode(_commit(identity, envelopeBytes))),
       ),
       blobs: blobs,
+      retentionManifest: retentionManifest,
+      retentionManifestKey: retentionManifest == null
+          ? null
+          : LogicalKeys.retentionManifest(vaultId, identity.batchId),
     );
   }
 

@@ -7,7 +7,6 @@ import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
-import 'package:velock_sync/widgets/icon_widgets.dart';
 
 class Protocols extends HookConsumerWidget {
   const Protocols({super.key});
@@ -38,8 +37,10 @@ class Protocols extends HookConsumerWidget {
               AppSpacing.sm,
             ),
             child: Text(
-              '选择一个远端空间保存加密同步数据。',
-              style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
+              '同步数据会以加密对象写入远端空间，远端服务无法读取内容。',
+              style: AppType.footnote.copyWith(
+                color: context.appSecondaryLabel,
+              ),
             ),
           ),
           AdaptiveListSection(
@@ -49,22 +50,28 @@ class Protocols extends HookConsumerWidget {
             ),
             children: [
               AdaptiveListTile(
-                leading: const ProtocolIcon(protocolName: 'DAV'),
+                leading: AdaptiveIconBadge(
+                  icon: CupertinoIcons.rectangle_stack,
+                  color: AppTone.brand.color(context),
+                ),
                 title: const Text('WebDAV'),
-                subtitle: const Text('填写地址、端口和凭据，保存时自动测试连接'),
+                subtitle: const Text(
+                  '使用服务器地址、端口和账号密码连接 NAS 或网盘服务。',
+                  maxLines: 2,
+                ),
                 showChevron: true,
                 onTap: () => context.pushNamed(AppRoutes.newWebDav.name),
               ),
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.cloud_outlined,
-                    cupertino: CupertinoIcons.cloud,
-                  ),
+                  icon: CupertinoIcons.folder_badge_plus,
+                  color: AppTone.ok.color(context),
                 ),
                 title: const Text('Google Drive'),
-                subtitle: const Text('准备 OAuth Client ID，浏览器授权后选择同步目录'),
+                subtitle: const Text(
+                  '使用 Google 账号授权，然后选择同步所用的云端目录。',
+                  maxLines: 2,
+                ),
                 showChevron: true,
                 onTap: () => context.pushNamed(
                   AppRoutes.newOAuth.name,
@@ -75,14 +82,14 @@ class Protocols extends HookConsumerWidget {
               ),
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.cloud_outlined,
-                    cupertino: CupertinoIcons.cloud,
-                  ),
+                  icon: CupertinoIcons.cloud,
+                  color: AppTone.brand.color(context),
                 ),
                 title: const Text('OneDrive'),
-                subtitle: const Text('准备 OAuth Client ID，浏览器授权后选择同步目录'),
+                subtitle: const Text(
+                  '使用 Microsoft 账号授权，然后选择同步所用的云端目录。',
+                  maxLines: 2,
+                ),
                 showChevron: true,
                 onTap: () => context.pushNamed(
                   AppRoutes.newOAuth.name,
@@ -98,29 +105,27 @@ class Protocols extends HookConsumerWidget {
             children: [
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.key_outlined,
-                    cupertino: CupertinoIcons.lock,
-                  ),
-                  color: context.appSecondaryLabel,
+                  icon: CupertinoIcons.cloud_fill,
+                  color: AppTone.neutral.color(context),
                 ),
                 title: const Text('百度网盘'),
-                subtitle: const Text('可配置 AppKey 和 Token；同步适配器尚未开放'),
+                subtitle: const Text(
+                  '可填写 AppKey 与 Token，同步适配器尚未开放。',
+                  maxLines: 2,
+                ),
                 showChevron: true,
                 onTap: () => context.pushNamed(AppRoutes.newBaiduToken.name),
               ),
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.lock_outline,
-                    cupertino: CupertinoIcons.lock,
-                  ),
-                  color: context.appSecondaryLabel,
+                  icon: CupertinoIcons.lock,
+                  color: AppTone.neutral.color(context),
                 ),
                 title: const Text('阿里云盘'),
-                subtitle: const Text('需要官方 Token Broker，当前未开放'),
+                subtitle: const Text(
+                  '需要官方 Token Broker，当前未开放。',
+                  maxLines: 2,
+                ),
                 enabled: false,
               ),
             ],

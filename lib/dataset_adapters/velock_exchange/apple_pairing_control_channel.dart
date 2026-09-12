@@ -74,13 +74,16 @@ class ApplePairingControlChannel implements VelockPairingControlChannel {
       throw StateError('Pairing request already exists.');
     }
     await _writeAtomic(requestFile, encoded);
-    await _launchVelock(
+    final launched = await _launchVelock(
       Uri(
         scheme: 'velock',
         host: 'sync-pairing',
         queryParameters: {'requestId': id},
       ),
     );
+    if (!launched) {
+      throw StateError('Velock pairing launch failed.');
+    }
     return VelockPairingControlStatus.pending;
   }
 

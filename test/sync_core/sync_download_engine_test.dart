@@ -242,6 +242,135 @@ void main() {
     );
 
     test(
+      'queues ordered iOS batches without premature receipts or cursors',
+      () async {
+        final queued = _QueuedDataset();
+        for (var sequence = 1; sequence <= 3; sequence++) {
+          await _publishFixture(
+            remote,
+            sequence: sequence,
+            batchId: 'batch-$sequence',
+          );
+        }
+        Future<DownloadRunResult> run() =>
+            SyncDownloadEngine(database).importAvailable(
+              profileId: 'profile-1',
+              vaultId: 'vault-1',
+              consumerDeviceId: 'consumer-1',
+              trustedProducerDeviceIds: const ['producer-1'],
+              dataset: queued,
+              remote: remote,
+            );
+        expect((await run()).importedBatchCount, 0);
+        expect(queued.imported.map((b) => b.sequence), [1, 2, 3]);
+        expect(
+          await database.appliedSequence(
+            profileId: 'profile-1',
+            producerDeviceId: 'producer-1',
+          ),
+          0,
+        );
+        expect(
+          await remote.stat(
+            LogicalKeys.acknowledgement(
+              'vault-1',
+              'consumer-1',
+              'producer-1',
+              1,
+            ),
+          ),
+          isNull,
+        );
+        // A later receipt cannot bypass an earlier unconfirmed batch.
+        queued.receipts.add(3);
+        expect((await run()).importedBatchCount, 0);
+        expect(queued.imported, hasLength(3));
+        expect(
+          await database.appliedSequence(
+            profileId: 'profile-1',
+            producerDeviceId: 'producer-1',
+          ),
+          0,
+        );
+        queued.receipts.addAll([1, 2]);
+        expect((await run()).importedBatchCount, 3);
+        expect(
+          await database.appliedSequence(
+            profileId: 'profile-1',
+            producerDeviceId: 'producer-1',
+          ),
+          3,
+        );
+      },
+    );
+
+    test(
+      'queued delivery respects the batch budget and sequence gaps',
+      () async {
+        final queued = _QueuedDataset();
+        await _publishFixture(remote, sequence: 1, batchId: 'batch-1');
+        await _publishFixture(remote, sequence: 3, batchId: 'batch-3');
+        Future<DownloadRunResult> run(int limit) =>
+            SyncDownloadEngine(database).importAvailable(
+              profileId: 'profile-1',
+              vaultId: 'vault-1',
+              consumerDeviceId: 'consumer-1',
+              trustedProducerDeviceIds: const ['producer-1'],
+              dataset: queued,
+              remote: remote,
+              maxBatches: limit,
+            );
+        expect((await run(100)).pendingBatchCount, 1);
+        expect(queued.imported.map((b) => b.sequence), [1]);
+        await _publishFixture(remote, sequence: 2, batchId: 'batch-2');
+        expect((await run(2)).pendingBatchCount, 2);
+        expect(queued.imported.map((b) => b.sequence), [1, 2]);
+        expect((await run(100)).pendingBatchCount, 3);
+        expect(queued.imported.map((b) => b.sequence), [1, 2, 3]);
+        expect(
+          await database.appliedSequence(
+            profileId: 'profile-1',
+            producerDeviceId: 'producer-1',
+          ),
+          0,
+        );
+      },
+    );
+
+    test(
+      'queued delivery rejects corrupted later ciphertext before delivery',
+      () async {
+        final queued = _QueuedDataset();
+        await _publishFixture(remote, sequence: 1, batchId: 'batch-1');
+        await _publishFixture(
+          remote,
+          sequence: 2,
+          batchId: 'batch-2',
+          corruptOperationsHash: true,
+        );
+        await expectLater(
+          SyncDownloadEngine(database).importAvailable(
+            profileId: 'profile-1',
+            vaultId: 'vault-1',
+            consumerDeviceId: 'consumer-1',
+            trustedProducerDeviceIds: const ['producer-1'],
+            dataset: queued,
+            remote: remote,
+          ),
+          throwsA(isA<BatchIntegrityException>()),
+        );
+        expect(queued.imported.map((b) => b.sequence), [1]);
+        expect(
+          await database.appliedSequence(
+            profileId: 'profile-1',
+            producerDeviceId: 'producer-1',
+          ),
+          0,
+        );
+      },
+    );
+
+    test(
       'waits for a deferred trusted-peer receipt before advancing cursor',
       () async {
         final deferred = _DeferredDataset();
@@ -352,7 +481,7 @@ Future<void> _publishFixture(
     ),
   );
 
-  await _put(remote, blobKey, blob);
+  if (await remote.stat(blobKey) == null) await _put(remote, blobKey, blob);
   await _put(
     remote,
     LogicalKeys.batchOperations(vault, producer, sequence, batchId),
@@ -532,4 +661,13 @@ class _DuplicateListStore implements RemoteObjectStore {
     String logicalKey, {
     RemoteOperationCancellation? cancellation,
   }) => _delegate.stat(logicalKey, cancellation: cancellation);
+}
+
+class _QueuedDataset extends _DeferredDataset
+    implements OrderedDeferredIncomingBatchAdapter {
+  final receipts = <int>{};
+  @override
+  Future<ImportResult?> reconcileIncomingBatch(
+    IncomingBatchReference batch,
+  ) async => receipts.contains(batch.sequence) ? const ImportResult() : null;
 }

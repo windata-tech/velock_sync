@@ -13,6 +13,8 @@ import 'package:velock_sync/features/connection/ui/new_oauth.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/features/activity/ui/sync_activity.dart';
+import 'package:velock_sync/features/selected_folder/ui/selected_folder_profiles.dart';
+import 'package:velock_sync/features/sync_profiles/ui/new_sync_profile.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 
@@ -59,6 +61,10 @@ class AppRoutes {
   static const ({String name, String path}) velockDatasetWizard = (
     name: 'velockDatasetWizard',
     path: '/sync-profiles/new/velock',
+  );
+  static const ({String name, String path}) selectedFolderProfiles = (
+    name: 'selectedFolderProfiles',
+    path: '/sync-profiles/new/selected-folder',
   );
   static const ({String name, String path}) syncProfileDetail = (
     name: 'syncProfileDetail',
@@ -155,9 +161,19 @@ final goRouter = GoRouter(
       ],
     ),
     WdRoute(
+      name: AppRoutes.syncProfilesNew.name,
+      path: AppRoutes.syncProfilesNew.path,
+      builder: (context, state) => const NewSyncProfile(),
+    ),
+    WdRoute(
       name: AppRoutes.velockDatasetWizard.name,
       path: AppRoutes.velockDatasetWizard.path,
       builder: (context, state) => const VelockDatasetWizard(),
+    ),
+    WdRoute(
+      name: AppRoutes.selectedFolderProfiles.name,
+      path: AppRoutes.selectedFolderProfiles.path,
+      builder: (context, state) => const SelectedFolderProfiles(),
     ),
     WdRoute(
       name: AppRoutes.syncProfileDetail.name,

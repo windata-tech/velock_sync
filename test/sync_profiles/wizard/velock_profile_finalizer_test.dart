@@ -119,6 +119,7 @@ void main() {
         'pairedProducerId': approval.producerId,
         'pairedProducerPublicKeyId': approval.producerPublicKeyId,
         'exchangeBindingId': approval.exchangeBindingId,
+        'trustedProducerIds': [approval.producerId],
       });
       expect(profile.backgroundPolicy.enabled, isTrue);
       expect(profile.backgroundPolicy.requiresCharging, isTrue);

@@ -10,6 +10,9 @@
 analyzer:
   exclude:
     - build/**
+    # Generated simulator apps, derived data and test evidence are not source.
+    - ui_test_results/**
+    - ui_test_harness/**
     - android/**
     - ios/**
     - web/**

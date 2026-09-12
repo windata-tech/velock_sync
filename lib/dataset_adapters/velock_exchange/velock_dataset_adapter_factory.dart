@@ -115,6 +115,8 @@ class PlatformVelockDatasetAdapterFactory
           producerDeviceId: profile.pairedProducerId,
           displayName: profile.displayName,
           exchange: VelockExchangeStore(root),
+          expectedProducerPublicKeyId: profile.pairedProducerPublicKeyId,
+          expectedExchangeBindingId: profile.exchangeBindingId,
         );
       case VelockExchangePlatform.unsupported:
         throw const VelockDatasetAdapterUnavailableException(

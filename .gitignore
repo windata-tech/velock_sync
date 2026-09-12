@@ -124,3 +124,6 @@ ui_test_results/
 
 # CodeGraph local index (local-only)
 .codegraph/
+
+# Local developer credentials (local-only, never commit)
+tool/local_webdav/*.local.env

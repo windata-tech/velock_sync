@@ -16,12 +16,14 @@ class SyncSettingsSnapshot {
     required this.backgroundSupported,
     required this.backgroundEligibleProfileCount,
     required this.staging,
+    required this.garbageCollection,
   });
 
   final SyncGlobalSettings settings;
   final bool backgroundSupported;
   final int backgroundEligibleProfileCount;
   final StagingSpaceSummary staging;
+  final GarbageCollectionDiagnostics? garbageCollection;
 }
 
 class SyncSettingsCleanupSummary {
@@ -75,10 +77,11 @@ class DurableSyncSettingsService implements SyncSettingsService {
 
   @override
   Future<SyncSettingsSnapshot> load() async {
-    final values = await Future.wait<Object>([
+    final values = await Future.wait<Object?>([
       _settings.read(),
       _profiles.listSummaries(),
       _inspectStaging(),
+      _database.latestGarbageCollectionDiagnostics(),
     ]);
     final profiles = values[1] as List<SyncProfileSummary>;
     return SyncSettingsSnapshot(
@@ -88,6 +91,7 @@ class DurableSyncSettingsService implements SyncSettingsService {
           .where((profile) => profile.isBackgroundEligible)
           .length,
       staging: values[2] as StagingSpaceSummary,
+      garbageCollection: values[3] as GarbageCollectionDiagnostics?,
     );
   }
 
@@ -154,6 +158,7 @@ class DurableSyncSettingsService implements SyncSettingsService {
     final transfers = await _database.listTransferJobs();
     final conflicts = await _database.listUnresolvedConflicts();
     final staging = await _inspectStaging();
+    final gc = await _database.latestGarbageCollectionDiagnostics();
 
     return const JsonEncoder.withIndent('  ').convert({
       'formatVersion': 1,
@@ -175,6 +180,7 @@ class DurableSyncSettingsService implements SyncSettingsService {
         'byDataset': _counts(
           profiles.map(
             (profile) => switch (profile.kind) {
+              SyncDatasetKind.selectedFolder => 'selectedFolder',
               SyncDatasetKind.velockManaged => 'velockManaged',
               null => 'unavailable',
             },
@@ -200,6 +206,27 @@ class DurableSyncSettingsService implements SyncSettingsService {
         'byState': _counts(transfers.map((transfer) => transfer.state.name)),
       },
       'unresolvedConflictCount': conflicts.length,
+      'deletionProtection': {
+        'retentionDays': 30,
+        'safetyBufferDays': 7,
+        'latestGc': gc == null
+            ? null
+            : {
+                'state': gc.state,
+                'startedAt': gc.startedAt.toIso8601String(),
+                'completedAt': gc.completedAt?.toIso8601String(),
+                'checkpointId': gc.checkpointId,
+                'planId': gc.planId,
+                'retentionCutoff': gc.retentionCutoff?.toIso8601String(),
+                'activeDeviceCount': gc.activeDeviceCount,
+                'unackedDeviceCount': gc.unackedDeviceCount,
+                'candidateCount': gc.candidateCount,
+                'eligibleCandidateCount': gc.eligibleCandidateCount,
+                'deletedObjectCount': gc.deletedObjectCount,
+                'retentionManifestComplete': gc.retentionManifestComplete,
+                'skipReason': _sanitizeGcSkipReason(gc.skipReason),
+              },
+      },
       'staging': {
         'bytes': staging.totalBytes,
         'files': staging.fileCount,
@@ -232,6 +259,19 @@ class DurableSyncSettingsService implements SyncSettingsService {
       fileCount: fileCount,
       batchCount: batchCount,
     );
+  }
+
+  String? _sanitizeGcSkipReason(String? value) {
+    const allowed = {
+      'checkpoint-missing',
+      'dataset-unsupported',
+      'trusted-members-empty',
+      'no-candidates',
+      'retention-manifest-invalid',
+      'no-valid-retention-manifest',
+      'gc-error',
+    };
+    return allowed.contains(value) ? value : null;
   }
 
   Future<Directory> _stagingRoot() async =>

@@ -22,6 +22,7 @@ import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
+import 'package:velock_sync/widgets/app_components.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 /// Creates a Google Drive or OneDrive connection through system-browser PKCE.
@@ -454,95 +455,105 @@ class _MissingOAuthRegistration extends StatelessWidget {
             AppSpacing.sm,
           ),
           child: Text(
-            '先提供公开 OAuth Client ID，再在系统浏览器中安全授权 $provider。',
-            style: TextStyle(color: context.appSecondaryLabel, height: 1.4),
+            '使用你自己的 Google Cloud / Azure 应用注册公开 Client ID，'
+            '授权会在系统浏览器中完成。',
+            style: AppType.footnote.copyWith(
+              color: context.appSecondaryLabel,
+            ),
           ),
         ),
         AdaptiveListSection(
-          header: '需要配置',
-          children: [
-            AdaptiveListTile(
-              leading: AdaptiveIconBadge(
-                icon: adaptiveIcon(
-                  context,
-                  material: Icons.lock_outline,
-                  cupertino: CupertinoIcons.lock,
+          header: '授权配置',
+          footer: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '只填写公开 Client ID，不要填写 Client Secret。',
+                style: AppType.footnote.copyWith(
+                  color: context.appSecondaryLabel,
                 ),
-                color: context.appPrimary,
               ),
-              title: Text('$provider 授权未就绪'),
-              subtitle: const Text('提供公开 OAuth Client ID 后即可继续。'),
-            ),
+              const SizedBox(height: 4),
+              Text(
+                '自定义构建也可以用 --dart-define 传入 $clientIdKey；'
+                '这里保存的值只写入本机配置，不包含任何用户令牌。',
+                style: AppType.footnote.copyWith(
+                  color: context.appSecondaryLabel,
+                ),
+              ),
+            ],
+          ),
+          children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                AppSpacing.sm,
-                AppSpacing.md,
-                AppSpacing.md,
-              ),
+              padding: const EdgeInsets.all(AppSpacing.md),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '授权配置',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    '公开 Client ID',
+                    style: AppType.caption.copyWith(
                       color: context.appSecondaryLabel,
                     ),
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   TextField(
+                    key: const Key('oauth-client-id-field'),
                     controller: clientIdController,
                     autocorrect: false,
                     enableSuggestions: false,
-                    decoration: InputDecoration(
-                      labelText: '公开 Client ID',
-                      hintText: '<client-id>',
-                      helperText: '只填写公开 Client ID，不要填写 Client Secret。',
-                      helperMaxLines: 2,
+                    style: AppType.body,
+                    decoration: const InputDecoration(
+                      hintText: '例如：1234567890-abcdef.apps.googleusercontent.com',
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: PlatformTextButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: onSave,
-                      child: const Text('保存 Client ID'),
-                    ),
-                  ),
-                  _OAuthConfigValue(label: '构建变量', value: clientIdKey),
-                  const SizedBox(height: AppSpacing.sm),
-                  const _OAuthConfigValue(
-                    label: '回调地址',
-                    value: 'velocksync://oauth/callback',
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
+                  const SizedBox(height: AppSpacing.xs),
                   Text(
-                    '如果你管理自己的构建，也可以使用 --dart-define 传入同一个变量；本页保存的值只写入本机普通配置，不包含任何用户令牌。',
-                    style: TextStyle(
+                    '可在云控制台的 OAuth 客户端页面找到。',
+                    style: AppType.footnote.copyWith(
                       color: context.appSecondaryLabel,
-                      fontSize: 12,
-                      height: 1.35,
                     ),
                   ),
                 ],
+              ),
+            ),
+            AppFormRow(
+              label: '构建变量',
+              child: Text(
+                clientIdKey,
+                style: AppType.mono.copyWith(
+                  color: context.appSecondaryLabel,
+                ),
+              ),
+            ),
+            const AppFormRow(
+              label: '回调地址',
+              child: Text(
+                'velocksync://oauth/callback',
+                style: AppType.mono,
               ),
             ),
           ],
         ),
         AdaptiveListSection(
           header: '当前状态',
+          footer: AppDetailDisclosure(
+            detail: '${error.runtimeType}\n'
+                '错误代码：${_errorCode(error)}',
+          ),
           children: [
             AdaptiveListTile(
               leading: AdaptiveIconBadge(
-                icon: adaptiveIcon(
-                  context,
-                  material: Icons.info_outline,
-                  cupertino: CupertinoIcons.info,
-                ),
-                color: AppColors.warning,
+                icon: CupertinoIcons.exclamationmark_triangle,
+                color: AppTone.attention.color(context),
               ),
-              title: const Text('无法开始授权'),
-              subtitle: Text('${error.runtimeType}'),
+              title: Text(
+                '$provider 授权未就绪',
+                style: AppType.rowTitleStrong,
+              ),
+              subtitle: const Text(
+                '填写并保存 Client ID 后即可继续授权。',
+                maxLines: 2,
+              ),
             ),
           ],
         ),
@@ -550,51 +561,6 @@ class _MissingOAuthRegistration extends StatelessWidget {
     );
   }
 }
-
-class _OAuthConfigValue extends StatelessWidget {
-  const _OAuthConfigValue({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.labelMedium?.copyWith(color: context.appSecondaryLabel),
-      ),
-      const SizedBox(height: AppSpacing.xxs),
-      DecoratedBox(
-        decoration: BoxDecoration(
-          color: context.appPageBackground,
-          borderRadius: BorderRadius.circular(AppRadii.small),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: AppSpacing.xs,
-          ),
-          child: SizedBox(
-            width: double.infinity,
-            child: SelectableText(
-              value,
-              style: const TextStyle(
-                fontFamily: 'Menlo',
-                fontSize: 13,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ),
-      ),
-    ],
-  );
-}
-
 String _providerLabel(RemoteProviderType providerType) =>
     switch (providerType) {
       RemoteProviderType.googleDrive => 'Google Drive',
@@ -610,3 +576,11 @@ String _oauthClientIdKey(RemoteProviderType providerType) =>
       RemoteProviderType.oneDrive => AppKeys.oneDriveOAuthClientId,
       _ => throw ArgumentError.value(providerType, 'providerType'),
     };
+
+String _errorCode(Object? error) {
+  final text = error.toString();
+  if (text.contains('OAuthClientRegistrationMissing')) {
+    return 'provider.oauth.client_id_missing';
+  }
+  return text;
+}

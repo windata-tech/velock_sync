@@ -158,7 +158,10 @@ class NewWebDav extends HookConsumerWidget {
               AppRoutes.connectionHelp.name,
               queryParameters: {'provider': RemoteProviderType.webDav.name},
             ),
-            child: const Text('说明'),
+            child: Text(
+              '说明',
+              style: TextStyle(color: context.appSecondaryLabel),
+            ),
           ),
           PlatformTextButton(
             padding: EdgeInsets.zero,
@@ -273,7 +276,10 @@ class NewWebDav extends HookConsumerWidget {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text('保存'),
+                : const Text(
+                    '保存',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
           ),
         ],
       ),

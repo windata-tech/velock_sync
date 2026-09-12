@@ -3,11 +3,13 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_store.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
+import 'package:velock_sync/sync_core/engine/sync_garbage_collector.dart';
 
 void main() {
   test('uploads only a READY pre-signed opaque outbox package', () async {
@@ -195,6 +197,83 @@ void main() {
       Uint8List.fromList([9]),
     );
   });
+
+  test(
+    'verifies a signed GC candidate manifest before returning blobs',
+    () async {
+      final root = await Directory.systemTemp.createTemp('velock-adapter-');
+      addTearDown(() => root.delete(recursive: true));
+      final store = VelockExchangeStore(root);
+      final keyPair = await Ed25519().newKeyPair();
+      final payload = <String, Object?>{
+        'schemaVersion': 1,
+        'vaultId': 'vault-1',
+        'producerDeviceId': 'device-1',
+        'generatedAt': '2026-09-11T00:00:00.000Z',
+        'candidates': [
+          {
+            'candidateId': 'batch-1:blob:blob-1',
+            'logicalKeys': ['velock-sync/v1/vault-1/blobs/bl/blob-1.blob'],
+            'producerDeviceId': 'device-1',
+            'sequence': 7,
+            'tombstoneAt': '2026-06-01T00:00:00.000Z',
+            'retentionHoldUntil': '2026-07-01T00:00:00.000Z',
+            'retentionManifestKey':
+                'velock-sync/v1/vault-1/retention/exchange-batch-1.json',
+            'isReferencedByActiveRevision': false,
+            'isReferencedByCheckpoint': false,
+            'isReferencedByRetentionHold': false,
+          },
+        ],
+        'signatureAlgorithm': 'Ed25519',
+        'keyId': 'key-1',
+      };
+      final signature = await Ed25519().sign(
+        utf8.encode(jsonEncode(payload)),
+        keyPair: keyPair,
+      );
+      await File('${root.path}/gc-candidates.json').writeAsBytes(
+        Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              ...payload,
+              'signature': base64UrlEncode(signature.bytes).replaceAll('=', ''),
+            }),
+          ),
+        ),
+      );
+      final adapter = VelockExchangeDatasetAdapter(
+        datasetId: 'velock-1',
+        vaultId: 'vault-1',
+        producerDeviceId: 'device-1',
+        displayName: 'Velock',
+        exchange: store,
+      );
+      final candidates = await adapter.garbageCollectionCandidates(
+        vaultId: 'vault-1',
+        evidence: GarbageCollectionEvidence(
+          checkpointId: 'checkpoint-1',
+          checkpointCoveredSequences: const {'device-1': 7},
+          activeDeviceIds: const {'device-1'},
+          acknowledgedSequences: const {
+            'device-1': {'device-1': 7},
+          },
+          tombstoneRetentionCutoff: DateTime.utc(2026, 7, 1),
+        ),
+        trustedDeviceKeys: {'device-1': await keyPair.extractPublicKey()},
+      );
+
+      expect(candidates, hasLength(1));
+      expect(candidates.single.sequence, 7);
+      expect(
+        candidates.single.retentionManifestKey,
+        'velock-sync/v1/vault-1/retention/exchange-batch-1.json',
+      );
+      expect(candidates.single.logicalKeys, [
+        'velock-sync/v1/vault-1/blobs/bl/blob-1.blob',
+      ]);
+    },
+  );
 }
 
 List<int> _validEnvelope(List<int> operations) => utf8.encode(

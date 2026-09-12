@@ -39,6 +39,9 @@ class GarbageCollectionCandidate {
     required this.tombstoneAt,
     required this.isReferencedByActiveRevision,
     required this.isReferencedByCheckpoint,
+    this.retentionManifestKey,
+    this.isReferencedByRetentionHold = false,
+    this.retentionHoldUntil,
   });
 
   final String candidateId;
@@ -48,6 +51,9 @@ class GarbageCollectionCandidate {
   final DateTime? tombstoneAt;
   final bool isReferencedByActiveRevision;
   final bool isReferencedByCheckpoint;
+  final String? retentionManifestKey;
+  final bool isReferencedByRetentionHold;
+  final DateTime? retentionHoldUntil;
 }
 
 class GarbageCollectionPlan {
@@ -174,6 +180,11 @@ class SyncGarbageCollector {
         candidate.sequence < 1 ||
         candidate.isReferencedByActiveRevision ||
         candidate.isReferencedByCheckpoint ||
+        candidate.isReferencedByRetentionHold ||
+        (candidate.retentionHoldUntil != null &&
+            candidate.retentionHoldUntil!.isAfter(
+              evidence.tombstoneRetentionCutoff,
+            )) ||
         candidate.tombstoneAt == null ||
         candidate.tombstoneAt!.isAfter(evidence.tombstoneRetentionCutoff)) {
       return false;
@@ -182,13 +193,15 @@ class SyncGarbageCollector {
         candidate.sequence) {
       return false;
     }
-    return evidence.activeDeviceIds.every(
-      (consumer) =>
-          (evidence.acknowledgedSequences[consumer]?[candidate
-                  .producerDeviceId] ??
-              0) >=
-          candidate.sequence,
-    );
+    return evidence.activeDeviceIds
+        .where((consumer) => consumer != candidate.producerDeviceId)
+        .every(
+          (consumer) =>
+              (evidence.acknowledgedSequences[consumer]?[candidate
+                      .producerDeviceId] ??
+                  0) >=
+              candidate.sequence,
+        );
   }
 
   void _validateEvidence(GarbageCollectionEvidence evidence) {

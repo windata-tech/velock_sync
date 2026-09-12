@@ -22,7 +22,7 @@ void main() {
     test(
       'creates the current state schema and replaces connection records atomically',
       () async {
-        expect(await database.schemaVersion, 9);
+        expect(await database.schemaVersion, 10);
 
         await database.replaceConnectionPayloads({
           'connection-a': '{"id":"connection-a"}',
@@ -59,7 +59,7 @@ void main() {
 
       final upgraded = await SyncStateDatabase.open(file);
       try {
-        expect(await upgraded.schemaVersion, 9);
+        expect(await upgraded.schemaVersion, 10);
         final conflict = (await upgraded.listUnresolvedConflicts()).single;
         expect(conflict.conflictId, 'old-conflict');
         expect(conflict.sourceDeviceId, isNull);
@@ -67,6 +67,41 @@ void main() {
         await upgraded.close();
         await directory.delete(recursive: true);
       }
+    });
+
+    test('persists the latest garbage collection diagnostics', () async {
+      final started = DateTime.utc(2026, 9, 11, 1);
+      final completed = DateTime.utc(2026, 9, 11, 1, 0, 2);
+      await database.startGarbageCollectionRun(
+        runId: 'gc-1',
+        profileId: 'profile-1',
+        vaultId: 'vault-1',
+        startedAt: started,
+      );
+      await database.finishGarbageCollectionRun(
+        runId: 'gc-1',
+        state: 'completed',
+        completedAt: completed,
+        checkpointId: 'checkpoint-1',
+        retentionCutoff: DateTime.utc(2026, 8, 4),
+        activeDeviceCount: 2,
+        unackedDeviceCount: 1,
+        candidateCount: 4,
+        eligibleCandidateCount: 1,
+        deletedObjectCount: 3,
+        retentionManifestComplete: true,
+        planId: 'plan-1',
+      );
+
+      final diagnostics = await database.latestGarbageCollectionDiagnostics();
+      expect(diagnostics, isNotNull);
+      expect(diagnostics!.state, 'completed');
+      expect(diagnostics.checkpointId, 'checkpoint-1');
+      expect(diagnostics.unackedDeviceCount, 1);
+      expect(diagnostics.eligibleCandidateCount, 1);
+      expect(diagnostics.deletedObjectCount, 3);
+      expect(diagnostics.retentionManifestComplete, isTrue);
+      expect(diagnostics.planId, 'plan-1');
     });
 
     test(

@@ -169,6 +169,37 @@ void main() {
       },
     );
 
+    test(
+      'treats a WebDAV 409 MKCOL as an existing parent collection',
+      () async {
+        adapter.mkcolHandler = (options) async =>
+            ResponseBody.fromBytes(const [], 409);
+        adapter.handler = (options, body, _) async {
+          expect(options.method, 'PUT');
+          expect(await _bodyBytes(body), [1]);
+          return ResponseBody.fromBytes(const [], 201);
+        };
+
+        await store.put(
+          'velock-sync/v1/vault/protocol.json',
+          Stream.value(<int>[1]),
+          contentLength: 1,
+        );
+
+        expect(
+          adapter.requests
+              .map((request) => '${request.method} ${request.uri.path}')
+              .toList(),
+          [
+            'MKCOL /root/velock-sync',
+            'MKCOL /root/velock-sync/v1',
+            'MKCOL /root/velock-sync/v1/vault',
+            'PUT /root/velock-sync/v1/vault/protocol.json',
+          ],
+        );
+      },
+    );
+
     test('rejects path traversal before issuing a request', () async {
       await expectLater(store.stat('../secrets'), throwsArgumentError);
       expect(adapter.lastOptions, isNull);

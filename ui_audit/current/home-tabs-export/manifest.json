@@ -1,0 +1,44 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "26CC5821-DEF4-47D3-978D-A11D7293AD61",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "1CA8E0E1-8590-4A49-BBB3-53970D76E364.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "tab-settings-no-title-verified_0_D19A30EE-6C40-4B05-8A66-9C3F675BF030.png",
+        "timestamp" : 1786115714.642
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "26CC5821-DEF4-47D3-978D-A11D7293AD61",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "B93AE032-5EA0-442E-8AAF-B61645BCBC78.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "tab-activity-no-title-verified_0_237DC341-3360-40FB-80EE-16E3C76FF611.png",
+        "timestamp" : 1786115712.066
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "26CC5821-DEF4-47D3-978D-A11D7293AD61",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "4094F324-0A24-4B37-8507-16A69F74DF18.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "tab-connections-no-title-verified_0_FDB76B76-ED5F-45A2-B4AF-A1173618819D.png",
+        "timestamp" : 1786115709.454
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "26CC5821-DEF4-47D3-978D-A11D7293AD61",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "10459A2A-51FF-4F1C-BDC6-E944C09A2AEA.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "tab-sync-no-title-verified_0_08580614-7B4B-4588-A9B2-E86F9439EF2E.png",
+        "timestamp" : 1786115706.87
+      }
+    ],
+    "testIdentifier" : "CrossAppUITests/testFourHomeTabsHaveNoTitles()",
+    "testIdentifierURL" : "test://com.apple.xcode/CrossAppUITests/CrossAppUITests/CrossAppUITests/testFourHomeTabsHaveNoTitles"
+  }
+]

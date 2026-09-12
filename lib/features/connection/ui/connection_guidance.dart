@@ -29,7 +29,9 @@ class ConnectionHelpPage extends StatelessWidget {
         : [_documentFor(providerType!)];
 
     return AdaptiveScaffold(
-      title: '连接说明',
+      title: providerType == null
+          ? '连接说明'
+          : '${documents.single.title} 配置说明',
       actions: providerType == RemoteProviderType.baiduNetdisk
           ? [
               PlatformTextButton(
@@ -50,18 +52,9 @@ class ConnectionHelpPage extends StatelessWidget {
         children: [
           Text(
             providerType == null
-                ? '远端服务配置说明'
-                : '${documents.single.title} 配置说明',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            providerType == null
-                ? '这里说明每个远程服务需要提前准备什么、每个字段怎么填写、保存后会发生什么，以及遇到错误时从哪里开始排查。'
+                ? '这里说明每个远端服务需要提前准备什么、字段怎么填写、保存后会发生什么，以及遇到错误时从哪里开始排查。'
                 : documents.single.intro,
-            style: TextStyle(color: context.appSecondaryLabel, height: 1.45),
+            style: AppType.body.copyWith(color: context.appSecondaryLabel),
           ),
           const SizedBox(height: AppSpacing.lg),
           for (var index = 0; index < documents.length; index++)
@@ -112,7 +105,7 @@ class _ConnectionHelpDocument extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           Text(
             document.intro,
-            style: TextStyle(color: context.appSecondaryLabel, height: 1.45),
+            style: AppType.body.copyWith(color: context.appSecondaryLabel),
           ),
           const SizedBox(height: AppSpacing.md),
         ],
@@ -136,10 +129,8 @@ class _ConnectionHelpSection extends StatelessWidget {
       children: [
         Text(
           section.title,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          style: AppType.caption.copyWith(
             color: context.appSecondaryLabel,
-            fontWeight: FontWeight.w700,
-            height: 1.2,
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
@@ -158,10 +149,8 @@ class _ConnectionHelpItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final titleStyle = Theme.of(
-      context,
-    ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700, height: 1.25);
-    final numberStyle = titleStyle?.copyWith(
+    final titleStyle = AppType.rowTitle.copyWith(fontWeight: FontWeight.w600);
+    final numberStyle = titleStyle.copyWith(
       color: context.appPrimary,
       fontWeight: FontWeight.w700,
     );
@@ -183,7 +172,7 @@ class _ConnectionHelpItem extends StatelessWidget {
             padding: const EdgeInsets.only(left: 24, top: AppSpacing.xxs),
             child: Text(
               item.body,
-              style: TextStyle(color: context.appSecondaryLabel, height: 1.45),
+              style: AppType.body.copyWith(color: context.appSecondaryLabel),
             ),
           ),
           if (item.bullets.isNotEmpty)

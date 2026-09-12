@@ -104,15 +104,40 @@ abstract final class VelockExchangeV1Contract {
     }
 
     final operations = _object(decoded, 'operations');
-    _exactKeys(operations, const {
-      'cipherSha256',
-      'cipherSize',
-      'compression',
-      'logicalName',
-      'operationCount',
-    }, 'operations');
+    final operationKeys = operations.keys.toSet();
+    if (operationKeys.difference(const {
+          'cipherSha256',
+          'cipherSize',
+          'compression',
+          'deleteCount',
+          'logicalName',
+          'operationCount',
+          'upsertCount',
+        }).isNotEmpty ||
+        !operationKeys.containsAll(const {
+          'cipherSha256',
+          'cipherSize',
+          'compression',
+          'logicalName',
+          'operationCount',
+        })) {
+      throw const FormatException(
+        'Velock Exchange operations schema is invalid.',
+      );
+    }
     final operationsCipherSize = _nonNegative(operations, 'cipherSize');
     final operationCount = _nonNegative(operations, 'operationCount');
+    final deleteCount = operations.containsKey('deleteCount')
+        ? _nonNegative(operations, 'deleteCount')
+        : 0;
+    final upsertCount = operations.containsKey('upsertCount')
+        ? _nonNegative(operations, 'upsertCount')
+        : operationCount - deleteCount;
+    if (deleteCount + upsertCount > operationCount) {
+      throw const FormatException(
+        'Velock Exchange operation summary is invalid.',
+      );
+    }
     if (operationsCipherSize > maxOperationsCipherBytes ||
         operationCount > maxOperationsPerBatch ||
         operations['compression'] != 'none' ||
@@ -173,6 +198,9 @@ abstract final class VelockExchangeV1Contract {
       batchId: batchId,
       operationsCipherSize: operationsCipherSize,
       operationsCipherSha256: operationsCipherSha256,
+      operationCount: operationCount,
+      deleteCount: deleteCount,
+      upsertCount: upsertCount,
       blobs: List.unmodifiable(blobs),
     );
   }
@@ -246,6 +274,9 @@ class VelockExchangeEnvelopeMetadata {
     required this.batchId,
     required this.operationsCipherSize,
     required this.operationsCipherSha256,
+    required this.operationCount,
+    required this.deleteCount,
+    required this.upsertCount,
     required this.blobs,
   });
 
@@ -255,5 +286,8 @@ class VelockExchangeEnvelopeMetadata {
   final String batchId;
   final int operationsCipherSize;
   final String operationsCipherSha256;
+  final int operationCount;
+  final int deleteCount;
+  final int upsertCount;
   final List<BlobDescriptor> blobs;
 }
