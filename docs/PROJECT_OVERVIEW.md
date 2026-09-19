@@ -175,13 +175,14 @@ Flutter UI（features：dashboard / connection / activity / selected_folder / sy
 - 仓库卫生（#2）：`.DS_Store`/`.idea/`/`*.iml` 移出追踪；`pubspec.lock` 入库（`*.lock` 增加例外）；积压的 18 个文件按「诊断 / UI / XCUITest」逻辑分组提交；`tool/release/verify_app_store_release.sh` 去硬编码（仓库根从脚本位置推导 + `VELOCK_TEAM_ID` 环境变量 + companion 缺失时跳过）。
 - UI 泄漏修复（#1 残留项）：selected-folder 管理页行副标题不再渲染原始 `errorCode`/`state`（改用 `AppFormat.errorSummary` + 固定状态标签）；百度网盘/授权流程 toast 与 OAuth 文件夹选择器错误态移除异常类名（细节进日志）；新增 `test/widgets/app_format_test.dart` 固化「错误码 → 用户文案」映射。原审计 P0 #1–#7 此前已在前三轮 UI 审计落地（见 `UI_REDESIGN_SPEC.md` 实施状态）。
 - CI（#5 一半）：`flutter test --coverage` 发布 `coverage/lcov.info` 工件（先测基线、暂不设门槛）；新增 macOS runner 的 iOS 模拟器编译 job；`verify_no_secrets.dart` 加固（二进制内容宽容跳过 + 跳过可再生产物目录——此前在本机 DerivedData 上会直接崩溃）。
-- 巨型文件拆分（#4 一半）：`sync_state_database.dart` 2,431 行 → 门面 735 行 + 13 个按表域划分的模块（connections/profiles/runs/activity/transfers/locks/batches/folder_scan/conflicts/devices + records/migrations/sql），公共 API 零变化（records 由门面 re-export），`flutter analyze` / `custom_lint` / 435 项测试全绿。
+- 巨型文件拆分（#4 完成）：
+  - `sync_state_database.dart` 2,431 行 → 门面 735 行 + 13 个按表域划分的模块（connections/profiles/runs/activity/transfers/locks/batches/folder_scan/conflicts/devices + records/migrations/sql），公共 API 零变化（records 由门面 re-export）。
+  - `sync_profile_workspace.dart` 3,973 行 → 7 个文件：`sync_profile_workspace.dart`（11 行门面，re-export 保持 `app_router` 与 3 个 widget 测试的 import 不变）+ `sync_profile_providers.dart`（Riverpod providers / `VelockWizardSessionState` / `ProfilesRevision` / `SyncProfileRunService` 接口）+ `sync_profile_workspace_shared.dart`（跨页共享：`ProfileTile`、`ProfileStatusPresentation`、`SyncedDataSection`/`SyncedDataKindSummary`、连接横幅、同步结果呈现与 recovery 动作、全部文案标签）+ 4 个页面文件（home / velock_wizard / detail / settings）。跨文件共享的私有符号公开化（34 个），页内私有符号保持 `_` 前缀不变。`flutter analyze` / `custom_lint` 0 问题、`flutter test` 435 项全过。
 
 **仍待办**
 
 - UI 复检三项（规格「仍待完成」）：连接详情文件网格正常态（需可用远端）、深色模式/动态字体逐页巡检剩余页面、iPad 与 Material 分支逐页截图。
 - 真机/Provider 端到端验证矩阵（#3）：iOS App Group + 格间互操作、Android 签名 provider、selected-folder 真机 SAF/Document Picker、真实 Provider 账号与故障注入——需要设备与账号，无法在仓库内完成。
-- `sync_profile_workspace.dart`（3,973 行）拆分：属 UI 层，需配合视觉回归再动。
 - 多仓 lockstep（契约 JSON 共享位置、版本协商策略文档化）、可观测性管道、恢复材料冗余方案、版本号治理（pubspec 仍 1.0.0+1）。
 
 ## 8. 改进方向
