@@ -166,6 +166,24 @@ Flutter UI（features：dashboard / connection / activity / selected_folder / sy
 20. **恢复材料单点**：Generic Vault 恢复材料（口令包裹）一旦丢失即失去整个同步空间，产品侧尚无「多副本/云端托管/社交恢复」等缓解路径的说明。
 21. **后台同步的电池/流量策略**：有 WorkManager/BGTask 与网络恢复触发，但蜂窝策略、电池优化豁免、iOS 后台配额耗尽后的用户可见降级，状态文档未给出验证结论。
 
+## 7.5 改进进度（2026-09-19 本轮）
+
+按第 8 节优先级执行后的状态（对应提交见 `git log`）：
+
+**已完成**
+
+- 仓库卫生（#2）：`.DS_Store`/`.idea/`/`*.iml` 移出追踪；`pubspec.lock` 入库（`*.lock` 增加例外）；积压的 18 个文件按「诊断 / UI / XCUITest」逻辑分组提交；`tool/release/verify_app_store_release.sh` 去硬编码（仓库根从脚本位置推导 + `VELOCK_TEAM_ID` 环境变量 + companion 缺失时跳过）。
+- UI 泄漏修复（#1 残留项）：selected-folder 管理页行副标题不再渲染原始 `errorCode`/`state`（改用 `AppFormat.errorSummary` + 固定状态标签）；百度网盘/授权流程 toast 与 OAuth 文件夹选择器错误态移除异常类名（细节进日志）；新增 `test/widgets/app_format_test.dart` 固化「错误码 → 用户文案」映射。原审计 P0 #1–#7 此前已在前三轮 UI 审计落地（见 `UI_REDESIGN_SPEC.md` 实施状态）。
+- CI（#5 一半）：`flutter test --coverage` 发布 `coverage/lcov.info` 工件（先测基线、暂不设门槛）；新增 macOS runner 的 iOS 模拟器编译 job；`verify_no_secrets.dart` 加固（二进制内容宽容跳过 + 跳过可再生产物目录——此前在本机 DerivedData 上会直接崩溃）。
+- 巨型文件拆分（#4 一半）：`sync_state_database.dart` 2,431 行 → 门面 735 行 + 13 个按表域划分的模块（connections/profiles/runs/activity/transfers/locks/batches/folder_scan/conflicts/devices + records/migrations/sql），公共 API 零变化（records 由门面 re-export），`flutter analyze` / `custom_lint` / 435 项测试全绿。
+
+**仍待办**
+
+- UI 复检三项（规格「仍待完成」）：连接详情文件网格正常态（需可用远端）、深色模式/动态字体逐页巡检剩余页面、iPad 与 Material 分支逐页截图。
+- 真机/Provider 端到端验证矩阵（#3）：iOS App Group + 格间互操作、Android 签名 provider、selected-folder 真机 SAF/Document Picker、真实 Provider 账号与故障注入——需要设备与账号，无法在仓库内完成。
+- `sync_profile_workspace.dart`（3,973 行）拆分：属 UI 层，需配合视觉回归再动。
+- 多仓 lockstep（契约 JSON 共享位置、版本协商策略文档化）、可观测性管道、恢复材料冗余方案、版本号治理（pubspec 仍 1.0.0+1）。
+
 ## 8. 改进方向
 
 ### 8.1 短期（1–2 周，风险/信任类优先）
