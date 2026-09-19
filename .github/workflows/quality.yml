@@ -35,7 +35,16 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze
       - run: dart run custom_lint
-      - run: flutter test
+      # Coverage is published for review; a pass/fail threshold is not
+      # enforced yet so the baseline can be measured first.
+      - run: flutter test --coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-coverage
+          path: coverage/lcov.info
+          if-no-files-found: warn
       - run: git diff --check
 
   android:
@@ -53,3 +62,18 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: cd android && ./gradlew :app:assembleDebug --console=plain
+
+  ios:
+    name: iOS simulator build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Compile check for the Runner scheme against the iOS simulator SDK.
+      # Signing, entitlements and background-task configuration are verified
+      # by tool/release/verify_app_store_release.sh on a developer machine.
+      - run: flutter build ios --simulator --debug --no-codesign

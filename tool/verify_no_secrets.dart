@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 final _forbidden = <RegExp>[
@@ -14,6 +15,12 @@ const _ignoredDirectories = <String>{
   'build',
   '.idea',
   '.codegraph',
+  // Regenerable test/build artifacts that may contain binary plists and
+  // build intermediates (see AGENTS.md artifact conventions).
+  'ui_test_results',
+  'DerivedData',
+  'webdav_venv',
+  'coverage',
 };
 
 const _textExtensions = <String>{
@@ -42,7 +49,8 @@ void main() {
   final violations = <String>[];
   for (final entity in Directory.current.listSync(recursive: true)) {
     if (entity is! File || !_isScannable(entity)) continue;
-    final text = entity.readAsStringSync();
+    final text = _readTextLeniently(entity);
+    if (text == null) continue; // Binary content (e.g. binary plists).
     for (var index = 0; index < _forbidden.length; index++) {
       if (_forbidden[index].hasMatch(text)) {
         violations.add('${entity.path} (rule ${index + 1})');
@@ -58,6 +66,15 @@ void main() {
     return;
   }
   stdout.writeln('Source-tree secret scan passed.');
+}
+
+/// Returns `null` when the file is not decodable as UTF-8 text.
+String? _readTextLeniently(File file) {
+  try {
+    return utf8.decode(file.readAsBytesSync());
+  } on FormatException {
+    return null;
+  }
 }
 
 bool _isScannable(File file) {
