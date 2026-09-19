@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/core/app_repository.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
@@ -23,6 +24,7 @@ import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/app_components.dart';
+import 'package:velock_sync/widgets/app_format.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 /// Creates a Google Drive or OneDrive connection through system-browser PKCE.
@@ -164,9 +166,13 @@ class NewOAuthConnection extends HookConsumerWidget {
         }
         saved = true;
         if (context.mounted) context.goNamed(AppRoutes.connections.name);
-      } on Object catch (error) {
+      } on Object catch (error, stackTrace) {
+        loge(
+          'OAuth authorization or connection check failed: ${error.runtimeType}',
+          stackTrace: stackTrace,
+        );
         if (context.mounted) {
-          showPlatformMessage(context, '授权或连接检查失败：${error.runtimeType}');
+          showPlatformMessage(context, '授权或连接检查失败，请重试。');
         }
       } finally {
         if (!saved && credentialRef != null) {
@@ -392,7 +398,9 @@ class _OAuthFolderPickerSheetState extends State<_OAuthFolderPickerSheet> {
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text('无法读取文件夹：${snapshot.error.runtimeType}'),
+                        child: Text(
+                          '无法读取文件夹：${AppFormat.errorSummary(snapshot.error?.toString())}',
+                        ),
                       ),
                     );
                   }

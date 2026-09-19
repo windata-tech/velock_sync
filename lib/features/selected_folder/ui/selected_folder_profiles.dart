@@ -8,6 +8,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:velock_sync/background/background_sync.dart';
@@ -678,22 +679,27 @@ class _ProfileActivitySummary extends StatelessWidget {
   ) => FutureBuilder<SyncProfileActivitySummary>(
     future: database.readSyncProfileActivity(profile.profileId),
     builder: (context, snapshot) {
+      // Only the folder name reaches the row; the full path stays out of the
+      // subtitle so long paths cannot push the other status lines away.
       final location = switch (profile.accessKind) {
         FolderAccessKind.androidDocumentTree => 'Android 系统授权目录',
         FolderAccessKind.appleSecurityScopedBookmark => 'iOS 系统授权目录',
-        FolderAccessKind.localPath => profile.rootPath,
+        FolderAccessKind.localPath => p.basename(profile.rootPath),
       };
       if (!snapshot.hasData) return Text(location, maxLines: 2);
       final activity = snapshot.requireData;
       final run = activity.latestRun;
+      // Internal error codes and raw run states never reach the row:
+      // failures get the user-facing summary, other states a fixed label.
       final runText = profile.state == SelectedFolderProfileState.paused
           ? '已暂停'
           : switch (run?.state) {
               null => '尚未同步',
               'running' => '正在同步',
-              'completed' => '最近成功：${_formatRunTime(run!.completedAt)}',
-              'failed' => '最近失败：${run!.errorCode ?? '未知错误'}',
-              _ => '同步状态：${run!.state}',
+              'completed' => '最近成功：${AppFormat.relativeTime(run!.completedAt)}',
+              'failed' =>
+                '最近失败：${AppFormat.errorSummary(run!.errorCode, fallback: '未知错误')}',
+              _ => '同步状态：${_runStateLabel(run!.state)}',
             };
       final background = profile.backgroundEnabled
           ? '后台：${profile.backgroundAllowCellular ? '蜂窝网络单文件最多 ${AppFormat.bytes(profile.backgroundCellularMaxTransferBytes)}' : '仅 Wi-Fi'}${profile.backgroundRequiresCharging ? '，仅充电时' : ''}'
@@ -713,9 +719,7 @@ class _ProfileActivitySummary extends StatelessWidget {
               ? ' · 暂存 ${AppFormat.bytes(stagingSnapshot.requireData.totalBytes)}'
               : '';
           return Text(
-            '$runText$transferred\n待上传 ${activity.pendingUploadCount}，待下载 ${activity.pendingDownloadCount}，冲突 ${activity.unresolvedConflictCount}\n$background · $nextCondition · $location$staging',
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
+            '$runText$transferred\n$background · $nextCondition\n$location$staging',
           );
         },
       );
@@ -723,11 +727,12 @@ class _ProfileActivitySummary extends StatelessWidget {
   );
 }
 
-String _formatRunTime(DateTime? value) {
-  if (value == null) return '刚刚';
-  final local = value.toLocal();
-  return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-}
+String _runStateLabel(String state) => switch (state) {
+  'running' => '运行中',
+  'completed' => '已完成',
+  'failed' => '失败',
+  _ => '未知',
+};
 
 Future<StagingSpaceSummary> _readStagingSpace(
   SelectedFolderSyncProfile profile,

@@ -6,6 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_credentials.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
@@ -91,9 +92,13 @@ class NewBaiduToken extends HookConsumerWidget {
         }
       } on FormatException catch (error) {
         if (context.mounted) showPlatformMessage(context, error.message);
-      } on Object catch (error) {
+      } on Object catch (error, stackTrace) {
+        loge(
+          'Baidu credential save failed: ${error.runtimeType}',
+          stackTrace: stackTrace,
+        );
         if (context.mounted) {
-          showPlatformMessage(context, '凭据保存失败：${error.runtimeType}');
+          showPlatformMessage(context, '凭据保存失败，请重试。');
         }
       } finally {
         isSaving.value = false;
