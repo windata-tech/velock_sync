@@ -457,9 +457,7 @@ class _MissingOAuthRegistration extends StatelessWidget {
           child: Text(
             '使用你自己的 Google Cloud / Azure 应用注册公开 Client ID，'
             '授权会在系统浏览器中完成。',
-            style: AppType.footnote.copyWith(
-              color: context.appSecondaryLabel,
-            ),
+            style: AppType.footnote.copyWith(color: context.appSecondaryLabel),
           ),
         ),
         AdaptiveListSection(
@@ -503,7 +501,8 @@ class _MissingOAuthRegistration extends StatelessWidget {
                     enableSuggestions: false,
                     style: AppType.body,
                     decoration: const InputDecoration(
-                      hintText: '例如：1234567890-abcdef.apps.googleusercontent.com',
+                      hintText:
+                          '例如：1234567890-abcdef.apps.googleusercontent.com',
                     ),
                   ),
                   const SizedBox(height: AppSpacing.xs),
@@ -520,24 +519,20 @@ class _MissingOAuthRegistration extends StatelessWidget {
               label: '构建变量',
               child: Text(
                 clientIdKey,
-                style: AppType.mono.copyWith(
-                  color: context.appSecondaryLabel,
-                ),
+                style: AppType.mono.copyWith(color: context.appSecondaryLabel),
               ),
             ),
             const AppFormRow(
               label: '回调地址',
-              child: Text(
-                'velocksync://oauth/callback',
-                style: AppType.mono,
-              ),
+              child: Text('velocksync://oauth/callback', style: AppType.mono),
             ),
           ],
         ),
         AdaptiveListSection(
           header: '当前状态',
           footer: AppDetailDisclosure(
-            detail: '${error.runtimeType}\n'
+            detail:
+                '${error.runtimeType}\n'
                 '错误代码：${_errorCode(error)}',
           ),
           children: [
@@ -546,14 +541,8 @@ class _MissingOAuthRegistration extends StatelessWidget {
                 icon: CupertinoIcons.exclamationmark_triangle,
                 color: AppTone.attention.color(context),
               ),
-              title: Text(
-                '$provider 授权未就绪',
-                style: AppType.rowTitleStrong,
-              ),
-              subtitle: const Text(
-                '填写并保存 Client ID 后即可继续授权。',
-                maxLines: 2,
-              ),
+              title: Text('$provider 授权未就绪', style: AppType.rowTitleStrong),
+              subtitle: const Text('填写并保存 Client ID 后即可继续授权。', maxLines: 2),
             ),
           ],
         ),
@@ -561,6 +550,7 @@ class _MissingOAuthRegistration extends StatelessWidget {
     );
   }
 }
+
 String _providerLabel(RemoteProviderType providerType) =>
     switch (providerType) {
       RemoteProviderType.googleDrive => 'Google Drive',

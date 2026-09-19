@@ -66,10 +66,7 @@ class NewConnection extends ConsumerWidget {
                   connectionData.source ?? '格间',
                   style: AppType.rowTitleStrong,
                 ),
-                subtitle: const Text(
-                  '当前设备上的格间数据',
-                  maxLines: 2,
-                ),
+                subtitle: const Text('当前设备上的格间数据', maxLines: 2),
               ),
             ],
           ),

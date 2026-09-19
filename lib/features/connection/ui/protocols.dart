@@ -122,10 +122,7 @@ class Protocols extends HookConsumerWidget {
                   color: AppTone.neutral.color(context),
                 ),
                 title: const Text('阿里云盘'),
-                subtitle: const Text(
-                  '需要官方 Token Broker，当前未开放。',
-                  maxLines: 2,
-                ),
+                subtitle: const Text('需要官方 Token Broker，当前未开放。', maxLines: 2),
                 enabled: false,
               ),
             ],

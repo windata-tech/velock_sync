@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 
 /// Shows transient operation feedback without assuming a Material widget tree.
@@ -29,15 +29,20 @@ class WDAppBar extends PlatformAppBar {
     bool showTitle = true,
   }) : super(
          title: showTitle ? title : null,
-         material: (_, _) => MaterialAppBarData(
+         material: (context, _) => MaterialAppBarData(
            centerTitle: false,
            elevation: 0,
            scrolledUnderElevation: 0,
            surfaceTintColor: Colors.transparent,
+           backgroundColor: context.appNavigationBarBackground,
          ),
-         cupertino: (_, _) => CupertinoNavigationBarData(
-           border: const Border(
-             bottom: BorderSide(color: CupertinoColors.separator, width: 0),
+         cupertino: (context, _) => CupertinoNavigationBarData(
+           backgroundColor: context.appNavigationBarBackground,
+           border: Border(
+             bottom: BorderSide(
+               color: context.appSeparator.withValues(alpha: 0.6),
+               width: 0.5,
+             ),
            ),
          ),
        );

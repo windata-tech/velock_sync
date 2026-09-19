@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
@@ -20,6 +22,7 @@ import 'package:velock_sync/dataset_adapters/velock_exchange/apple_pairing_contr
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_dataset_adapter_factory.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_queue_probe.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_service.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
@@ -35,6 +38,7 @@ import 'package:velock_sync/sync_profiles/execution/sync_profile_dispatcher_fact
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
+import 'package:velock_sync/sync_profiles/diagnostics/remote_inventory_service.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_global_settings.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_settings_service.dart';
@@ -42,6 +46,7 @@ import 'package:velock_sync/sync_profiles/wizard/velock_pairing_session.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_profile_finalizer.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
+import 'package:velock_sync/widgets/adaptive_dialogs.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/app_components.dart';
 import 'package:velock_sync/widgets/app_format.dart';
@@ -51,6 +56,18 @@ import 'package:velock_sync/widgets/app_format.dart';
 abstract interface class SyncProfileRunService {
   Future<SyncProfileDispatchResult> runNow(String profileId);
 }
+
+/// Reads the Velock app's local sync queue (Apple App Group only).
+final velockExchangeQueueProbeProvider = Provider<VelockExchangeQueueProbe>(
+  (ref) => const VelockExchangeQueueProbe(),
+);
+
+/// Read-only remote inventory used by the detail page.
+final remoteInventoryServiceProvider = Provider<RemoteInventoryService>(
+  (ref) => RemoteInventoryService(
+    connections: ref.watch(connectionRepositoryProvider),
+  ),
+);
 
 final syncProfileRunServiceProvider = Provider<SyncProfileRunService>(
   (ref) => _ForegroundSyncProfileRunService(
@@ -426,6 +443,10 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome> {
         loaded.velockAvailability != null &&
         loaded.velockAvailability != VelockWizardAvailability.ready &&
         velockProfiles.isNotEmpty;
+    final velockStatus = _velockDomainStatus(
+      profiles: velockProfiles,
+      velockAvailability: loaded.velockAvailability,
+    );
 
     return [
       if (velockIssue)
@@ -438,27 +459,34 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome> {
       SliverToBoxAdapter(
         child: AdaptiveListSection(
           header: '格间',
-          headerTrailing: Text(
-            velockProfiles.isEmpty ? '未开启' : '${velockProfiles.length} 个',
-            style: TextStyle(
-              color: context.appSecondaryLabel,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.15,
-            ),
-          ),
-          footer: velockProfiles.isEmpty
+          // The disconnection banner right above already carries the next step,
+          // so the header only states the condition it summarises.
+          headerDetail: velockIssue || velockStatus.detail == null
               ? null
-              : const Text(
-                  '零知识远程备份：Sync 只搬运格间已经加密和认证的数据。恢复格间内容、最近删除和冲突时仍由格间本体处理。',
+              : _SectionStatusDetail(
+                  message: velockStatus.detail!,
+                  tone: velockStatus.tone,
                 ),
-          children: [
-            _BackupOverviewRow(
-              profiles: velockProfiles,
-              velockAvailability: loaded.velockAvailability,
-              onCreate: () =>
+          // The intro belongs to the moment before anything exists; once a
+          // profile is listed it only repeats itself.
+          footer: velockProfiles.isEmpty
+              ? const Text('零知识备份：只搬运格间已加密的数据，恢复由格间本体处理。')
+              : null,
+          emptyContent: Align(
+            alignment: Alignment.centerLeft,
+            child: AppTextButton(
+              key: const Key('velock-backup-enable'),
+              icon: adaptiveIcon(
+                context,
+                material: Icons.add_rounded,
+                cupertino: CupertinoIcons.add,
+              ),
+              label: '开启格间备份',
+              onPressed: () =>
                   context.pushNamed(AppRoutes.velockDatasetWizard.name),
             ),
+          ),
+          children: [
             for (final profile in velockProfiles)
               _ProfileTile(
                 summary: profile,
@@ -471,36 +499,23 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome> {
       SliverToBoxAdapter(
         child: AdaptiveListSection(
           header: '其他文件',
-          headerTrailing: Text(
-            folderProfiles.isEmpty ? '未创建' : '${folderProfiles.length} 个',
-            style: TextStyle(
-              color: context.appSecondaryLabel,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.15,
+          emptyContent: Align(
+            alignment: Alignment.centerLeft,
+            child: AppTextButton(
+              key: const Key('selected-folder-create'),
+              icon: adaptiveIcon(
+                context,
+                material: Icons.add_rounded,
+                cupertino: CupertinoIcons.add,
+              ),
+              label: '新建文件夹同步',
+              onPressed: () =>
+                  context.pushNamed(AppRoutes.selectedFolderProfiles.name),
             ),
           ),
-          footer: const Text('选择本地文件夹并同步到自己的远端空间。适合普通文件、多设备双向同步和独立于格间账号的恢复场景。'),
           children: [
-            if (folderProfiles.isEmpty)
-              AdaptiveListTile(
-                widgetKey: const Key('selected-folder-create'),
-                leading: AdaptiveIconBadge(
-                  icon: adaptiveIcon(
-                    context,
-                    material: Icons.folder_outlined,
-                    cupertino: CupertinoIcons.folder,
-                  ),
-                ),
-                title: const Text('新建文件夹同步'),
-                subtitle: const Text('选择文件夹和远端位置，按同步盘方式保持设备一致。'),
-                showChevron: true,
-                onTap: () =>
-                    context.pushNamed(AppRoutes.selectedFolderProfiles.name),
-              )
-            else
-              for (final profile in folderProfiles)
-                _ProfileTile(summary: profile, onChanged: _refresh),
+            for (final profile in folderProfiles)
+              _ProfileTile(summary: profile, onChanged: _refresh),
           ],
         ),
       ),
@@ -611,90 +626,77 @@ class _VelockConnectionBanner extends StatelessWidget {
   }
 }
 
-class _BackupOverviewRow extends StatelessWidget {
-  const _BackupOverviewRow({
-    required this.profiles,
-    required this.velockAvailability,
-    required this.onCreate,
-  });
+/// State of the「格间」domain as shown by the section header.
+///
+/// A status is neither an instance the user can open nor an entry that starts
+/// a new sync, so it never renders as a grouped list row: the header keeps one
+/// line of context, and only speaks up when something needs attention.
+class _DomainStatus {
+  const _DomainStatus({required this.tone, this.detail});
 
-  final List<SyncProfileSummary> profiles;
-  final VelockWizardAvailability? velockAvailability;
-  final VoidCallback onCreate;
+  final AppTone tone;
+
+  /// One sentence of context, or null when the section holds nothing but an
+  /// entry to start the domain.
+  final String? detail;
+}
+
+_DomainStatus _velockDomainStatus({
+  required List<SyncProfileSummary> profiles,
+  required VelockWizardAvailability? velockAvailability,
+}) {
+  if (profiles.isEmpty) {
+    // The empty slot below already reads as "not set up yet", so the header
+    // adds nothing here.
+    return const _DomainStatus(tone: AppTone.neutral);
+  }
+
+  final velockUnavailable =
+      velockAvailability != null &&
+      velockAvailability != VelockWizardAvailability.ready;
+  if (velockUnavailable) {
+    return const _DomainStatus(
+      tone: AppTone.danger,
+      detail: '请打开格间完成授权；恢复连接后备份会自动继续。',
+    );
+  }
+
+  final attention = profiles.where(_velockProfileNeedsAttention).length;
+  if (attention > 0) {
+    return const _DomainStatus(
+      tone: AppTone.attention,
+      detail: '格间已重置或授权已失效。请移除下方配置，再用「＋ → 备份格间数据」重新配对。',
+    );
+  }
+
+  // Nothing to report when the domain is healthy: the run itself carries its
+  // timestamp, so the header stays text-free.
+  return const _DomainStatus(tone: AppTone.ok);
+}
+
+bool _velockProfileNeedsAttention(SyncProfileSummary profile) =>
+    profile.isIsolated ||
+    profile.activity?.latestRun?.state == 'failed' ||
+    profile.state == SyncProfileState.accessRequired ||
+    profile.state == SyncProfileState.reauthorizationRequired ||
+    profile.state == SyncProfileState.blockedByConfiguration ||
+    profile.state == SyncProfileState.error;
+
+/// One line of section-level context under a section header.
+class _SectionStatusDetail extends StatelessWidget {
+  const _SectionStatusDetail({required this.message, required this.tone});
+
+  final String message;
+  final AppTone tone;
 
   @override
   Widget build(BuildContext context) {
-    if (profiles.isEmpty) {
-      return AdaptiveListTile(
-        widgetKey: const Key('velock-backup-empty-summary'),
-        leading: const AdaptiveIconBadge(icon: CupertinoIcons.shield),
-        title: const Text('格间备份 · 未开启'),
-        subtitle: const Text('持续备份格间已加密的数据，换机、重装或误删后可在格间中恢复。'),
-        additionalInfo: AppSecondaryButton(
-          label: '开启格间备份',
-          onPressed: onCreate,
-        ),
-      );
-    }
-
-    final velockUnavailable =
-        velockAvailability != null &&
-        velockAvailability != VelockWizardAvailability.ready;
-    final attention = profiles
-        .where(
-          (profile) =>
-              profile.isIsolated ||
-              velockUnavailable ||
-              profile.activity?.latestRun?.state == 'failed' ||
-              profile.state == SyncProfileState.accessRequired ||
-              profile.state == SyncProfileState.reauthorizationRequired ||
-              profile.state == SyncProfileState.blockedByConfiguration ||
-              profile.state == SyncProfileState.error,
-        )
-        .length;
-    final isHealthy = attention == 0;
-    final latestRun = profiles
-        .map((profile) => profile.activity?.latestRun)
-        .whereType<SyncRunRecord>()
-        .toList(growable: false);
-    final latestCompleted = latestRun
-        .where((run) => run.state == 'completed')
-        .toList(growable: false);
-    latestCompleted.sort(
-      (a, b) => (b.completedAt ?? b.startedAt).compareTo(
-        a.completedAt ?? a.startedAt,
+    final needsAction = tone == AppTone.attention || tone == AppTone.danger;
+    return Text(
+      message,
+      style: AppType.rowSubtitle.copyWith(
+        color: needsAction ? tone.color(context) : context.appSecondaryLabel,
       ),
-    );
-    final tone = velockUnavailable
-        ? AppTone.danger
-        : isHealthy
-        ? AppTone.ok
-        : AppTone.attention;
-    final title = velockUnavailable
-        ? '格间备份连接已断开'
-        : isHealthy
-        ? '格间备份已开启'
-        : '$attention 项格间备份需要关注';
-    final message = velockUnavailable
-        ? '请打开格间完成授权；恢复连接后备份会自动继续。'
-        : isHealthy
-        ? latestCompleted.isEmpty
-              ? '尚未完成首次备份，可立即运行一次。'
-              : '最近成功备份：${AppFormat.relativeTime(latestCompleted.first.completedAt ?? latestCompleted.first.startedAt)}。'
-        : '打开下方格间备份配置，按提示处理后重试。';
-
-    return AdaptiveListTile(
-      widgetKey: const Key('velock-backup-summary'),
-      leading: AdaptiveIconBadge(
-        color: tone.color(context),
-        icon: velockUnavailable
-            ? CupertinoIcons.link
-            : isHealthy
-            ? CupertinoIcons.shield
-            : CupertinoIcons.exclamationmark_triangle,
-      ),
-      title: Text(title),
-      subtitle: Text(message),
     );
   }
 }
@@ -721,10 +723,16 @@ class _ProfileTile extends ConsumerWidget {
       lastRunFailed: summary.activity?.latestRun?.state == 'failed',
       velockAvailability: velockAvailability,
     );
-    final failureSubtitle = summary.activity?.latestRun?.state == 'failed'
+    // When the pairing binding is gone the row already states the cause and
+    // the next step, so the generic "sync unfinished" line is redundant.
+    final failureSubtitle = summary.state == SyncProfileState.accessRequired
+        ? null
+        : summary.activity?.latestRun?.state == 'failed'
         ? _latestRunFailureSubtitle(summary.activity?.latestRun)
         : null;
-    final baseSubtitle = presentation.detail ?? _profileSecondaryText(summary);
+    final baseSubtitle = summary.state == SyncProfileState.accessRequired
+        ? '格间已重置或授权已失效，请移除本配置后重新配对。'
+        : presentation.detail ?? _profileSecondaryText(summary);
     final subtitleText = failureSubtitle == null
         ? baseSubtitle
         : '$baseSubtitle，$failureSubtitle';
@@ -751,7 +759,7 @@ class _ProfileTile extends ConsumerWidget {
                 Flexible(
                   child: Text(
                     baseSubtitle,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppType.rowSubtitle.copyWith(
                       color: context.appSecondaryLabel,
@@ -779,7 +787,9 @@ class _ProfileTile extends ConsumerWidget {
             ],
           ],
         ),
-        isThreeLine: failureSubtitle != null,
+        isThreeLine:
+            failureSubtitle != null ||
+            summary.state == SyncProfileState.accessRequired,
         enabled: !summary.isIsolated,
         onTap: () => context.push('/sync-profiles/${summary.profileId}'),
         trailing: AdaptiveActionMenu<_ProfileAction>(
@@ -1027,87 +1037,6 @@ Future<bool> _confirmSyncProfileRemoval(
   isDestructive: true,
 );
 
-/* Future<String?> _requestProfileRecoveryPassphrase(BuildContext context) async {
-  final first = TextEditingController();
-  final second = TextEditingController();
-  try {
-    return await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('生成恢复包'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('恢复包和口令需通过不同的受保护渠道保存。'),
-            TextField(
-              controller: first,
-              decoration: const InputDecoration(labelText: '恢复口令'),
-              obscureText: true,
-              autocorrect: false,
-            ),
-            TextField(
-              controller: second,
-              decoration: const InputDecoration(labelText: '再次输入恢复口令'),
-              obscureText: true,
-              autocorrect: false,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (first.text.isEmpty || first.text != second.text) return;
-              Navigator.of(dialogContext).pop(first.text);
-            },
-            child: const Text('生成'),
-          ),
-        ],
-      ),
-    );
-  } finally {
-    first.dispose();
-    second.dispose();
-  }
-} */
-
-/* Future<void> _showProfileRecoveryPackage(
-  BuildContext context,
-  String recoveryPackage,
-) => showDialog<void>(
-  context: context,
-  builder: (dialogContext) => AlertDialog(
-    title: const Text('一次性恢复包'),
-    content: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('请安全保存。此窗口关闭后应用不会保留或自动复制该恢复包。'),
-          const SizedBox(height: 12),
-          SelectableText(recoveryPackage),
-        ],
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.of(dialogContext).pop(),
-        child: const Text('我已安全保存'),
-      ),
-    ],
-  ),
-);
-
-class SyncProfileWizard extends ConsumerStatefulWidget {
-  const SyncProfileWizard({super.key});
-
-  @override
-  ConsumerState<SyncProfileWizard> createState() => _SyncProfileWizardState();
-} */
-
 class SyncProfileWizard extends ConsumerStatefulWidget {
   const SyncProfileWizard({super.key});
   @override
@@ -1203,6 +1132,8 @@ class VelockDatasetWizard extends ConsumerStatefulWidget {
 
 enum _PairingRecoveryAction { cancel, reopen }
 
+enum _VelockReadinessAction { retry, pair, done }
+
 class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
     with WidgetsBindingObserver {
   bool _checkingVelock = false;
@@ -1274,38 +1205,43 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
         .inspect();
     if (!mounted) return;
     setState(() => _checkingVelock = false);
-    await showDialog<void>(
+    final choice = await showAdaptiveAlert<_VelockReadinessAction>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_velockReadinessTitle(readiness.availability)),
-        content: Text(_velockReadinessMessage(readiness.availability)),
-        actions: [
-          if (readiness.canRetry)
-            TextButton(
-              key: const Key('retry-velock-readiness'),
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                _inspectVelock();
-              },
-              child: const Text('重试'),
-            ),
-          if (readiness.canCreate)
-            FilledButton(
-              key: const Key('begin-velock-pairing'),
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                _beginVelockPairing(readiness.descriptor!);
-              },
-              child: const Text('开始配对'),
-            )
-          else
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('完成'),
-            ),
-        ],
-      ),
+      title: _velockReadinessTitle(readiness.availability),
+      message: _velockReadinessMessage(readiness.availability),
+      actions: [
+        if (readiness.canRetry)
+          AdaptiveAlertAction<_VelockReadinessAction>(
+            label: '重试',
+            value: _VelockReadinessAction.retry,
+            key: const Key('retry-velock-readiness'),
+          ),
+        if (readiness.canCreate)
+          AdaptiveAlertAction<_VelockReadinessAction>(
+            label: '开始配对',
+            value: _VelockReadinessAction.pair,
+            key: const Key('begin-velock-pairing'),
+            isDefault: true,
+            emphasized: true,
+          )
+        else
+          AdaptiveAlertAction<_VelockReadinessAction>(
+            label: '完成',
+            value: _VelockReadinessAction.done,
+            isDefault: true,
+            emphasized: true,
+          ),
+      ],
     );
+    switch (choice) {
+      case _VelockReadinessAction.retry:
+        await _inspectVelock();
+      case _VelockReadinessAction.pair:
+        await _beginVelockPairing(readiness.descriptor!);
+      case _VelockReadinessAction.done:
+      case null:
+        break;
+    }
   }
 
   Future<void> _beginVelockPairing(VelockPairingDescriptor descriptor) async {
@@ -1362,29 +1298,32 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
   Future<void> _showPendingPairingProblem(VelockPairingSession session) async {
     if (!mounted || _pairingProblemDialogVisible) return;
     _pairingProblemDialogVisible = true;
-    final action = await showDialog<_PairingRecoveryAction>(
+    final action = await showAdaptiveAlert<_PairingRecoveryAction>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.sync_problem_outlined),
-        title: const Text('尚未收到 Velock 批准'),
-        content: const Text(
-          '如果你刚开启“允许新的配对”，请重新打开 Velock 并刷新待审批请求。仍看不到时，取消后重新发起。',
+      title: '尚未收到 Velock 批准',
+      message: '如果你刚开启“允许新的配对”，请重新打开 Velock 并刷新待审批请求。仍看不到时，取消后重新发起。',
+      icon: Icon(
+        adaptiveIcon(
+          context,
+          material: Icons.sync_problem_outlined,
+          cupertino: CupertinoIcons.exclamationmark_circle,
         ),
-        actions: [
-          TextButton(
-            key: const Key('cancel-velock-pairing'),
-            onPressed: () =>
-                Navigator.pop(dialogContext, _PairingRecoveryAction.cancel),
-            child: const Text('取消配对'),
-          ),
-          FilledButton(
-            key: const Key('reopen-velock-pairing'),
-            onPressed: () =>
-                Navigator.pop(dialogContext, _PairingRecoveryAction.reopen),
-            child: const Text('重新打开 Velock'),
-          ),
-        ],
+        color: context.appSecondaryLabel,
       ),
+      actions: [
+        AdaptiveAlertAction<_PairingRecoveryAction>(
+          label: '取消配对',
+          value: _PairingRecoveryAction.cancel,
+          key: const Key('cancel-velock-pairing'),
+        ),
+        AdaptiveAlertAction<_PairingRecoveryAction>(
+          label: '重新打开 Velock',
+          value: _PairingRecoveryAction.reopen,
+          key: const Key('reopen-velock-pairing'),
+          isDefault: true,
+          emphasized: true,
+        ),
+      ],
     );
     _pairingProblemDialogVisible = false;
     if (!mounted) return;
@@ -1424,23 +1363,12 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       ),
       _ => ('无法验证配对结果', '配对响应无效或不可用，未创建任何 Profile。'),
     };
-    final retry = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.error_outline),
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('重新发起'),
-          ),
-        ],
-      ),
+    final retry = await showAdaptiveConfirmation(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: '重新发起',
+      cancelLabel: '关闭',
     );
     if (retry == true && mounted) await _inspectVelock();
   }
@@ -1531,32 +1459,20 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
 
   Future<ConnectionModel?> _chooseVelockConnection(
     List<ConnectionModel> connections,
-  ) => showDialog<ConnectionModel>(
+  ) => showAdaptiveActionSheet<ConnectionModel>(
     context: context,
+    title: '步骤 2 / 3 · 选择远端连接',
+    message: '选定后进入最终确认，可在那里核对远端目标。',
     barrierDismissible: false,
-    builder: (dialogContext) => SimpleDialog(
-      title: const Text('步骤 2 / 3 · 选择远端连接'),
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(24, 0, 24, 8),
-          child: Text('选定后进入最终确认，可在那里核对远端目标。'),
+    actions: [
+      for (final connection in connections)
+        AdaptiveAction<ConnectionModel>(
+          label: connection.name,
+          caption: connection.protocol.targetLabel,
+          value: connection,
+          key: Key('velock-connection-${connection.id}'),
         ),
-        for (final connection in connections)
-          SimpleDialogOption(
-            key: Key('velock-connection-${connection.id}'),
-            onPressed: () => Navigator.pop(dialogContext, connection),
-            child: ListTile(
-              leading: const Icon(Icons.cloud_done_outlined),
-              title: Text(connection.name),
-              subtitle: Text(connection.protocol.targetLabel),
-            ),
-          ),
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('取消'),
-        ),
-      ],
-    ),
+    ],
   );
 
   Future<_VelockProfileReview?> _reviewVelockProfile({
@@ -1575,101 +1491,93 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       maximumBytes = 50 * 1024 * 1024;
     }
     if (!mounted) return null;
-    return showDialog<_VelockProfileReview>(
+    return showAdaptiveForm<_VelockProfileReview>(
       context: context,
+      title: '步骤 3 / 3 · 确认并创建',
       barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('步骤 3 / 3 · 确认并创建'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  key: const Key('velock-profile-name'),
-                  initialValue: displayName,
-                  onChanged: (value) =>
-                      setDialogState(() => displayName = value),
-                  maxLength: 128,
-                  decoration: const InputDecoration(labelText: 'Profile 名称'),
-                ),
-                Text('Vault：${approval.vaultDisplayName}'),
-                Text('设备：${approval.deviceDisplayName}'),
-                Text('远端：${connection.name} · ${connection.target}'),
-                const SizedBox(height: 8),
-                const Divider(height: 1),
-                SwitchListTile(
-                  key: const Key('velock-background-enabled'),
-                  title: const Text('允许后台同步'),
-                  value: enabled,
-                  onChanged: (value) => setDialogState(() => enabled = value),
-                ),
-                SwitchListTile(
-                  title: const Text('允许使用蜂窝网络'),
-                  value: allowCellular,
-                  onChanged: enabled
-                      ? (value) => setDialogState(() => allowCellular = value)
-                      : null,
-                ),
-                SwitchListTile(
-                  title: const Text('仅充电时运行'),
-                  value: requiresCharging,
-                  onChanged: enabled
-                      ? (value) =>
-                            setDialogState(() => requiresCharging = value)
-                      : null,
-                ),
-                DropdownButtonFormField<int>(
-                  initialValue: maximumBytes,
-                  decoration: const InputDecoration(labelText: '蜂窝网络单次上限'),
-                  items: [
-                    for (final value in choices)
-                      DropdownMenuItem(
-                        value: value * 1024 * 1024,
-                        child: Text('$value MiB'),
-                      ),
-                  ],
-                  onChanged: enabled && allowCellular
-                      ? (value) {
-                          if (value != null) {
-                            setDialogState(() => maximumBytes = value);
-                          }
-                        }
-                      : null,
-                ),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-                const Text('确认后先原子保存 Profile，成功后才消费本次一次性配对响应。'),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('返回'),
-            ),
-            FilledButton(
-              key: const Key('finalize-velock-profile'),
-              onPressed: displayName.trim().isEmpty
-                  ? null
-                  : () => Navigator.pop(
-                      dialogContext,
-                      _VelockProfileReview(
-                        displayName: displayName.trim(),
-                        backgroundPolicy: SyncProfileBackgroundPolicy(
-                          enabled: enabled,
-                          allowCellular: enabled && allowCellular,
-                          requiresCharging: enabled && requiresCharging,
-                          cellularMaxTransferBytes: maximumBytes,
-                        ),
-                      ),
+      builder: (context, setDialogState) =>
+          AdaptiveFormSpec<_VelockProfileReview>(
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AdaptiveTextField(
+                    key: const Key('velock-profile-name'),
+                    label: 'Profile 名称',
+                    initialValue: displayName,
+                    maxLength: 128,
+                    onChanged: (value) =>
+                        setDialogState(() => displayName = value),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('Vault：${approval.vaultDisplayName}'),
+                  Text('设备：${approval.deviceDisplayName}'),
+                  Text('远端：${connection.name} · ${connection.target}'),
+                  const Divider(height: 20),
+                  AdaptiveSwitchRow(
+                    key: const Key('velock-background-enabled'),
+                    title: '允许后台同步',
+                    value: enabled,
+                    onChanged: (value) => setDialogState(() => enabled = value),
+                  ),
+                  AdaptiveSwitchRow(
+                    title: '允许使用蜂窝网络',
+                    value: allowCellular,
+                    onChanged: enabled
+                        ? (value) => setDialogState(() => allowCellular = value)
+                        : null,
+                  ),
+                  AdaptiveSwitchRow(
+                    title: '仅充电时运行',
+                    value: requiresCharging,
+                    onChanged: enabled
+                        ? (value) =>
+                              setDialogState(() => requiresCharging = value)
+                        : null,
+                  ),
+                  const SizedBox(height: 8),
+                  AdaptiveOptionPicker<int>(
+                    label: '蜂窝网络单次上限',
+                    value: maximumBytes,
+                    options: [
+                      for (final value in choices)
+                        ('$value MB', value * 1024 * 1024),
+                    ],
+                    onChanged: (value) =>
+                        setDialogState(() => maximumBytes = value),
+                  ),
+                  const Divider(height: 20),
+                  Text(
+                    '确认后先原子保存 Profile，成功后才消费本次一次性配对响应。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.appSecondaryLabel,
                     ),
-              child: const Text('确认并创建'),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
+            actions: [
+              const AdaptiveAlertAction<_VelockProfileReview>(label: '返回'),
+              AdaptiveAlertAction<_VelockProfileReview>(
+                label: '确认并创建',
+                key: const Key('finalize-velock-profile'),
+                enabled: displayName.trim().isNotEmpty,
+                isDefault: true,
+                emphasized: true,
+                value: _VelockProfileReview(
+                  displayName: displayName.trim(),
+                  backgroundPolicy: SyncProfileBackgroundPolicy(
+                    enabled: enabled,
+                    allowCellular: enabled && allowCellular,
+                    requiresCharging: enabled && requiresCharging,
+                    cellularMaxTransferBytes: maximumBytes,
+                  ),
+                ),
+              ),
+            ],
+          ),
     );
   }
 
@@ -1997,6 +1905,8 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
       database.listRecentSyncRuns(profileId: widget.profileId),
       database.listTransferJobs(profileId: widget.profileId),
       database.listUnresolvedConflicts(profileId: widget.profileId),
+      database.readSyncedDataSnapshot(widget.profileId),
+      database.listTransferHistory(profileId: widget.profileId, limit: 100),
     ]);
     VelockWizardAvailability? velockAvailability;
     if (profile?.kind == SyncDatasetKind.velockManaged) {
@@ -2022,6 +1932,8 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
       runs: values[1] as List<SyncRunRecord>,
       transfers: values[2] as List<TransferJobRecord>,
       conflicts: values[3] as List<SyncConflictRecord>,
+      synced: values[4] as SyncedDataSnapshot,
+      history: values[5] as List<TransferJobRecord>,
       velockAvailability: velockAvailability,
     );
   }
@@ -2059,12 +1971,16 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
           child: _OverviewTab(
             profile: profile,
             latestRun: data.latestRun,
+            synced: data.synced,
+            history: data.history,
             velockAvailability: data.velockAvailability,
             onChanged: _refresh,
           ),
         ),
         _DetailMaterialSurface(child: _PendingTab(transfers: data.transfers)),
-        _DetailMaterialSurface(child: _HistoryTab(runs: data.runs)),
+        _DetailMaterialSurface(
+          child: _HistoryTab(runs: data.runs, history: data.history),
+        ),
         _DetailMaterialSurface(child: _ConflictsTab(conflicts: data.conflicts)),
         _DetailMaterialSurface(
           child: _ProfileSettingsTab(profile: profile, onChanged: _refresh),
@@ -2133,11 +2049,15 @@ class _OverviewTab extends ConsumerStatefulWidget {
   const _OverviewTab({
     required this.profile,
     required this.latestRun,
+    required this.synced,
+    required this.history,
     this.velockAvailability,
     required this.onChanged,
   });
   final SyncProfileEnvelope profile;
   final SyncRunRecord? latestRun;
+  final SyncedDataSnapshot synced;
+  final List<TransferJobRecord> history;
   final VelockWizardAvailability? velockAvailability;
   final VoidCallback onChanged;
 
@@ -2169,6 +2089,22 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
     if (mounted) widget.onChanged();
   }
 
+  Future<void> _updateConnection() async {
+    final confirmed = await showAdaptiveConfirmation(
+      context,
+      title: '连接已失效',
+      message: '格间已重置或授权已失效，当前连接无法继续使用。是否更新连接（重新配对）？远端已有数据不会丢失。',
+      confirmLabel: '更新连接',
+      isDestructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    await ref
+        .read(syncProfileRepositoryProvider)
+        .remove(widget.profile.profileId);
+    if (!mounted) return;
+    context.push('/sync-profiles/new/velock');
+  }
+
   @override
   Widget build(BuildContext context) {
     final isPaused = widget.profile.state == SyncProfileState.paused;
@@ -2185,6 +2121,10 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
       lastRunFailed: lastRunFailed,
       velockAvailability: widget.velockAvailability,
     );
+    // A dead pairing keeps 「立即同步」 tappable: the tap opens the
+    // "connection is stale — update it?" prompt instead of a greyed row.
+    final needsConnectionUpdate =
+        widget.profile.state == SyncProfileState.accessRequired;
     final canSync =
         widget.profile.state == SyncProfileState.active &&
         !_running &&
@@ -2192,7 +2132,7 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
     final latestRun = widget.latestRun;
     final runSummary = latestRun == null
         ? '还没有运行记录'
-        : '${latestRun.state == 'completed' ? '已完成' : '失败'} · '
+        : '${_runStateLabel(latestRun.state)} · '
               '${AppFormat.relativeTime(latestRun.completedAt ?? latestRun.startedAt)}';
     Future<void> toggleState() async {
       await ref
@@ -2225,7 +2165,25 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
               ? '已开启'
               : '已关闭',
         ),
-        if (lastRunFailed)
+        if (widget.profile.state == SyncProfileState.accessRequired)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              0,
+              AppSpacing.page,
+              AppSpacing.xs,
+            ),
+            child: AppNotice(
+              tone: AppTone.danger,
+              title: '连接已失效',
+              message: '格间已重置或授权已失效。远端数据不会丢失；更新连接会移除当前配置并重新配对。',
+              action: AppSecondaryButton(
+                label: '更新连接',
+                onPressed: _updateConnection,
+              ),
+            ),
+          )
+        else if (lastRunFailed)
           Padding(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.page,
@@ -2239,13 +2197,20 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
               message: _latestRunFailureSubtitle(latestRun),
             ),
           ),
+        _SyncedDataSection(
+          snapshot: widget.synced,
+          profile: widget.profile,
+          history: widget.history,
+        ),
         AdaptiveListSection(
           header: '配置操作',
           children: [
             Semantics(
               button: true,
               label: '立即同步',
-              onTap: canSync ? _runNow : null,
+              onTap: needsConnectionUpdate
+                  ? _updateConnection
+                  : (canSync ? _runNow : null),
               child: AdaptiveListTile(
                 leading: AdaptiveIconBadge(
                   icon: adaptiveIcon(
@@ -2255,10 +2220,20 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
                   ),
                   color: context.appPrimary,
                 ),
-                title: Text(_running ? '正在同步…' : '立即同步'),
-                subtitle: const Text('立即检查远端并执行待处理同步。'),
-                enabled: canSync,
-                onTap: _runNow,
+                title: Text(
+                  needsConnectionUpdate
+                      ? '立即同步'
+                      : _running
+                      ? '正在同步…'
+                      : '立即同步',
+                ),
+                subtitle: Text(
+                  needsConnectionUpdate
+                      ? '连接已失效，点按可更新连接（重新配对）。'
+                      : '立即检查远端并执行待处理同步。',
+                ),
+                enabled: canSync || needsConnectionUpdate,
+                onTap: needsConnectionUpdate ? _updateConnection : _runNow,
               ),
             ),
             AdaptiveListTile(
@@ -2521,8 +2496,9 @@ class _PendingTab extends StatelessWidget {
 }
 
 class _HistoryTab extends StatelessWidget {
-  const _HistoryTab({required this.runs});
+  const _HistoryTab({required this.runs, required this.history});
   final List<SyncRunRecord> runs;
+  final List<TransferJobRecord> history;
 
   @override
   Widget build(BuildContext context) => runs.isEmpty
@@ -2566,7 +2542,8 @@ class _HistoryTab extends StatelessWidget {
                           maxLines: 2,
                         ),
                         showChevron: true,
-                        onTap: () => _showRunDetails(context, run),
+                        onTap: () =>
+                            _showRunDetails(context, run, history: history),
                       );
                     },
                   ),
@@ -2578,7 +2555,57 @@ class _HistoryTab extends StatelessWidget {
 
 /// Read-only run record. Human conclusion first; raw protocol fields stay in
 /// the collapsed technical footnote instead of the primary copy.
-Future<void> _showRunDetails(BuildContext context, SyncRunRecord run) {
+
+/// Full itemised list of everything this device has moved.
+Future<void> _showSyncedObjectsSheet(
+  BuildContext context,
+  List<TransferJobRecord> history,
+) => showAppDetailSheet(
+  context,
+  title: '已同步对象明细',
+  rows: [
+    for (final transfer in history)
+      AppDetailSheetRow(
+        label:
+            '${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey))} · '
+            '${transfer.direction == TransferJobDirection.upload ? '上传' : '恢复'}',
+        value:
+            '${AppFormat.bytes(transfer.completedBytes)} · '
+            '${AppFormat.stamp(transfer.completedAt)}',
+      ),
+  ],
+  footnote: '格间备份以加密对象为单位（批次 / 数据块 / 提交）；原始文件名只在格间 App 内可见。',
+);
+
+Future<void> _showRunDetails(
+  BuildContext context,
+  SyncRunRecord run, {
+  List<TransferJobRecord> history = const [],
+}) {
+  final runEnd = run.completedAt;
+  final transferred = [
+    for (final transfer in history)
+      if (transfer.completedAt != null &&
+          !transfer.completedAt!.isBefore(run.startedAt) &&
+          (runEnd == null || !transfer.completedAt!.isAfter(runEnd)))
+        transfer,
+  ];
+  final uploaded = transferred
+      .where((transfer) => transfer.direction == TransferJobDirection.upload)
+      .toList(growable: false);
+  final downloaded = transferred
+      .where((transfer) => transfer.direction == TransferJobDirection.download)
+      .toList(growable: false);
+  int bytesOf(List<TransferJobRecord> items) =>
+      items.fold(0, (sum, item) => sum + item.completedBytes);
+  final detailLines = [
+    for (final transfer in transferred)
+      '${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey))} · '
+          '${transfer.direction == TransferJobDirection.upload ? '上传' : '恢复'} · '
+          '${AppFormat.bytes(transfer.completedBytes)} · '
+          '${AppFormat.stamp(transfer.completedAt)}',
+  ];
+
   final failed = run.state == 'failed';
   final technical = <String>[
     if (run.errorCode != null) '错误代码：${run.errorCode}',
@@ -2605,6 +2632,19 @@ Future<void> _showRunDetails(BuildContext context, SyncRunRecord run) {
         ),
       if (run.suggestedAction != null)
         AppDetailSheetRow(label: '建议操作', value: run.suggestedAction!),
+      AppDetailSheetRow(
+        label: '上传对象',
+        value: '${uploaded.length} 个 · ${AppFormat.bytes(bytesOf(uploaded))}',
+      ),
+      AppDetailSheetRow(
+        label: '恢复对象',
+        value:
+            '${downloaded.length} 个 · ${AppFormat.bytes(bytesOf(downloaded))}',
+      ),
+      AppDetailSheetRow(
+        label: '传输明细',
+        value: detailLines.isEmpty ? '本次没有传输任何对象' : detailLines.join('\n'),
+      ),
     ],
     footnote: technical.isEmpty ? null : '技术详情\n$technical',
   );
@@ -2749,22 +2789,12 @@ class _ProfileSettingsTab extends ConsumerWidget {
             ),
             subtitle: const Text('不会删除远端数据或安全存储中的凭据。'),
             onTap: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('移除同步配置？'),
-                  content: const Text('此操作只移除本地配置。'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('取消'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('移除'),
-                    ),
-                  ],
-                ),
+              final confirmed = await showAdaptiveConfirmation(
+                context,
+                title: '移除同步配置？',
+                message: '此操作只移除本地配置。',
+                confirmLabel: '移除',
+                isDestructive: true,
               );
               if (confirmed != true) return;
               try {
@@ -2865,7 +2895,7 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       if (!mounted) return;
       _showMessage(
         context,
-        '已释放 ${_formatBytes(result.freedBytes)}；'
+        '已释放 ${AppFormat.bytes(result.freedBytes)}；'
         '保留 ${result.preservedRecoverableBatchCount} 个可恢复批次'
         '${result.busyProfileCount == 0 ? '。' : '，${result.busyProfileCount} 个运行中配置未清理。'}',
       );
@@ -2884,71 +2914,36 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
           .read(syncSettingsServiceProvider)
           .exportSanitizedDiagnostics();
       if (!mounted) return;
-      if (isApplePlatform(context)) {
-        await showCupertinoDialog<void>(
-          context: context,
-          builder: (dialogContext) => CupertinoAlertDialog(
-            title: const Text('脱敏诊断'),
-            content: SizedBox(
-              height: 320,
-              child: SingleChildScrollView(
-                child: SelectionArea(
-                  child: Text(
-                    diagnostics,
-                    key: const Key('sanitized-diagnostics-content'),
-                  ),
-                ),
+      final choice = await showAdaptiveAlert<String>(
+        context: context,
+        title: '脱敏诊断',
+        details: SizedBox(
+          height: 320,
+          child: SingleChildScrollView(
+            child: SelectionArea(
+              child: Text(
+                diagnostics,
+                key: const Key('sanitized-diagnostics-content'),
               ),
             ),
-            actions: [
-              CupertinoDialogAction(
-                key: const Key('copy-sanitized-diagnostics'),
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: diagnostics));
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                },
-                child: const Text('复制'),
-              ),
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('完成'),
-              ),
-            ],
           ),
-        );
-      } else {
-        await showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('脱敏诊断'),
-            content: SizedBox(
-              width: 640,
-              child: SingleChildScrollView(
-                child: SelectionArea(
-                  child: Text(
-                    diagnostics,
-                    key: const Key('sanitized-diagnostics-content'),
-                  ),
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                key: const Key('copy-sanitized-diagnostics'),
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: diagnostics));
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                },
-                child: const Text('复制'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('完成'),
-              ),
-            ],
+        ),
+        actions: [
+          AdaptiveAlertAction<String>(
+            label: '复制',
+            value: 'copy',
+            key: const Key('copy-sanitized-diagnostics'),
           ),
-        );
+          AdaptiveAlertAction<String>(
+            label: '完成',
+            value: 'done',
+            isDefault: true,
+            emphasized: true,
+          ),
+        ],
+      );
+      if (choice == 'copy') {
+        await Clipboard.setData(ClipboardData(text: diagnostics));
       }
     } on Object {
       if (mounted) _showMessage(context, '无法生成脱敏诊断。');
@@ -2958,28 +2953,18 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
   }
 
   Future<void> _chooseCellularLimit(SyncGlobalSettings settings) async {
-    if (!isApplePlatform(context)) return;
-    final selected = await showCupertinoModalPopup<int>(
+    final selected = await showAdaptiveActionSheet<int>(
       context: context,
-      builder: (sheetContext) => CupertinoActionSheet(
-        title: const Text('默认蜂窝网络传输上限'),
-        message: const Text('加密内容按单个传输对象限制。'),
-        actions: [
-          for (final bytes in const [
-            10 * 1024 * 1024,
-            50 * 1024 * 1024,
-            100 * 1024 * 1024,
-          ])
-            CupertinoActionSheetAction(
-              onPressed: () => Navigator.of(sheetContext).pop(bytes),
-              child: Text(AppFormat.bytes(bytes)),
-            ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.of(sheetContext).pop(),
-          child: const Text('取消'),
-        ),
-      ),
+      title: '默认蜂窝网络传输上限',
+      message: '加密内容按单个传输对象限制。',
+      actions: [
+        for (final bytes in const [
+          10 * 1024 * 1024,
+          50 * 1024 * 1024,
+          100 * 1024 * 1024,
+        ])
+          AdaptiveAction<int>(label: AppFormat.bytes(bytes), value: bytes),
+      ],
     );
     if (selected != null && mounted) {
       await _save(settings.copyWith(defaultCellularMaxTransferBytes: selected));
@@ -3301,6 +3286,421 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
   }
 }
 
+/// "What has actually been synced" — the reassurance view.
+///
+/// Two sources are shown side by side: durable local counters (what this
+/// device moved) and an on-demand scan of the remote vault prefix (what is
+/// actually stored). Everything is aggregated — no keys, paths or file names.
+class _SyncedDataSection extends ConsumerStatefulWidget {
+  const _SyncedDataSection({
+    required this.snapshot,
+    required this.profile,
+    required this.history,
+  });
+
+  final SyncedDataSnapshot snapshot;
+  final SyncProfileEnvelope profile;
+  final List<TransferJobRecord> history;
+
+  @override
+  ConsumerState<_SyncedDataSection> createState() => _SyncedDataSectionState();
+}
+
+class _SyncedDataSectionState extends ConsumerState<_SyncedDataSection> {
+  RemoteInventorySnapshot? _remote;
+  VelockExchangeQueueSnapshot? _queue;
+  bool _scanning = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.profile.kind == SyncDatasetKind.velockManaged) {
+      unawaited(_loadQueue());
+    }
+  }
+
+  Future<void> _loadQueue() async {
+    final snapshot = await ref.read(velockExchangeQueueProbeProvider).read();
+    if (!mounted || snapshot == null) return;
+    setState(() => _queue = snapshot);
+  }
+
+  Future<void> _scanRemote() async {
+    setState(() {
+      _scanning = true;
+      _error = null;
+    });
+    try {
+      final snapshot = await ref
+          .read(remoteInventoryServiceProvider)
+          .scan(
+            connectionId: widget.profile.connectionId,
+            vaultId: widget.profile.vaultId,
+          );
+      if (!mounted) return;
+      setState(() => _remote = snapshot);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _error = '无法读取远端清单，请检查连接后重试。');
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = widget.snapshot;
+    final remote = _remote;
+    final lastActivity = snapshot.lastActivityAt;
+    final pendingTransfers =
+        snapshot.pendingUploadCount + snapshot.pendingDownloadCount;
+    final kinds = _mergedKinds();
+    return AdaptiveListSection(
+      header: '已同步的数据',
+      footer: Text(
+        remote != null && remote.totalCount == 0
+            ? '远端目前没有这个空间的加密对象。'
+            : widget.profile.kind == SyncDatasetKind.velockManaged
+            ? '格间备份按加密对象统计（批次 / 数据块 / 提交）；原始文件名只在格间 App 内可见。'
+            : '按加密对象统计；文件路径不会离开本机。',
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.rowHorizontal,
+            AppSpacing.sm,
+            AppSpacing.rowHorizontal,
+            AppSpacing.sm,
+          ),
+          child: AppMetricGrid(
+            metrics: [
+              AppMetric(value: '${snapshot.uploadedCount}', label: '本机已上传'),
+              AppMetric(value: '${snapshot.downloadedCount}', label: '本机已恢复'),
+              AppMetric(
+                value: AppFormat.bytes(snapshot.totalBytes),
+                label: '本机累计流量',
+              ),
+            ],
+          ),
+        ),
+        if (lastActivity != null)
+          _SyncedDataRow(
+            icon: Icons.schedule_outlined,
+            label: '最近同步',
+            value: AppFormat.relativeTime(lastActivity),
+          ),
+        _SyncedDataRow(
+          icon: Icons.layers_outlined,
+          label: '增量批次',
+          value:
+              '已发布 ${snapshot.publishedOutgoingCount} · '
+              '已应用 ${snapshot.appliedIncomingCount}',
+        ),
+        if (pendingTransfers > 0)
+          _SyncedDataRow(
+            icon: Icons.sync_outlined,
+            label: '待传输对象',
+            value:
+                '上传 ${snapshot.pendingUploadCount} · '
+                '下载 ${snapshot.pendingDownloadCount}',
+          ),
+        for (final kind in kinds) _SyncedKindRow(kind: kind),
+        for (final device in snapshot.devices)
+          _SyncedDataRow(
+            icon: Icons.devices_outlined,
+            label: '远端设备 ${_shortId(device.deviceId)}',
+            value: '已应用 ${device.appliedSequence} 个增量',
+          ),
+        if (widget.history.isNotEmpty) ...[
+          AdaptiveListTile(
+            key: const Key('synced-objects-entry'),
+            leading: AdaptiveIconBadge(
+              icon: adaptiveIcon(
+                context,
+                material: Icons.inventory_2_outlined,
+                cupertino: CupertinoIcons.cube_box,
+              ),
+              size: AppSizes.listLeadingCompact,
+            ),
+            title: const Text('已同步对象明细'),
+            subtitle: Text(
+              '共 ${widget.history.length} 个对象，最近 ${AppFormat.relativeTime(widget.history.first.completedAt)}',
+            ),
+            showChevron: true,
+            onTap: () => _showSyncedObjectsSheet(context, widget.history),
+          ),
+        ],
+        if (_queue != null) ...[
+          _SyncedDataRow(
+            icon: Icons.outbox_outlined,
+            label: '格间待上传批次',
+            value: '${_queue!.outboxReadyCount} 个',
+          ),
+          _SyncedDataRow(
+            icon: Icons.move_to_inbox_outlined,
+            label: '待格间导入',
+            value: '${_queue!.inboxReadyCount} 个',
+          ),
+          if (_queue!.lastOutboxReceiptAt != null)
+            _SyncedDataRow(
+              icon: Icons.handshake_outlined,
+              label: '上次数据交接',
+              value: AppFormat.relativeTime(_queue!.lastOutboxReceiptAt),
+            ),
+          if (_queue!.isEmpty && snapshot.uploadedCount == 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.rowHorizontal,
+                vertical: AppSpacing.xs,
+              ),
+              child: Text(
+                '格间目前没有新的待同步内容；在格间里新增或修改数据后会自动排队。',
+                style: AppType.rowSubtitle.copyWith(
+                  color: context.appSecondaryLabel,
+                ),
+              ),
+            ),
+        ],
+        _SyncedDataRow(
+          icon: Icons.cloud_outlined,
+          label: '远端已保存',
+          value: remote == null
+              ? '未扫描'
+              : '${remote.totalCount} 个对象 · ${AppFormat.bytes(remote.totalBytes)}',
+        ),
+        if (remote != null && remote.lastUpdatedAt != null)
+          _SyncedDataRow(
+            icon: Icons.update_outlined,
+            label: '远端最近更新',
+            value: AppFormat.relativeTime(remote.lastUpdatedAt),
+          ),
+        if (remote != null)
+          for (final entry in remote.entries)
+            _SyncedKindRow(
+              kind: SyncedDataKindSummary(
+                kind: entry.kind,
+                bytes: entry.bytes,
+                remoteCount: entry.count,
+              ),
+            ),
+        if (remote != null && remote.truncated)
+          const Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: AppSpacing.rowHorizontal,
+              vertical: AppSpacing.xs,
+            ),
+            child: Text('清单较大，仅统计了前 600 个对象。'),
+          ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.rowHorizontal,
+              vertical: AppSpacing.xs,
+            ),
+            child: Text(_error!, style: TextStyle(color: context.appDanger)),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.rowHorizontal,
+            AppSpacing.xs,
+            AppSpacing.rowHorizontal,
+            AppSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '从远端存储读取实际已保存的加密对象。',
+                  style: AppType.rowSubtitle.copyWith(
+                    color: context.appSecondaryLabel,
+                  ),
+                ),
+              ),
+              if (_scanning)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                  child: CupertinoActivityIndicator(),
+                )
+              else
+                TextButton(
+                  onPressed: _scanRemote,
+                  child: Text(remote == null ? '扫描远端' : '重新扫描'),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Upload/download buckets merged into one list per content kind.
+  List<SyncedDataKindSummary> _mergedKinds() {
+    final counts = <String, ({int upload, int download, int bytes})>{};
+    for (final kind in widget.snapshot.uploadedKinds) {
+      final current = counts[kind.kind] ?? (upload: 0, download: 0, bytes: 0);
+      counts[kind.kind] = (
+        upload: current.upload + kind.count,
+        download: current.download,
+        bytes: current.bytes + kind.bytes,
+      );
+    }
+    for (final kind in widget.snapshot.downloadedKinds) {
+      final current = counts[kind.kind] ?? (upload: 0, download: 0, bytes: 0);
+      counts[kind.kind] = (
+        upload: current.upload,
+        download: current.download + kind.count,
+        bytes: current.bytes + kind.bytes,
+      );
+    }
+    final summaries = [
+      for (final entry in counts.entries)
+        SyncedDataKindSummary(
+          kind: entry.key,
+          uploadedCount: entry.value.upload,
+          downloadedCount: entry.value.download,
+          bytes: entry.value.bytes,
+        ),
+    ];
+    summaries.sort((a, b) => b.bytes.compareTo(a.bytes));
+    return summaries;
+  }
+}
+
+class SyncedDataKindSummary {
+  const SyncedDataKindSummary({
+    required this.kind,
+    this.uploadedCount = 0,
+    this.downloadedCount = 0,
+    required this.bytes,
+    this.remoteCount,
+  });
+
+  final String kind;
+  final int uploadedCount;
+  final int downloadedCount;
+  final int bytes;
+
+  /// Set when the row describes the remote listing instead of local transfers.
+  final int? remoteCount;
+}
+
+class _SyncedKindRow extends StatelessWidget {
+  const _SyncedKindRow({required this.kind});
+
+  final SyncedDataKindSummary kind;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveListTile(
+    leading: AdaptiveIconBadge(
+      icon: _syncedKindIcon(context, kind.kind),
+      size: AppSizes.listLeadingCompact,
+    ),
+    title: Text(_syncedKindLabel(kind.kind)),
+    subtitle: Text(
+      kind.remoteCount != null
+          ? '远端 ${kind.remoteCount} 个对象'
+          : '上传 ${kind.uploadedCount} 项 · 下载 ${kind.downloadedCount} 项',
+    ),
+    trailing: Text(
+      AppFormat.bytes(kind.bytes),
+      style: AppType.rowSubtitle.copyWith(color: context.appSecondaryLabel),
+    ),
+  );
+}
+
+class _SyncedDataRow extends StatelessWidget {
+  const _SyncedDataRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: AppSpacing.rowHorizontal,
+      vertical: AppSpacing.sm,
+    ),
+    child: Row(
+      children: [
+        Icon(icon, size: 18, color: context.appSecondaryLabel),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(
+            label,
+            style: AppType.rowSubtitle.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: AppType.rowSubtitle.copyWith(color: context.appSecondaryLabel),
+        ),
+      ],
+    ),
+  );
+}
+
+String _syncedKindLabel(String kind) => switch (kind) {
+  'batches' => '增量批次',
+  'blobs' => '数据块',
+  'commits' => '提交校验',
+  'checkpoints' => '检查点',
+  'acknowledgements' => '同步回执',
+  'protocol' => '协议与设备',
+  'maintenance' => '保留与清理',
+  _ => '其他对象',
+};
+
+IconData _syncedKindIcon(BuildContext context, String kind) => switch (kind) {
+  'batches' => adaptiveIcon(
+    context,
+    material: Icons.layers_outlined,
+    cupertino: CupertinoIcons.square_stack_3d_up,
+  ),
+  'blobs' => adaptiveIcon(
+    context,
+    material: Icons.data_object,
+    cupertino: CupertinoIcons.cube_box,
+  ),
+  'commits' => adaptiveIcon(
+    context,
+    material: Icons.verified_outlined,
+    cupertino: CupertinoIcons.checkmark_seal,
+  ),
+  'checkpoints' => adaptiveIcon(
+    context,
+    material: Icons.flag_outlined,
+    cupertino: CupertinoIcons.flag,
+  ),
+  'acknowledgements' => adaptiveIcon(
+    context,
+    material: Icons.done_all,
+    cupertino: CupertinoIcons.checkmark_alt,
+  ),
+  'protocol' => adaptiveIcon(
+    context,
+    material: Icons.badge_outlined,
+    cupertino: CupertinoIcons.person_badge_plus,
+  ),
+  'maintenance' => adaptiveIcon(
+    context,
+    material: Icons.auto_delete_outlined,
+    cupertino: CupertinoIcons.trash,
+  ),
+  _ => adaptiveIcon(
+    context,
+    material: Icons.inventory_2_outlined,
+    cupertino: CupertinoIcons.cube_box,
+  ),
+};
+
 class _DetailData {
   const _DetailData({
     required this.profile,
@@ -3308,6 +3708,8 @@ class _DetailData {
     required this.runs,
     required this.transfers,
     required this.conflicts,
+    required this.synced,
+    required this.history,
     this.velockAvailability,
   });
   final SyncProfileEnvelope? profile;
@@ -3315,6 +3717,8 @@ class _DetailData {
   final List<SyncRunRecord> runs;
   final List<TransferJobRecord> transfers;
   final List<SyncConflictRecord> conflicts;
+  final SyncedDataSnapshot synced;
+  final List<TransferJobRecord> history;
   final VelockWizardAvailability? velockAvailability;
 }
 
@@ -3377,77 +3781,40 @@ Future<void> _exportSelectedFolderRecovery(
 }
 
 Future<String?> _requestProfileRecoveryPassphrase(BuildContext context) async {
-  final first = TextEditingController();
-  final second = TextEditingController();
-  try {
-    return await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('生成恢复包'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('恢复包和口令需通过不同的受保护渠道保存。'),
-            TextField(
-              controller: first,
-              decoration: const InputDecoration(labelText: '恢复口令'),
-              obscureText: true,
-              autocorrect: false,
-            ),
-            TextField(
-              controller: second,
-              decoration: const InputDecoration(labelText: '再次输入恢复口令'),
-              obscureText: true,
-              autocorrect: false,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (first.text.isEmpty || first.text != second.text) return;
-              Navigator.of(dialogContext).pop(first.text);
-            },
-            child: const Text('生成'),
-          ),
-        ],
+  final values = await showAdaptiveTextInputs(
+    context: context,
+    title: '生成恢复包',
+    message: '恢复包和口令需通过不同的受保护渠道保存。',
+    inputs: const [
+      AdaptiveTextInput(
+        label: '恢复口令',
+        placeholder: '恢复口令',
+        obscureText: true,
+        autocorrect: false,
       ),
-    );
-  } finally {
-    first.dispose();
-    second.dispose();
-  }
+      AdaptiveTextInput(
+        label: '再次输入恢复口令',
+        placeholder: '再次输入恢复口令',
+        obscureText: true,
+        autocorrect: false,
+      ),
+    ],
+    confirmLabel: '生成',
+    isValid: (values) => values[0].isNotEmpty && values[0] == values[1],
+  );
+  if (values == null) return null;
+  return values[0];
 }
 
 Future<void> _showProfileRecoveryPackage(
   BuildContext context,
   String recoveryPackage,
-) => showDialog<void>(
+) => showAdaptiveNotice(
   context: context,
-  builder: (dialogContext) => AlertDialog(
-    title: const Text('一次性恢复包'),
-    content: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('请安全保存。此窗口关闭后应用不会保留或自动复制该恢复包。'),
-          const SizedBox(height: 12),
-          SelectableText(recoveryPackage),
-        ],
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.of(dialogContext).pop(),
-        child: const Text('我已安全保存'),
-      ),
-    ],
-  ),
+  title: '一次性恢复包',
+  message: '请安全保存。此窗口关闭后应用不会保留或自动复制该恢复包。',
+  details: SelectableText(recoveryPackage),
+  confirmLabel: '我已安全保存',
 );
 
 String _kindLabel(SyncDatasetKind? kind) => switch (kind) {
@@ -3492,7 +3859,7 @@ String _velockAvailabilitySubtitle(VelockWizardAvailability availability) =>
     switch (availability) {
       VelockWizardAvailability.appNotInstalled => '请先安装 Velock 本体。',
       VelockWizardAvailability.authorizationRequired => '请在 Velock 本体中重新授权。',
-      VelockWizardAvailability.accessRevoked => 'Velock 已撤销本次授权，请重新配对后继续同步。',
+      VelockWizardAvailability.accessRevoked => '格间已重置或授权被撤销，请移除本配置后重新配对。',
       VelockWizardAvailability.unsupportedVersion => '请升级 Velock 本体后重试。',
       VelockWizardAvailability.signatureMismatch => '已安装的 Velock 本体无法验证。',
       VelockWizardAvailability.configurationMissing => 'Velock 本体的同步通道不可用。',
@@ -3518,29 +3885,27 @@ String _runStateLabel(String state) => switch (state) {
   _ => state,
 };
 
-String _activityText(SyncProfileActivitySummary? activity) {
-  if (activity == null) {
-    return '';
-  }
-  if (activity.unresolvedConflictCount > 0) {
-    return ' · ${activity.unresolvedConflictCount} 个冲突';
-  }
-  if (activity.pendingUploadCount + activity.pendingDownloadCount > 0) {
-    return ' · 有待传输项目';
-  }
-  return '';
-}
-
+/// One short line under a profile name.
+///
+/// The section header already names the domain, and the state badge already
+/// names the state, so the row only answers "when did it last run" — the long
+/// "格间备份 · 后台同步已开启 · 最近成功备份：…" line repeated everything the
+/// rest of the row said.
 String _profileSecondaryText(SyncProfileSummary summary) {
-  final details = <String>[_kindLabel(summary.kind)];
-  if (summary.backgroundPolicy.enabled) {
-    details.add('后台同步已开启');
+  final activity = summary.activity;
+  if (activity != null && activity.unresolvedConflictCount > 0) {
+    return '${activity.unresolvedConflictCount} 个冲突待处理';
   }
-  final activity = _activityText(summary.activity);
-  if (activity.isNotEmpty) {
-    details.add(activity.substring(3));
+  if (activity != null &&
+      activity.pendingUploadCount + activity.pendingDownloadCount > 0) {
+    return '有待传输项目';
   }
-  return details.join(' · ');
+  final run = activity?.latestRun;
+  if (run == null) {
+    return summary.kind == SyncDatasetKind.selectedFolder ? '尚未同步' : '尚未备份';
+  }
+  if (run.state == 'running') return '正在同步…';
+  return AppFormat.relativeTime(run.completedAt ?? run.startedAt);
 }
 
 String _dispatchLabel(SyncProfileDispatchStatus status) => switch (status) {
@@ -3602,17 +3967,6 @@ int _supportedCellularLimit(int value) {
   const hundredMiB = 100 * 1024 * 1024;
   if (value == tenMiB || value == hundredMiB) return value;
   return 50 * 1024 * 1024;
-}
-
-String _formatBytes(int bytes) {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GiB';
-  }
-  if (bytes >= 1024 * 1024) {
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MiB';
-  }
-  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KiB';
-  return '$bytes B';
 }
 
 void _showMessage(BuildContext context, String message) =>

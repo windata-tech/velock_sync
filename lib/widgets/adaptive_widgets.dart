@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/cupertino.dart';
@@ -7,8 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 
 import '../appearance/design_tokens.dart';
+import 'adaptive_dialogs.dart';
 import 'app_components.dart';
 import 'common_widgets.dart';
+
+export 'adaptive_dialogs.dart'
+    show showAdaptiveBlockingProgress, showAdaptiveConfirmation;
 
 IconData adaptiveIcon(
   BuildContext context, {
@@ -247,19 +250,38 @@ class AdaptiveListSection extends StatelessWidget {
     required this.children,
     this.header,
     this.headerTrailing,
+    this.headerDetail,
+    this.emptyContent,
     this.footer,
     this.topPadding = AppSpacing.xs,
   });
 
   final String? header;
   final Widget? headerTrailing;
+
+  /// Optional state line rendered directly under the header.
+  ///
+  /// Section-level state (is this domain on? what happened last?) belongs to
+  /// the header, not to the grouped surface below: a status is not a list item,
+  /// so it must not sit in the same card, dividers and row rhythm as the
+  /// entries and records the user can actually open.
+  final Widget? headerDetail;
+
+  /// Rendered instead of the grouped surface while [children] is empty.
+  ///
+  /// An empty domain is not a list yet: reusing the grouped row surface made
+  /// 「新建文件夹同步」look like an item that already exists, so sections hand in
+  /// a single action instead. Sections without one keep collapsing as before.
+  final Widget? emptyContent;
   final Widget? footer;
   final List<Widget> children;
   final double topPadding;
 
   @override
   Widget build(BuildContext context) {
-    if (children.isEmpty) return const SizedBox.shrink();
+    if (children.isEmpty && emptyContent == null) {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -271,54 +293,75 @@ class AdaptiveListSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (header != null)
+          if (header != null || headerDetail != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sectionHeaderGap),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              padding: const EdgeInsets.only(
+                bottom: AppSpacing.sectionHeaderGap,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      header!,
-                      style: AppType.caption.copyWith(
-                        color: context.appSecondaryLabel,
-                      ),
+                  if (header != null)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            header!,
+                            style: AppType.caption.copyWith(
+                              color: context.appSecondaryLabel,
+                            ),
+                          ),
+                        ),
+                        if (headerTrailing != null) ...[
+                          const SizedBox(width: AppSpacing.sm),
+                          headerTrailing!,
+                        ],
+                      ],
                     ),
-                  ),
-                  if (headerTrailing != null) ...[
-                    const SizedBox(width: AppSpacing.sm),
-                    headerTrailing!,
+                  if (headerDetail != null) ...[
+                    if (header != null)
+                      const SizedBox(height: AppSpacing.xxs + 2),
+                    headerDetail!,
                   ],
                 ],
               ),
             ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: context.appGroupedSurface,
-              borderRadius: BorderRadius.circular(AppRadii.large),
-              border: Border.all(
-                color: context.appSeparator.withValues(
-                  alpha: AppOpacity.groupedBorder,
+          if (children.isEmpty)
+            emptyContent!
+          else
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.appGroupedSurface,
+                borderRadius: BorderRadius.circular(AppRadii.large),
+                border: Border.all(
+                  color: context.appSeparator.withValues(
+                    alpha: AppOpacity.groupedBorder,
+                  ),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadii.large),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Column(children: _withDividers(context, children)),
                 ),
               ),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadii.large),
-              child: Material(
-                type: MaterialType.transparency,
-                child: Column(children: _withDividers(context, children)),
-              ),
-            ),
-          ),
           if (footer != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(0, AppSpacing.xs, 0, 0),
-              child: DefaultTextStyle(
-                style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                  color: context.appSecondaryLabel,
-                  height: 1.35,
+              // Full width so a caller can centre its footnote (empty domains
+              // centre the action and the sentence under it).
+              child: SizedBox(
+                width: double.infinity,
+                child: DefaultTextStyle(
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                    color: context.appSecondaryLabel,
+                    height: 1.35,
+                  ),
+                  child: footer!,
                 ),
-                child: footer!,
               ),
             ),
         ],
@@ -341,6 +384,22 @@ class AdaptiveListSection extends StatelessWidget {
     ];
   }
 }
+
+/// Runs a row callback without handing its future to the widget that owns the
+/// pressed highlight.
+///
+/// `CupertinoListTile` clears its highlight only after `await widget.onTap!()`
+/// resolves (`list_tile.dart`). Rows here start routes (`context.push`) and
+/// async saves whose futures belong to the router or the page — never to the
+/// row. Passing them through kept the row grey until that future finished, or
+/// forever when it never did: a route dropped by `go()` instead of popped, or
+/// an async save that throws. The callback still runs, its result is just not
+/// what decides whether the row springs back.
+VoidCallback? _rowTapHandler(VoidCallback? callback) => callback == null
+    ? null
+    : () {
+        callback();
+      };
 
 class AdaptiveListTile extends StatelessWidget {
   const AdaptiveListTile({
@@ -385,6 +444,8 @@ class AdaptiveListTile extends StatelessWidget {
               : const Icon(Icons.chevron_right_rounded))
         : null;
 
+    final tapHandler = _rowTapHandler(onTap);
+
     if (isApplePlatform(context)) {
       return Opacity(
         opacity: enabled ? 1 : 0.45,
@@ -398,7 +459,7 @@ class AdaptiveListTile extends StatelessWidget {
           padding: contentPadding,
           leadingSize: leadingSize,
           leadingToTitle: leadingToTitle,
-          onTap: enabled ? onTap : null,
+          onTap: enabled ? tapHandler : null,
         ),
       );
     }
@@ -424,7 +485,7 @@ class AdaptiveListTile extends StatelessWidget {
       leading: leading,
       trailing: materialTrailing,
       enabled: enabled,
-      onTap: onTap,
+      onTap: tapHandler,
       isThreeLine: isThreeLine,
       contentPadding: contentPadding,
       minVerticalPadding: 0,
@@ -462,7 +523,9 @@ class AdaptiveSwitchListTile extends StatelessWidget {
         ),
         leadingSize: AppSizes.listLeading,
         leadingToTitle: AppSpacing.rowLeadingGap,
-        onTap: onChanged == null ? null : () => onChanged!(!value),
+        onTap: _rowTapHandler(
+          onChanged == null ? null : () => onChanged!(!value),
+        ),
         trailing: CupertinoSwitch(value: value, onChanged: onChanged),
       );
     }
@@ -772,11 +835,7 @@ class AdaptiveEmptyState extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(
-                icon,
-                size: 30,
-                color: tone.color(context),
-              ),
+              child: Icon(icon, size: 30, color: tone.color(context)),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
@@ -1099,129 +1158,18 @@ class AdaptiveActionMenu<T> extends StatelessWidget {
   }
 
   Future<void> _showCupertinoActions(BuildContext context) async {
-    final selected = await showCupertinoModalPopup<T>(
+    final selected = await showAdaptiveActionSheet<T>(
       context: context,
-      builder: (sheetContext) => CupertinoActionSheet(
-        actions: [
-          for (final item in items.where((item) => item.enabled))
-            CupertinoActionSheetAction(
-              isDestructiveAction: item.isDestructive,
-              onPressed: () => Navigator.of(sheetContext).pop(item.value),
-              child: Text(item.label),
-            ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.of(sheetContext).pop(),
-          child: const Text('取消'),
-        ),
-      ),
+      title: tooltip,
+      actions: [
+        for (final item in items.where((item) => item.enabled))
+          AdaptiveAction<T>(
+            label: item.label,
+            value: item.value,
+            isDestructive: item.isDestructive,
+          ),
+      ],
     );
     if (selected != null) onSelected(selected);
   }
-}
-
-Future<bool> showAdaptiveConfirmation(
-  BuildContext context, {
-  required String title,
-  required String message,
-  required String confirmLabel,
-  String cancelLabel = '取消',
-  bool isDestructive = false,
-}) async {
-  if (isApplePlatform(context)) {
-    return await showCupertinoDialog<bool>(
-          context: context,
-          builder: (dialogContext) => CupertinoAlertDialog(
-            title: Text(title),
-            content: Text(message),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: Text(cancelLabel),
-              ),
-              CupertinoDialogAction(
-                isDestructiveAction: isDestructive,
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: Text(confirmLabel),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
-  return await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(cancelLabel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: isDestructive
-                  ? FilledButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                      foregroundColor: Theme.of(context).colorScheme.onError,
-                    )
-                  : null,
-              child: Text(confirmLabel),
-            ),
-          ],
-        ),
-      ) ??
-      false;
-}
-
-void showAdaptiveBlockingProgress(
-  BuildContext context, {
-  required String message,
-  Key? key,
-}) {
-  if (isApplePlatform(context)) {
-    unawaited(
-      showCupertinoDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => PopScope(
-          canPop: false,
-          child: CupertinoAlertDialog(
-            key: key,
-            content: Column(
-              children: [
-                const CupertinoActivityIndicator(radius: 14),
-                const SizedBox(height: AppSpacing.md),
-                Text(message),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    return;
-  }
-
-  unawaited(
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          key: key,
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: AppSpacing.md),
-              Text(message),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
 }

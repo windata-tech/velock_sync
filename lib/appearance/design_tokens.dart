@@ -51,8 +51,7 @@ extension AppToneColor on AppTone {
   }
 
   /// Soft container used behind text badges and status icons.
-  Color surface(BuildContext context) =>
-      color(context).withValues(alpha: 0.12);
+  Color surface(BuildContext context) => color(context).withValues(alpha: 0.12);
 }
 
 abstract final class AppSpacing {
@@ -159,6 +158,16 @@ extension AdaptiveColors on BuildContext {
   Color get appGroupedSurface => isApplePlatform(this)
       ? CupertinoColors.systemBackground.resolveFrom(this)
       : Theme.of(this).colorScheme.surfaceContainerLow;
+
+  /// Navigation-bar surface. On Apple platforms this is a step deeper than
+  /// [appPageBackground] in light mode (and the lighter material iOS uses in
+  /// dark mode) so the bar reads as its own layer instead of merging into the
+  /// page.
+  Color get appNavigationBarBackground => isApplePlatform(this)
+      ? (CupertinoTheme.of(this).brightness == Brightness.dark
+            ? CupertinoColors.systemBackground.resolveFrom(this)
+            : const Color(0xFFE3E3E9))
+      : Theme.of(this).colorScheme.surfaceContainer;
 
   Color get appElevatedSurface => isApplePlatform(this)
       ? CupertinoColors.secondarySystemGroupedBackground.resolveFrom(this)

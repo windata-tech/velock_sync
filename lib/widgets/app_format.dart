@@ -3,7 +3,7 @@ import 'package:flutter/cupertino.dart';
 /// Shared, presentation-only formatters.
 ///
 /// Every user-facing date, size and error string goes through this file so the
-/// app never mixes `2026-09-12 09:02`, `50.0 MiB` and raw protocol codes in the
+/// app never mixes `2026-09-12 09:02`, `50.0 MB` and raw protocol codes in the
 /// same list.
 abstract final class AppFormat {
   /// `刚刚` / `x 分钟前` / `今天 HH:mm` / `昨天 HH:mm` / `M月d日 HH:mm`.
@@ -48,7 +48,9 @@ abstract final class AppFormat {
       size /= 1024;
       unit++;
     }
-    final decimals = unit == 0 ? 0 : (size >= 10 || size.truncateToDouble() == size ? 0 : 1);
+    final decimals = unit == 0
+        ? 0
+        : (size >= 10 || size.truncateToDouble() == size ? 0 : 1);
     return '${size.toStringAsFixed(decimals)} ${units[unit]}';
   }
 
@@ -74,8 +76,10 @@ abstract final class AppFormat {
     if (normalized.contains('timeout') || normalized.contains('timedout')) {
       return '连接超时，请检查网络后重试。';
     }
-    if (normalized.contains('network') || normalized.contains('socket') ||
-        normalized.contains('dns') || normalized.contains('unreachable')) {
+    if (normalized.contains('network') ||
+        normalized.contains('socket') ||
+        normalized.contains('dns') ||
+        normalized.contains('unreachable')) {
       return '无法连接远端，请检查网络与服务器地址。';
     }
     if (normalized.contains('token_broker') || normalized.contains('oauth')) {

@@ -107,24 +107,14 @@ class NewWebDav extends HookConsumerWidget {
         enableHTTPS.value = true;
         return;
       }
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('使用不安全的 HTTP？'),
-          content: const Text(
+      final confirmed = await showAdaptiveConfirmation(
+        context,
+        title: '使用不安全的 HTTP？',
+        message:
             'HTTP 会使服务器地址、账号和传输内容面临被窃听或篡改的风险。仅在你确认服务器位于可信网络且不支持 HTTPS 时继续。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('保持 HTTPS'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('仍然使用 HTTP'),
-            ),
-          ],
-        ),
+        confirmLabel: '仍然使用 HTTP',
+        cancelLabel: '保持 HTTPS',
+        isDestructive: true,
       );
       if (confirmed == true && context.mounted) {
         enableHTTPS.value = false;

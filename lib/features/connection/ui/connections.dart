@@ -128,10 +128,7 @@ class Connections extends HookConsumerWidget {
             ),
             title: '还没有远端连接',
             message: '添加 WebDAV、Google Drive 或 OneDrive，作为加密同步的远端空间。',
-            action: AppPrimaryButton(
-              label: '添加远端连接',
-              onPressed: onCreate,
-            ),
+            action: AppPrimaryButton(label: '添加远端连接', onPressed: onCreate),
           ),
         ),
       ];

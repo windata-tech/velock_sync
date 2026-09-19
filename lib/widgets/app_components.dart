@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../appearance/design_tokens.dart';
+import 'adaptive_dialogs.dart';
 
 /// Components shared by every page of Velock Sync.
 ///
@@ -240,6 +241,60 @@ class AppSecondaryButton extends StatelessWidget {
           minimumSize: const Size(0, AppSpacing.control),
           borderRadius: BorderRadius.circular(AppRadii.medium),
           color: context.appPrimary.withValues(alpha: 0.12),
+          onPressed: onPressed,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 17, color: context.appPrimary),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: context.appPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Plain text action: no surface, no border.
+///
+/// Used where a section has nothing yet and the only thing worth showing is
+/// the action that starts it — a filled or tonal button there would compete
+/// with the real entries above it.
+class AppTextButton extends StatelessWidget {
+  const AppTextButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Opacity(
+      opacity: enabled ? 1 : AppOpacity.disabled,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: label,
+        child: CupertinoButton(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          minimumSize: const Size(0, AppSpacing.control),
+          pressedOpacity: 0.4,
           onPressed: onPressed,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -514,20 +569,7 @@ Future<void> showAppDetailSheet(
     footnote: footnote,
     closeLabel: closeLabel,
   );
-  if (isApplePlatform(context)) {
-    return showCupertinoModalPopup<void>(
-      context: context,
-      builder: (context) => content,
-    );
-  }
-  return showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: context.appElevatedSurface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.sheet)),
-    ),
-    builder: (context) => content,
-  );
+  return showAdaptiveSheet(context, builder: (context) => content);
 }
 
 class _AppDetailSheetBody extends StatelessWidget {

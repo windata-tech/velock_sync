@@ -283,6 +283,8 @@
 | P4 | 中文本地化：接入 `flutter_localizations` + `zh_CN`，许可页/返回按钮/系统控件文案不再回落英文 | `pubspec.yaml`、`lib/main.dart` |
 | P4 | Material 页面状态栏样式修正（透明 AppBar 会误判为深色底，导致浅色页面上状态栏图标不可见） | `lib/appearance/theme.dart` |
 | P4（修正） | 错误页/空状态按钮比例失调：改为 `AppActionStack` 统一动作区——主按钮与次按钮同宽（对齐正文列宽）、高 50、圆角 12，次按钮改为 tonal 药丸，不再是「小方块 + 裸文字链接」并排 | `lib/widgets/app_components.dart`、`adaptive_widgets.dart`、`connection.dart`、`connections.dart`、`sync_profile_workspace.dart` |
+| P1（修正） | 同步首页信息分层：「格间备份已开启」这类域状态不再占用列表行——正常态只留区段头一行说明（`AdaptiveListSection.headerDetail`，异常态才着色告警），分组卡片只放实例（配置行）；空域名（未开启格间 / 未建文件夹同步）不铺「已完成的行」，改为左对齐的纯文字按钮（新增 `AppTextButton`：无边无底、蓝色「＋ 动作名」，区段 `emptyContent`），其他文件空域名不再配说明文字；实例行的副标题只保留最近一次运行时间（「9 分钟前」/「尚未备份」），格间域介绍只在还没开启备份时出现 | `lib/widgets/adaptive_widgets.dart`、`lib/features/sync_profiles/ui/sync_profile_workspace.dart` |
+| P1（修正） | 行按下态卡死：`AdaptiveListTile` 不再把回调返回的 Future 交给 `CupertinoListTile`。后者要 `await onTap()` 完成才清除高亮，而 go_router 的 `push()` Future 在路由被 `go()` 丢掉时永不完成，于是「配置行 → 详情 → 冲突 → 前往活动页 → 切回同步」后该行一直停在按下态 | `lib/widgets/adaptive_widgets.dart` |
 
 ### 验证结果
 
@@ -298,6 +300,23 @@
 - 配置设置 Tab、说明页（15pt 正文、无重复大标题）、深色模式下的表单与详情页均复检通过（`v7-03`…`v7-06`）。
 - OAuth 页「技术详情」默认折叠，原始异常类名不再出现在页面正文（`v8-02-oauth.png`）。
 - 最终态汇总图：`ui_audit/redesign/sheet-final.png`（改版前基线 `sheet-before.png`、第一轮 `sheet-after.png`）。
+
+### 复检补充（第三轮 · 同步首页状态分层）
+
+- 问题：状态（「格间备份已开启」）、实例（「test1 的 Velock」）、入口（「新建文件夹同步」）原本铺在同一种分组行里，三者语义不同却共用同一层样式。
+- 改法（第一版）：域状态上移为区段头（状态药丸 + 一行说明），分组卡片只剩实例行。
+- 改法（定稿）：区段头不再挂「已开启 / 未创建 / N 个」这类重复标签；正常态连状态说明行也去掉，最近一次运行时间下移到实例行副标题（只显示「9 分钟前」/「尚未备份」），异常态才在区段头保留一句着色说明（断开时由顶部横幅承载）。
+- 改法（定稿 · 空态）：空域名不再铺行，只留一个左对齐的纯文字按钮（`＋ 开启格间备份` / `＋ 新建文件夹同步`，`AppTextButton`，无底色无边框）；其他文件连说明行也去掉，格间只在「还没开启备份」时保留一句零知识说明。
+- 验证：`flutter analyze` 无问题；`flutter test` 417 项全部通过（含断言空域名不落在 `AdaptiveListTile` 里的用例）；iOS 模拟器截图 `ui_audit/redesign/v11-06-text-action.png`（定稿）。
+
+### 复检补充（第四轮 · 行按下态回弹）
+
+- 问题：行点击后停留高亮不回弹（真机/模拟器截图 `ui_audit/redesign/v11-02-stuck-row-highlight.png`）。
+- 根因：`CupertinoListTile` 用 `await widget.onTap!()` 决定何时清除按下态；`AdaptiveListTile` 把 go_router `push()` 的 Future 透传上去，而 `go()`（底部 tab 切换、「前往活动页」）会丢弃被 push 的路由且不完成该 Future，高亮因此永久保留；`StatefulShellRoute.indexedStack` 让该行一直存活，所以可见。
+- 改法：`AdaptiveListTile` 内部以 fire-and-forget 方式调用回调，行只负责按下态、导航生命周期由路由自己管理。
+- 同类排查：`AdaptiveSwitchListTile` 的 `onChanged`（例如 `(value) => _save(...)`）同样把 Future 交给了 `CupertinoListTile`，保存失败或迟迟不返回时开关行（后台同步 / 允许蜂窝网络 / 全局后台同步 / 默认策略）也会卡在按下态 → 一并改用共享的 `_rowTapHandler`。
+- 排查范围与结论：全仓库只有 `AdaptiveListTile` 与 `AdaptiveSwitchListTile` 两处直接构造 `CupertinoListTile`；Flutter SDK 中只有 `CupertinoListTile` 会 `await` 回调清理高亮，Material `ListTile`/`InkWell`、`CupertinoButton`、`CupertinoContextMenuAction`、`CupertinoDialogAction`、`PlatformNavBar` 的按下态都是手势事件驱动，不受影响；`lib/` 里不存在自写的 `onTapDown` / `_pressed` 状态机。（注意：`flutter_platform_widgets` 的 `PlatformListTile` 包的就是 `CupertinoListTile`，将来用到时必须走 `AdaptiveListTile`。）
+- 验证：`test/widgets/adaptive_list_tile_test.dart` 5 项（含 shell + push + `go()` 的真实拓扑、开关行未完成的保存，修复前两例均失败）；`flutter analyze` 0 问题；`flutter test` 417 项全部通过。
 
 ### 仍待完成
 

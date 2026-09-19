@@ -29,9 +29,7 @@ class ConnectionHelpPage extends StatelessWidget {
         : [_documentFor(providerType!)];
 
     return AdaptiveScaffold(
-      title: providerType == null
-          ? '连接说明'
-          : '${documents.single.title} 配置说明',
+      title: providerType == null ? '连接说明' : '${documents.single.title} 配置说明',
       actions: providerType == RemoteProviderType.baiduNetdisk
           ? [
               PlatformTextButton(
@@ -129,9 +127,7 @@ class _ConnectionHelpSection extends StatelessWidget {
       children: [
         Text(
           section.title,
-          style: AppType.caption.copyWith(
-            color: context.appSecondaryLabel,
-          ),
+          style: AppType.caption.copyWith(color: context.appSecondaryLabel),
         ),
         const SizedBox(height: AppSpacing.xs),
         for (var index = 0; index < section.items.length; index++)
