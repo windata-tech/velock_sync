@@ -837,6 +837,13 @@ final class CrossAppUITests: XCTestCase {
         attachScreenshot("source_business_data_seeded")
     }
 
+    /// Cold-start helper: unlock the existing space and turn on
+    /// 「允许新的配对」 so the companion Sync app can pair.
+    func testEnableVelockPairingOnly() {
+        ensureVelockInitializedAndPairingEnabled(refreshRecoveryCard: false)
+        attachScreenshot("velock-pairing-enabled")
+    }
+
     func testSeedVelockBusinessData() {
         ensureVelockInitializedAndPairingEnabled(enablePairing: false)
         seedVelockBusinessDataIfRequested()
@@ -2192,7 +2199,21 @@ final class CrossAppUITests: XCTestCase {
             )
         ).firstMatch
         if !syncSettings.waitForExistence(timeout: 10) {
+            // A freshly created account shows more settings rows, and the
+            // Flutter list is lazy: the sync entry sits below the fold until
+            // the list is scrolled, so it looks "missing" without this.
+            for _ in 0..<5 where !syncSettings.exists {
+                velockApp.swipeUp()
+                RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            }
+        }
+        if !syncSettings.waitForExistence(timeout: 10) {
             print("PAIRING_SETTINGS_NOT_FOUND\n\(velockApp.debugDescription)\nPAIRING_SETTINGS_NOT_FOUND_END")
+            try? velockApp.debugDescription.write(
+                toFile: "/tmp/velock_settings_dump.txt",
+                atomically: true,
+                encoding: .utf8
+            )
             attachScreenshot("pairing-settings-not-found")
             XCTFail("Velock settings did not expose the Velock Sync pairing entry")
             return
