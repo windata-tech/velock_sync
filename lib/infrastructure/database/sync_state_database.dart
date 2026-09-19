@@ -13,7 +13,7 @@ import 'package:velock_sync/sync_core/model/sync_models.dart';
 class SyncStateDatabase {
   SyncStateDatabase._(this._database);
 
-  static const _schemaVersion = 10;
+  static const _schemaVersion = 11;
   static late SyncStateDatabase _instance;
 
   final Database _database;
@@ -485,6 +485,153 @@ class SyncStateDatabase {
     );
   }
 
+  /// Privacy-safe inventory of what this profile has already moved.
+  ///
+  /// Only aggregate counts, sizes and opaque device ids leave this method —
+  /// logical keys and provider paths never reach the UI.
+  Future<SyncedDataSnapshot> readSyncedDataSnapshot(String profileId) async {
+    const kindExpression =
+        'CASE '
+        "WHEN logical_key LIKE '%/blobs/%' THEN 'blobs' "
+        "WHEN logical_key LIKE '%/batches/%' THEN 'batches' "
+        "WHEN logical_key LIKE '%/commits/%' THEN 'commits' "
+        "WHEN logical_key LIKE '%/checkpoints/%' THEN 'checkpoints' "
+        "WHEN logical_key LIKE '%/acknowledgements/%' THEN 'acknowledgements' "
+        "WHEN logical_key LIKE '%/members/%' OR logical_key LIKE '%/join-%' "
+        "OR logical_key LIKE '%/protocol.json' THEN 'protocol' "
+        "WHEN logical_key LIKE '%/retention/%' OR logical_key LIKE '%/gc/%' "
+        "THEN 'maintenance' "
+        "ELSE 'other' END";
+
+    final transferRows = _database.select(
+      'SELECT direction, $kindExpression AS kind, COUNT(*) AS count, '
+      'COALESCE(SUM(COALESCE(expected_size, completed_bytes, 0)), 0) AS bytes '
+      'FROM transfer_jobs WHERE profile_id = ? AND state = ? '
+      'GROUP BY direction, kind',
+      [profileId, TransferJobState.completed.name],
+    );
+    final uploadedKinds = <SyncedDataKind>[];
+    final downloadedKinds = <SyncedDataKind>[];
+    var uploadedCount = 0;
+    var uploadedBytes = 0;
+    var downloadedCount = 0;
+    var downloadedBytes = 0;
+    for (final row in transferRows) {
+      final entry = SyncedDataKind(
+        kind: row['kind']! as String,
+        count: row['count']! as int,
+        bytes: row['bytes']! as int,
+      );
+      if (row['direction'] == TransferJobDirection.upload.name) {
+        uploadedCount += entry.count;
+        uploadedBytes += entry.bytes;
+        uploadedKinds.add(entry);
+      } else {
+        downloadedCount += entry.count;
+        downloadedBytes += entry.bytes;
+        downloadedKinds.add(entry);
+      }
+    }
+
+    final pendingRows = _database.select(
+      'SELECT direction, COUNT(*) AS count FROM transfer_jobs '
+      "WHERE profile_id = ? AND state IN ('queued', 'running', 'paused', "
+      "'retryWaiting') GROUP BY direction",
+      [profileId],
+    );
+    var pendingUploadCount = 0;
+    var pendingDownloadCount = 0;
+    for (final row in pendingRows) {
+      final count = row['count']! as int;
+      if (row['direction'] == TransferJobDirection.upload.name) {
+        pendingUploadCount += count;
+      } else {
+        pendingDownloadCount += count;
+      }
+    }
+
+    final incomingRows = _database.select(
+      'SELECT state, COUNT(*) AS count, MAX(received_at) AS last_at '
+      'FROM incoming_batches WHERE profile_id = ? GROUP BY state',
+      [profileId],
+    );
+    var appliedIncomingCount = 0;
+    var pendingIncomingCount = 0;
+    int? incomingLastAt;
+    for (final row in incomingRows) {
+      final count = row['count']! as int;
+      final lastAt = row['last_at'] as int?;
+      if (lastAt != null) {
+        incomingLastAt = incomingLastAt == null
+            ? lastAt
+            : (lastAt > incomingLastAt ? lastAt : incomingLastAt);
+      }
+      if (row['state'] == 'imported') {
+        appliedIncomingCount += count;
+      } else {
+        pendingIncomingCount += count;
+      }
+    }
+
+    final outgoingRows = _database.select(
+      'SELECT state, COUNT(*) AS count, '
+      'MAX(COALESCE(published_at, created_at)) AS last_at '
+      'FROM outgoing_batches WHERE profile_id = ? GROUP BY state',
+      [profileId],
+    );
+    var publishedOutgoingCount = 0;
+    var pendingOutgoingCount = 0;
+    int? outgoingLastAt;
+    for (final row in outgoingRows) {
+      final count = row['count']! as int;
+      final lastAt = row['last_at'] as int?;
+      if (lastAt != null) {
+        outgoingLastAt = outgoingLastAt == null
+            ? lastAt
+            : (lastAt > outgoingLastAt ? lastAt : outgoingLastAt);
+      }
+      if (row['state'] == 'published') {
+        publishedOutgoingCount += count;
+      } else {
+        pendingOutgoingCount += count;
+      }
+    }
+
+    final deviceRows = _database.select(
+      'SELECT producer_device_id, applied_sequence FROM sync_cursors '
+      'WHERE profile_id = ? ORDER BY producer_device_id',
+      [profileId],
+    );
+
+    return SyncedDataSnapshot(
+      uploadedKinds: uploadedKinds,
+      uploadedCount: uploadedCount,
+      uploadedBytes: uploadedBytes,
+      downloadedKinds: downloadedKinds,
+      downloadedCount: downloadedCount,
+      downloadedBytes: downloadedBytes,
+      pendingUploadCount: pendingUploadCount,
+      pendingDownloadCount: pendingDownloadCount,
+      appliedIncomingCount: appliedIncomingCount,
+      pendingIncomingCount: pendingIncomingCount,
+      incomingLastReceivedAt: incomingLastAt == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(incomingLastAt, isUtc: true),
+      publishedOutgoingCount: publishedOutgoingCount,
+      pendingOutgoingCount: pendingOutgoingCount,
+      outgoingLastPublishedAt: outgoingLastAt == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(outgoingLastAt, isUtc: true),
+      devices: [
+        for (final row in deviceRows)
+          SyncedDataDevice(
+            deviceId: row['producer_device_id']! as String,
+            appliedSequence: row['applied_sequence']! as int,
+          ),
+      ],
+    );
+  }
+
   /// Starts or resumes one durable, provider-neutral object transfer. The
   /// logical key is opaque protocol metadata; credentials and provider payloads
   /// never enter this table.
@@ -505,12 +652,13 @@ class SyncStateDatabase {
     }
     _database.execute(
       'INSERT INTO transfer_jobs '
-      '(transfer_id, profile_id, direction, logical_key, state, expected_size, completed_bytes, expected_hash, provider_checkpoint) '
-      'VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?) '
+      '(transfer_id, profile_id, direction, logical_key, state, expected_size, completed_bytes, expected_hash, provider_checkpoint, created_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?) '
       'ON CONFLICT(transfer_id) DO UPDATE SET '
       'state = excluded.state, expected_size = excluded.expected_size, '
       'completed_bytes = 0, expected_hash = excluded.expected_hash, '
-      'provider_checkpoint = excluded.provider_checkpoint, error_code = NULL',
+      'provider_checkpoint = excluded.provider_checkpoint, error_code = NULL, '
+      'completed_at = NULL',
       [
         transferId,
         profileId,
@@ -520,6 +668,7 @@ class SyncStateDatabase {
         expectedSize,
         expectedHash,
         providerCheckpoint,
+        DateTime.now().toUtc().millisecondsSinceEpoch,
       ],
     );
   }
@@ -550,11 +699,13 @@ class SyncStateDatabase {
     required int completedBytes,
   }) async {
     final updated = _database.select(
-      'UPDATE transfer_jobs SET state = ?, completed_bytes = ?, error_code = NULL '
+      'UPDATE transfer_jobs SET state = ?, completed_bytes = ?, error_code = NULL, '
+      'completed_at = COALESCE(completed_at, ?) '
       'WHERE transfer_id = ? AND state = ? RETURNING transfer_id',
       [
         TransferJobState.completed.name,
         completedBytes,
+        DateTime.now().toUtc().millisecondsSinceEpoch,
         transferId,
         TransferJobState.running.name,
       ],
@@ -568,16 +719,54 @@ class SyncStateDatabase {
   }) async {
     if (errorCode.isEmpty) throw ArgumentError.value(errorCode, 'errorCode');
     final updated = _database.select(
-      'UPDATE transfer_jobs SET state = ?, error_code = ? '
+      'UPDATE transfer_jobs SET state = ?, error_code = ?, '
+      'completed_at = COALESCE(completed_at, ?) '
       'WHERE transfer_id = ? AND state = ? RETURNING transfer_id',
       [
         TransferJobState.failed.name,
         errorCode,
+        DateTime.now().toUtc().millisecondsSinceEpoch,
         transferId,
         TransferJobState.running.name,
       ],
     );
     if (updated.isEmpty) throw StateError('Transfer job is not running.');
+  }
+
+  /// Completed (or failed) transfers in reverse chronological order.
+  ///
+  /// Powers the itemised "what moved, and when" lists; logical keys stay
+  /// opaque and are only mapped to a coarse content category by the caller.
+  Future<List<TransferJobRecord>> listTransferHistory({
+    required String profileId,
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+  }) async {
+    if (limit < 1 || limit > 200) throw ArgumentError.value(limit, 'limit');
+    final clauses = <String>['profile_id = ?', 'completed_at IS NOT NULL'];
+    final arguments = <Object?>[profileId];
+    if (from != null) {
+      clauses.add('completed_at >= ?');
+      arguments.add(from.toUtc().millisecondsSinceEpoch);
+    }
+    if (to != null) {
+      clauses.add('completed_at <= ?');
+      arguments.add(to.toUtc().millisecondsSinceEpoch);
+    }
+    try {
+      final rows = _database.select(
+        'SELECT transfer_id, profile_id, direction, logical_key, state, expected_size, completed_bytes, expected_hash, retry_count, next_retry_at, provider_checkpoint, error_code, created_at, completed_at '
+        'FROM transfer_jobs WHERE ${clauses.join(' AND ')} '
+        'ORDER BY completed_at DESC LIMIT ?',
+        [...arguments, limit],
+      );
+      return rows.map(_transferJobFromRow).toList(growable: false);
+    } on Object {
+      // Databases that predate the transfer timestamp columns simply have no
+      // itemised history to show; the page must still load.
+      return const [];
+    }
   }
 
   Future<List<TransferJobRecord>> listTransferJobs({
@@ -598,30 +787,11 @@ class SyncStateDatabase {
     }
     final where = clauses.isEmpty ? '' : 'WHERE ${clauses.join(' AND ')}';
     final rows = _database.select(
-      'SELECT transfer_id, profile_id, direction, logical_key, state, expected_size, completed_bytes, expected_hash, retry_count, next_retry_at, provider_checkpoint, error_code '
+      'SELECT transfer_id, profile_id, direction, logical_key, state, expected_size, completed_bytes, expected_hash, retry_count, next_retry_at, provider_checkpoint, error_code, created_at, completed_at '
       'FROM transfer_jobs $where ORDER BY transfer_id ASC LIMIT ?',
       [...arguments, limit],
     );
-    return rows
-        .map(
-          (row) => TransferJobRecord(
-            transferId: row['transfer_id']! as String,
-            profileId: row['profile_id']! as String,
-            direction: TransferJobDirection.values.byName(
-              row['direction']! as String,
-            ),
-            state: TransferJobState.values.byName(row['state']! as String),
-            logicalKey: row['logical_key']! as String,
-            expectedSize: row['expected_size'] as int?,
-            completedBytes: row['completed_bytes']! as int,
-            expectedHash: row['expected_hash'] as String?,
-            retryCount: row['retry_count']! as int,
-            nextRetryAt: _dateFromMillis(row['next_retry_at'] as int?),
-            providerCheckpoint: row['provider_checkpoint'] as String?,
-            errorCode: row['error_code'] as String?,
-          ),
-        )
-        .toList(growable: false);
+    return rows.map(_transferJobFromRow).toList(growable: false);
   }
 
   /// Acquires the persistent, recoverable lock required for a single active
@@ -1803,6 +1973,24 @@ class SyncStateDatabase {
         );
         _database.execute('PRAGMA user_version = 10');
       }
+      if (version < 11) {
+        final hasTransferJobs = _database
+            .select(
+              "SELECT name FROM sqlite_master WHERE type = 'table' "
+              "AND name = 'transfer_jobs'",
+            )
+            .isNotEmpty;
+        if (hasTransferJobs) {
+          for (final statement in _v11Schema) {
+            _database.execute(statement);
+          }
+        }
+        _database.execute(
+          'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+          [11, DateTime.now().toUtc().millisecondsSinceEpoch],
+        );
+        _database.execute('PRAGMA user_version = 11');
+      }
       _database.execute('COMMIT');
     } on Object {
       _database.execute('ROLLBACK');
@@ -1866,6 +2054,11 @@ const _v8Schema = <String>[
 
 const _v9Schema = <String>[
   'CREATE TABLE IF NOT EXISTS conflict_resolution_intents (conflict_id TEXT PRIMARY KEY, strategy TEXT NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, lease_owner TEXT, lease_expires_at INTEGER, error_code TEXT, receipt_artifact TEXT)',
+];
+
+const _v11Schema = <String>[
+  'ALTER TABLE transfer_jobs ADD COLUMN created_at INTEGER',
+  'ALTER TABLE transfer_jobs ADD COLUMN completed_at INTEGER',
 ];
 
 const _v10Schema = <String>[
@@ -2008,6 +2201,26 @@ enum TransferJobState {
   cancelled,
 }
 
+TransferJobRecord _transferJobFromRow(Map<String, Object?> row) =>
+    TransferJobRecord(
+      transferId: row['transfer_id']! as String,
+      profileId: row['profile_id']! as String,
+      direction: TransferJobDirection.values.byName(
+        row['direction']! as String,
+      ),
+      state: TransferJobState.values.byName(row['state']! as String),
+      logicalKey: row['logical_key']! as String,
+      expectedSize: row['expected_size'] as int?,
+      completedBytes: row['completed_bytes']! as int,
+      expectedHash: row['expected_hash'] as String?,
+      retryCount: row['retry_count']! as int,
+      nextRetryAt: _dateFromMillis(row['next_retry_at'] as int?),
+      providerCheckpoint: row['provider_checkpoint'] as String?,
+      errorCode: row['error_code'] as String?,
+      createdAt: _dateFromMillis(row['created_at'] as int?),
+      completedAt: _dateFromMillis(row['completed_at'] as int?),
+    );
+
 class TransferJobRecord {
   const TransferJobRecord({
     required this.transferId,
@@ -2022,6 +2235,8 @@ class TransferJobRecord {
     required this.nextRetryAt,
     required this.providerCheckpoint,
     required this.errorCode,
+    this.createdAt,
+    this.completedAt,
   });
 
   final String transferId;
@@ -2036,6 +2251,8 @@ class TransferJobRecord {
   final DateTime? nextRetryAt;
   final String? providerCheckpoint;
   final String? errorCode;
+  final DateTime? createdAt;
+  final DateTime? completedAt;
 }
 
 class SyncConflictRecord {
@@ -2133,3 +2350,82 @@ Duration? _durationFromMillis(int? value) =>
     value == null ? null : Duration(milliseconds: value);
 
 bool? _boolFromSql(int? value) => value == null ? null : value != 0;
+
+/// One privacy-safe bucket of completed transfers.
+class SyncedDataKind {
+  const SyncedDataKind({
+    required this.kind,
+    required this.count,
+    required this.bytes,
+  });
+
+  /// Stable bucket id: blobs, batches, commits, checkpoints, protocol …
+  final String kind;
+  final int count;
+  final int bytes;
+}
+
+/// How far one remote producer's increments have been applied locally.
+class SyncedDataDevice {
+  const SyncedDataDevice({
+    required this.deviceId,
+    required this.appliedSequence,
+  });
+
+  final String deviceId;
+  final int appliedSequence;
+}
+
+/// Everything the detail page needs to show *what* has been synced.
+class SyncedDataSnapshot {
+  const SyncedDataSnapshot({
+    required this.uploadedKinds,
+    required this.uploadedCount,
+    required this.uploadedBytes,
+    required this.downloadedKinds,
+    required this.downloadedCount,
+    required this.downloadedBytes,
+    required this.pendingUploadCount,
+    required this.pendingDownloadCount,
+    required this.appliedIncomingCount,
+    required this.pendingIncomingCount,
+    required this.publishedOutgoingCount,
+    required this.pendingOutgoingCount,
+    required this.devices,
+    this.incomingLastReceivedAt,
+    this.outgoingLastPublishedAt,
+  });
+
+  final List<SyncedDataKind> uploadedKinds;
+  final int uploadedCount;
+  final int uploadedBytes;
+  final List<SyncedDataKind> downloadedKinds;
+  final int downloadedCount;
+  final int downloadedBytes;
+  final int pendingUploadCount;
+  final int pendingDownloadCount;
+  final int appliedIncomingCount;
+  final int pendingIncomingCount;
+  final int publishedOutgoingCount;
+  final int pendingOutgoingCount;
+  final List<SyncedDataDevice> devices;
+  final DateTime? incomingLastReceivedAt;
+  final DateTime? outgoingLastPublishedAt;
+
+  int get totalBytes => uploadedBytes + downloadedBytes;
+
+  bool get isEmpty =>
+      uploadedCount == 0 &&
+      downloadedCount == 0 &&
+      appliedIncomingCount == 0 &&
+      publishedOutgoingCount == 0 &&
+      devices.isEmpty;
+
+  DateTime? get lastActivityAt {
+    final incoming = incomingLastReceivedAt;
+    final outgoing = outgoingLastPublishedAt;
+    if (incoming == null) return outgoing;
+    if (outgoing == null) return incoming;
+    return incoming.isAfter(outgoing) ? incoming : outgoing;
+  }
+}

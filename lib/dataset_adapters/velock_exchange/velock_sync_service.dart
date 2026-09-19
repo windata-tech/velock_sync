@@ -6,6 +6,7 @@ import 'package:velock_sync/dataset_adapters/velock_exchange/velock_dataset_adap
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_discovery.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/infrastructure/storage/available_space_probe.dart';
@@ -197,10 +198,7 @@ class VelockSyncService implements VelockSyncRunner {
       try {
         final exchangeRoot = dataset.exchangeRoot;
         final transport = JoinRequestTransport(exchangeRoot);
-        await transport.uploadLocal(
-          vaultId: profile.vaultId,
-          remote: remote,
-        );
+        await transport.uploadLocal(vaultId: profile.vaultId, remote: remote);
         await transport.downloadRemote(
           vaultId: profile.vaultId,
           remote: remote,
@@ -216,14 +214,15 @@ class VelockSyncService implements VelockSyncRunner {
             await descriptorFile.readAsBytes(),
           );
           if (descriptor.exchangeBindingId == profile.exchangeBindingId) {
-            trustedProducerIds = await JoinApprovalApplier(
-              profiles: _profiles,
-              database: _database,
-            ).apply(
-              profile: profile,
-              exchangeRoot: exchangeRoot,
-              velockSigningPublicKey: descriptor.producerSigningPublicKey,
-            );
+            trustedProducerIds =
+                await JoinApprovalApplier(
+                  profiles: _profiles,
+                  database: _database,
+                ).apply(
+                  profile: profile,
+                  exchangeRoot: exchangeRoot,
+                  velockSigningPublicKey: descriptor.producerSigningPublicKey,
+                );
           }
         }
       } on Object {
@@ -297,31 +296,6 @@ class VelockSyncService implements VelockSyncRunner {
     password: password,
   );
 
-  static Uri _webDavUri(WebDavProtocolModel protocol) {
-    final address = Uri.tryParse(protocol.address);
-    final port = int.tryParse(protocol.port);
-    if (address == null || !address.hasAuthority || port == null || port < 1) {
-      throw ArgumentError.value(protocol.address, 'protocol', 'is invalid');
-    }
-    final providerPath = Uri.tryParse(protocol.path ?? '');
-    final segments = <String>[
-      ...address.pathSegments.where((segment) => segment.isNotEmpty),
-      ...?providerPath?.pathSegments.where(
-        (segment) => segment.isNotEmpty && segment != '.' && segment != '..',
-      ),
-    ];
-    final expectedSegmentCount =
-        address.pathSegments.where((segment) => segment.isNotEmpty).length +
-        (providerPath?.pathSegments.length ?? 0);
-    if (segments.length != expectedSegmentCount) {
-      throw ArgumentError.value(protocol.path, 'protocol.path', 'is invalid');
-    }
-    return address.replace(
-      scheme: protocol.protocolType.name,
-      port: port,
-      pathSegments: segments,
-      query: null,
-      fragment: null,
-    );
-  }
+  static Uri _webDavUri(WebDavProtocolModel protocol) =>
+      RemoteObjectStoreFactory.webDavUri(protocol);
 }

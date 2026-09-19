@@ -32,7 +32,10 @@ VelockSyncProfile _profile() => VelockSyncProfile(
   createdAt: DateTime.utc(2026, 9, 11),
 );
 
-Future<Uint8List> _signedApproval(List<String> trusted, SimpleKeyPair key) async {
+Future<Uint8List> _signedApproval(
+  List<String> trusted,
+  SimpleKeyPair key,
+) async {
   const unsigned = <String, Object?>{
     'version': 1,
     'vaultId': _vaultId,
@@ -52,7 +55,9 @@ Future<Uint8List> _signedApproval(List<String> trusted, SimpleKeyPair key) async
     keyPair: key,
   );
   return Uint8List.fromList(
-    utf8.encode(jsonEncode({...payload, 'signature': base64UrlEncode(signature.bytes)})),
+    utf8.encode(
+      jsonEncode({...payload, 'signature': base64UrlEncode(signature.bytes)}),
+    ),
   );
 }
 
@@ -78,11 +83,12 @@ void main() {
     final expectedKey = Uint8List.fromList(
       base64Url.decode('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='),
     );
-    final merged = await JoinApprovalApplier(profiles: profiles, database: database).apply(
-      profile: profile,
-      exchangeRoot: root,
-      velockSigningPublicKey: base64UrlEncode(publicKey.bytes),
-    );
+    final merged =
+        await JoinApprovalApplier(profiles: profiles, database: database).apply(
+          profile: profile,
+          exchangeRoot: root,
+          velockSigningPublicKey: base64UrlEncode(publicKey.bytes),
+        );
     expect(merged, containsAll([_localProducer, _joinedProducer]));
     // The approved device key must be stored so batch signatures verify.
     final trusted = await database.readTrustedDevicePublicKeys(
@@ -95,51 +101,66 @@ void main() {
     expect(reloaded.trustedProducerIds, contains(_joinedProducer));
   });
 
-  test('rejects approvals signed by another key or for another vault', () async {
-    final database = await SyncStateDatabase.inMemory();
-    final profiles = SyncProfileRepository(database);
-    final profile = _profile();
-    await profiles.save(profile.toEnvelope());
-    final keyPair = await Ed25519().newKeyPair();
-    final otherKeyPair = await Ed25519().newKeyPair();
-    final otherPublicKey = await otherKeyPair.extractPublicKey();
+  test(
+    'rejects approvals signed by another key or for another vault',
+    () async {
+      final database = await SyncStateDatabase.inMemory();
+      final profiles = SyncProfileRepository(database);
+      final profile = _profile();
+      await profiles.save(profile.toEnvelope());
+      final keyPair = await Ed25519().newKeyPair();
+      final otherKeyPair = await Ed25519().newKeyPair();
+      final otherPublicKey = await otherKeyPair.extractPublicKey();
 
-    final root = await Directory.systemTemp.createTemp('velock-approval-');
-    addTearDown(() async {
-      if (root.existsSync()) await root.delete(recursive: true);
-    });
-    final approvals = Directory('${root.path}/Control/JoinApprovals');
-    await approvals.create(recursive: true);
-    await File('${approvals.path}/$_joinedProducer.json').writeAsBytes(
-      await _signedApproval([_localProducer, _joinedProducer], keyPair),
-    );
+      final root = await Directory.systemTemp.createTemp('velock-approval-');
+      addTearDown(() async {
+        if (root.existsSync()) await root.delete(recursive: true);
+      });
+      final approvals = Directory('${root.path}/Control/JoinApprovals');
+      await approvals.create(recursive: true);
+      await File('${approvals.path}/$_joinedProducer.json').writeAsBytes(
+        await _signedApproval([_localProducer, _joinedProducer], keyPair),
+      );
 
-    // Wrong verifying key: nothing is merged.
-    final rejected = await JoinApprovalApplier(profiles: profiles, database: database).apply(
-      profile: profile,
-      exchangeRoot: root,
-      velockSigningPublicKey: base64UrlEncode(otherPublicKey.bytes),
-    );
-    expect(rejected, [_localProducer]);
+      // Wrong verifying key: nothing is merged.
+      final rejected =
+          await JoinApprovalApplier(
+            profiles: profiles,
+            database: database,
+          ).apply(
+            profile: profile,
+            exchangeRoot: root,
+            velockSigningPublicKey: base64UrlEncode(otherPublicKey.bytes),
+          );
+      expect(rejected, [_localProducer]);
 
-    // A different vault id in the approval is ignored even with a valid key.
-    final publicKey = await keyPair.extractPublicKey();
-    final otherVault = jsonDecode(
-      utf8.decode(
-        await File('${approvals.path}/$_joinedProducer.json').readAsBytes(),
-      ),
-    ) as Map<String, dynamic>;
-    otherVault['vaultId'] = '314c1fdb-3e04-41eb-a7c1-17904d767062';
-    await File('${approvals.path}/$_joinedProducer.json').writeAsString(
-      jsonEncode(otherVault),
-    );
-    final stillRejected = await JoinApprovalApplier(profiles: profiles, database: database).apply(
-      profile: profile,
-      exchangeRoot: root,
-      velockSigningPublicKey: base64UrlEncode(publicKey.bytes),
-    );
-    expect(stillRejected, [_localProducer]);
-  });
+      // A different vault id in the approval is ignored even with a valid key.
+      final publicKey = await keyPair.extractPublicKey();
+      final otherVault =
+          jsonDecode(
+                utf8.decode(
+                  await File(
+                    '${approvals.path}/$_joinedProducer.json',
+                  ).readAsBytes(),
+                ),
+              )
+              as Map<String, dynamic>;
+      otherVault['vaultId'] = '314c1fdb-3e04-41eb-a7c1-17904d767062';
+      await File(
+        '${approvals.path}/$_joinedProducer.json',
+      ).writeAsString(jsonEncode(otherVault));
+      final stillRejected =
+          await JoinApprovalApplier(
+            profiles: profiles,
+            database: database,
+          ).apply(
+            profile: profile,
+            exchangeRoot: root,
+            velockSigningPublicKey: base64UrlEncode(publicKey.bytes),
+          );
+      expect(stillRejected, [_localProducer]);
+    },
+  );
 
   test('keeps the profile unchanged when no approval exists', () async {
     final database = await SyncStateDatabase.inMemory();
@@ -169,13 +190,14 @@ void main() {
     addTearDown(() async {
       if (root.existsSync()) await root.delete(recursive: true);
     });
-    final merged = await JoinApprovalApplier(profiles: profiles, database: database).apply(
-      profile: VelockSyncProfile.fromEnvelope(
-        (await profiles.read('profile-1'))!,
-      ),
-      exchangeRoot: root,
-      velockSigningPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-    );
+    final merged =
+        await JoinApprovalApplier(profiles: profiles, database: database).apply(
+          profile: VelockSyncProfile.fromEnvelope(
+            (await profiles.read('profile-1'))!,
+          ),
+          exchangeRoot: root,
+          velockSigningPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        );
     expect(merged, [_localProducer]);
   });
 }

@@ -22,7 +22,7 @@ void main() {
     test(
       'creates the current state schema and replaces connection records atomically',
       () async {
-        expect(await database.schemaVersion, 10);
+        expect(await database.schemaVersion, 11);
 
         await database.replaceConnectionPayloads({
           'connection-a': '{"id":"connection-a"}',
@@ -59,7 +59,7 @@ void main() {
 
       final upgraded = await SyncStateDatabase.open(file);
       try {
-        expect(await upgraded.schemaVersion, 10);
+        expect(await upgraded.schemaVersion, 11);
         final conflict = (await upgraded.listUnresolvedConflicts()).single;
         expect(conflict.conflictId, 'old-conflict');
         expect(conflict.sourceDeviceId, isNull);

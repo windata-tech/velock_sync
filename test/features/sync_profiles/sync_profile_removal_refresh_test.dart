@@ -41,9 +41,8 @@ void main() {
         ),
         GoRoute(
           path: '/sync-profiles/:profileId',
-          builder: (context, state) => SyncProfileDetail(
-            profileId: state.pathParameters['profileId']!,
-          ),
+          builder: (context, state) =>
+              SyncProfileDetail(profileId: state.pathParameters['profileId']!),
         ),
       ],
     );

@@ -158,8 +158,6 @@ class _JoinApproval {
     }
   }
 
-
-
   static Map<String, Object?> _sortedJson(Map<String, Object?> value) => {
     for (final key in value.keys.toList()..sort()) key: value[key],
   };
