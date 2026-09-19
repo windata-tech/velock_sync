@@ -1,6 +1,8 @@
 # Miscellaneous
 *.class
 *.lock
+# Flutter application lock file must stay reproducible
+!pubspec.lock
 *.log
 *.pyc
 *.swp
