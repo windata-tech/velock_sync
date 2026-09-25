@@ -293,41 +293,14 @@ String firstSyncResultMessage(
   SyncProfileDispatchResult? result, {
   BuildContext? context,
 }) {
-  if (result == null)
+  if (result == null) {
     return _optionalSyncText(
       context,
-      '同步配置已创建；首次同步未执行，请稍后点击立即同步。',
-      "Sync profile created. The first sync did not run; tap Sync now later.",
-    );
-  if (result.didRun) {
-    final upload = result.run?.upload.publishedBatchCount ?? 0;
-    final download = result.run?.download.importedBatchCount ?? 0;
-    final pending = result.run?.download.pendingBatchCount ?? 0;
-    if (pending > 0) {
-      return _optionalSyncText(
-        context,
-        '已下载 $pending 批格间数据，请打开格间并解锁以完成恢复。',
-        "Downloaded $pending batches of Velock data. Open and unlock Velock to finish recovery.",
-      );
-    }
-    if (upload == 0 && download == 0) {
-      return _optionalSyncText(
-        context,
-        '同步配置已创建；当前没有新的数据需要同步。',
-        "Sync profile created. There is no new data to sync.",
-      );
-    }
-    return _optionalSyncText(
-      context,
-      '格间同步完成：上传 $upload 批，恢复 $download 批。',
-      "Velock sync complete: uploaded $upload batches and restored $download batches.",
+      '本次传输尚未开始，请重试。',
+      'The transfer has not started. Please try again.',
     );
   }
-  return _optionalSyncText(
-    context,
-    '同步配置已创建，但首次同步失败；请检查远端连接后点击“立即同步”。',
-    "Sync profile created, but the first sync failed. Check the remote connection and tap Sync now.",
-  );
+  return _syncResultMessage(result, context: context);
 }
 
 Future<SyncProfileDispatchResult?> runSyncWithProgress(
@@ -391,11 +364,15 @@ Future<void> presentFirstSyncResult(
 Future<void> _offerOpenVelock(BuildContext context, int pending) async {
   final shouldOpen = await showAdaptiveConfirmation(
     context,
-    title: _optionalSyncText(context, '同步完成', "Sync complete"),
+    title: _optionalSyncText(
+      context,
+      '已下载，等待格间恢复',
+      'Downloaded. Restore in Velock',
+    ),
     message: _optionalSyncText(
       context,
-      '已下载 $pending 批格间数据。\n是否现在打开格间继续恢复？',
-      "Downloaded $pending batches of Velock data.\nOpen Velock now to continue recovery?",
+      '数据已下载到这台设备，还需要在格间中解锁并恢复。现在打开格间？',
+      'Data has reached this device. Unlock Velock to finish restoring. Open Velock now?',
     ),
     confirmLabel: _optionalSyncText(context, '打开格间', "Open Velock"),
     cancelLabel: _optionalSyncText(context, '稍后', "Later"),
@@ -432,7 +409,7 @@ String _syncResultMessage(
     }
     return _optionalSyncText(
       context,
-      '同步失败：${failure.suggestedAction}',
+      '同步失败：${AppFormat.errorSummary(failure.errorCode, context: context)}',
       "Sync failed: ${AppFormat.errorSummary(failure.errorCode, context: context)}",
     );
   }
@@ -449,35 +426,35 @@ String _syncResultMessage(
   if (pending > 0) {
     return _optionalSyncText(
       context,
-      '已下载 $pending 批远端数据，请打开格间并解锁以完成恢复。',
-      "Downloaded $pending remote batches. Open and unlock Velock to finish recovery.",
+      '数据已下载，请打开格间并解锁以完成恢复。',
+      'Data downloaded. Open and unlock Velock to finish restoring.',
     );
   }
   if (upload > 0 && imported > 0) {
     return _optionalSyncText(
       context,
-      '同步完成：已上传 $upload 批本地变更，并恢复 $imported 批远端数据。',
-      "Sync complete: uploaded $upload local batches and restored $imported remote batches.",
+      '本次传输已完成，上传和接收的数据已处理。',
+      "This transfer is complete. Uploaded and received changes were processed.",
     );
   }
   if (upload > 0) {
     return _optionalSyncText(
       context,
-      '已上传 $upload 批本地变更。',
-      "Uploaded $upload local batches.",
+      '本次准备好的内容已上传。',
+      "The prepared changes have been uploaded.",
     );
   }
   if (imported > 0) {
     return _optionalSyncText(
       context,
-      '已恢复 $imported 批远端数据。',
-      "Restored $imported remote batches.",
+      '本次收到的数据已处理。',
+      "The received data has been processed.",
     );
   }
   return _optionalSyncText(
     context,
-    '没有新的本地变更或远端数据。',
-    "No new local changes or remote data.",
+    '本次检查没有发现需要传输的新内容。',
+    "No new changes to transfer were found in this check.",
   );
 }
 
@@ -1519,8 +1496,9 @@ String profileSecondaryText(
         ? _optionalSyncText(context, '尚未同步', "Not synced yet")
         : _optionalSyncText(context, '尚未备份', "Not backed up yet");
   }
-  if (run.state == 'running')
+  if (run.state == 'running') {
     return _optionalSyncText(context, '正在同步…', "Syncing…");
+  }
   return AppFormat.relativeTime(
     run.completedAt ?? run.startedAt,
     context: context,

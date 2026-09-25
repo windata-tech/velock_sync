@@ -195,7 +195,7 @@ class Connections extends _$Connections {
     try {
       results = await Future.wait(
         currentConnections.map((conn) {
-          return probeProtocolConnection(
+          return ref.read(protocolConnectionProbeProvider)(
             credentials: ref.read(credentialStoreProvider),
             protocol: conn.protocol,
           );

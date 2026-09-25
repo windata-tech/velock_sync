@@ -3,6 +3,8 @@
 library;
 
 import 'dart:async';
+import 'package:go_router/go_router.dart';
+import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/l10n/sync_language_setting.dart';
 
@@ -151,6 +153,33 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
     builder: (context, snapshot) => AdaptiveSliverScaffold(
       title: syncText(context, '设置', 'Settings'),
       slivers: [
+        SliverToBoxAdapter(
+          child: AdaptiveListSection(
+            children: [
+              AdaptiveListTile(
+                widgetKey: const Key('manage-cloud-locations'),
+                leading: const Icon(CupertinoIcons.cloud),
+                title: Text(
+                  syncText(
+                    context,
+                    '云端账号与保存位置',
+                    'Cloud accounts and locations',
+                  ),
+                ),
+                showChevron: true,
+                onTap: () => context.push(AppRoutes.connections.path),
+              ),
+              AdaptiveListTile(
+                leading: const Icon(CupertinoIcons.clock),
+                title: Text(
+                  syncText(context, '所有传输记录', 'All transfer history'),
+                ),
+                showChevron: true,
+                onTap: () => context.push(AppRoutes.activity.path),
+              ),
+            ],
+          ),
+        ),
         const SliverToBoxAdapter(child: SyncLanguageSetting()),
         ..._settingsSlivers(context, snapshot),
       ],

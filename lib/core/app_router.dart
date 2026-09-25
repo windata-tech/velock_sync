@@ -1,4 +1,6 @@
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/features/cloud_backup/ui/velock_recovery_guide.dart';
+import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
@@ -42,6 +44,14 @@ class AppRoutes {
   static const ({String name, String path}) dashboard = (
     name: 'dashboard',
     path: '/dashboard',
+  );
+  static const ({String name, String path}) files = (
+    name: 'files',
+    path: '/files',
+  );
+  static const ({String name, String path}) velockRecovery = (
+    name: 'velockRecovery',
+    path: '/velock/restore',
   );
   static const ({String name, String path}) connections = (
     name: 'connections',
@@ -107,11 +117,22 @@ class AppRoutes {
   );
 }
 
-final goRouter = GoRouter(
+final goRouter = createAppRouter(
   navigatorKey: rootNavigatorKey,
-  debugLogDiagnostics: true,
-  initialLocation: AppRoutes.home.path,
   observers: [routeObserver],
+);
+
+/// Build the real route tree with an independent lifecycle for navigation tests.
+/// Production keeps using [goRouter] and its app-wide navigation observer.
+GoRouter createAppRouter({
+  String initialLocation = '/',
+  GlobalKey<NavigatorState>? navigatorKey,
+  List<NavigatorObserver> observers = const [],
+}) => GoRouter(
+  navigatorKey: navigatorKey,
+  debugLogDiagnostics: true,
+  initialLocation: initialLocation,
+  observers: observers,
   redirect: redirect,
   routes: [
     StatefulShellRoute.indexedStack(
@@ -132,20 +153,10 @@ final goRouter = GoRouter(
         StatefulShellBranch(
           routes: <RouteBase>[
             WdRoute(
-              name: AppRoutes.connections.name,
-              path: AppRoutes.connections.path,
-              builder: (BuildContext context, GoRouterState state) =>
-                  Connections(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: <RouteBase>[
-            WdRoute(
-              name: AppRoutes.activity.name,
-              path: AppRoutes.activity.path,
-              builder: (BuildContext context, GoRouterState state) =>
-                  const SyncActivity(),
+              name: AppRoutes.files.name,
+              path: AppRoutes.files.path,
+              builder: (context, state) =>
+                  const SyncProfilesHome(kind: SyncDatasetKind.selectedFolder),
             ),
           ],
         ),
@@ -162,6 +173,21 @@ final goRouter = GoRouter(
       ],
     ),
     WdRoute(
+      name: AppRoutes.connections.name,
+      path: AppRoutes.connections.path,
+      builder: (context, state) => Connections(),
+    ),
+    WdRoute(
+      name: AppRoutes.activity.name,
+      path: AppRoutes.activity.path,
+      builder: (context, state) => const SyncActivity(),
+    ),
+    WdRoute(
+      name: AppRoutes.velockRecovery.name,
+      path: AppRoutes.velockRecovery.path,
+      builder: (context, state) => const VelockRecoveryGuide(),
+    ),
+    WdRoute(
       name: AppRoutes.syncProfilesNew.name,
       path: AppRoutes.syncProfilesNew.path,
       builder: (context, state) => const NewSyncProfile(),
@@ -169,7 +195,9 @@ final goRouter = GoRouter(
     WdRoute(
       name: AppRoutes.velockDatasetWizard.name,
       path: AppRoutes.velockDatasetWizard.path,
-      builder: (context, state) => const VelockDatasetWizard(),
+      builder: (context, state) => VelockDatasetWizard(
+        restoring: state.uri.queryParameters['intent'] == 'restore',
+      ),
     ),
     WdRoute(
       name: AppRoutes.selectedFolderProfiles.name,
@@ -206,7 +234,7 @@ final goRouter = GoRouter(
     WdRoute(
       name: AppRoutes.protocols.name,
       path: AppRoutes.protocols.path,
-      builder: (context, state) => Protocols(),
+      builder: (context, state) => Protocols(returnTo: _setupReturnTo(state)),
     ),
     WdRoute(
       name: AppRoutes.connectionHelp.name,
@@ -229,6 +257,7 @@ final goRouter = GoRouter(
       path: AppRoutes.newWebDav.path,
       builder: (context, state) => NewWebDav(
         replacementConnectionId: state.uri.queryParameters['replace'],
+        returnTo: _setupReturnTo(state),
       ),
     ),
     WdRoute(
@@ -247,6 +276,7 @@ final goRouter = GoRouter(
         return NewOAuthConnection(
           providerType: provider.single,
           replacementConnectionId: state.uri.queryParameters['replace'],
+          returnTo: _setupReturnTo(state),
         );
       },
     ),
@@ -285,16 +315,12 @@ class WDShellPage extends StatelessWidget {
         backgroundColor: context.appGroupedSurface,
         items: [
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.arrow_2_circlepath),
-            label: syncText(context, '同步', "Sync"),
+            icon: Icon(CupertinoIcons.shield),
+            label: syncText(context, '格间', "Velock"),
           ),
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.link),
-            label: syncText(context, '连接', "Connections"),
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.clock),
-            label: syncText(context, '活动', "Activity"),
+            icon: Icon(CupertinoIcons.folder),
+            label: syncText(context, '文件同步', "Files"),
           ),
           BottomNavigationBarItem(
             icon: Icon(CupertinoIcons.gear_alt),
@@ -319,4 +345,16 @@ class WDShellPage extends StatelessWidget {
       ),
     );
   }
+}
+
+// Return only to known local product flows, never arbitrary routes or URLs.
+String? _setupReturnTo(GoRouterState state) {
+  final target = state.uri.queryParameters['returnTo'];
+  return {
+        AppRoutes.velockDatasetWizard.path,
+        '${AppRoutes.velockDatasetWizard.path}?intent=restore',
+        AppRoutes.selectedFolderProfiles.path,
+      }.contains(target)
+      ? target
+      : null;
 }

@@ -199,8 +199,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Backup & Sync'), findsWidgets);
-      expect(find.text('Enable Velock backup'), findsOneWidget);
+      expect(find.text('Velock backup'), findsWidgets);
+      expect(find.text('Start backup'), findsOneWidget);
       expect(find.byKey(const Key('velock-backup-enable')), findsOneWidget);
       await tester.pumpWidget(
         const MaterialApp(
@@ -262,7 +262,7 @@ void main() {
           ),
           context: context,
         ),
-        'Sync profile created. There is no new data to sync.',
+        'No new changes to transfer were found in this check.',
       );
       expect(
         AppFormat.relativeTime(

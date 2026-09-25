@@ -64,3 +64,12 @@
 - 用户可见节奏固定：关键内容页至少停留 2.3 秒；每次点击后 0.45 秒过渡；表单输入完成后 0.6 秒；同步结果至少 2.4 秒。等待必须由真实状态断言驱动，不能用长固定 sleep 掩盖。
 - `E2E_TUTORIAL_PACE=1` 打开节奏控制，并写入 `tutorial-stage-timeline.tsv`。交付前必须按时间线检查过快/过长间隔；只通过覆盖门禁但没有节奏审查的原始片仍不算可交付。
 - 2026-09-20 已接受 `delivery-pace-20260920`：中文首次配置138.98秒、中文恢复160.07秒、英文首次配置139.05秒、英文恢复157.46秒；内容页2.3秒、点击0.45秒、输入0.6秒、同步结果2.4秒。QC同标签区间均经人工抽帧确认不是冻结。
+
+## 普通用户云备份 UI 第一轮重构（2026-09-25）
+
+- 设计与验证记录：`docs/design/simple-cloud-backup.md`、`docs/verification/2026-09-25-simple-cloud-backup.md`。原 Sync `main` 备份为 `a1b7c6451afa40ce1f43de056c2288daa72ab413`；格间 `main` 备份为 `c5ba1ba2fa34c1f8e6935c9a1515acb2d42c2691`；两仓库服务器均有 annotated tag `backup/20260925-before-simple-sync`。重构交付分支为 `codex/simple-cloud-backup`，不得把 UI 重构当成完整协议实现。
+- 三个主入口为格间/文件同步/设置；技术计数放二级诊断，必要冲突/待授权不隐藏。格间负责加解密、原账号恢复和实际应用数据，Sync 只传输且不索取恢复卡密码/秘密；授权、建连接、预检、上传对象或下载完成不得表述为完整备份/恢复成功。
+- 恢复必须先由格间找回原账号并签名授权；Sync 仅对原位置中签名授权内可信 producer 的候选历史做只读发现，随后仍走既有 runner 校验并由格间应用。候选发现不是完整验签/内容验证。返回新增云端页面必须保留 restore intent/已批准授权并自动继续；`returnTo` 仅允许已知内部流程。
+- OAuth 普通用户默认不看 Client ID/Token/root ID；公开注册未配置时明确本版本暂不可用并提供其他位置。开发者配置默认折叠，输入仅在保存后生效。预检仅 `ifAbsent` 写随机无敏感 probe、读回校验、只删自己成功创建的 probe；恢复探测不写远端。
+- 未完成项：current-state 完整快照传输/恢复状态机、可验证六类业务内容摘要、版本选择、自动完整云端迁移、单向仅上传文件夹模式。现有 runner 仍双向，本轮不是 upload-only 改造或完整架构重写；原签名/历史连续性/blob/完成回执门禁不放宽。
+- 最终 Sync 425 项、格间 29 项相关回归全部通过，两仓库改动范围 analyze 均为 No issues found；Sync 含 14 项真实路由、11 项预检及 13 项界面测试，后者另用真实字体渲染四张图验收（不重复累计）。日志在项目外 work/simple-cloud-backup-20260925，以 `sync-regression-final-accepted.txt`、`companion-regression-final-accepted.txt` 和 `visual-qa-final-accepted.txt` 为准。截图是真实 widget + 内存 fixture，不是模拟器/真机截图；本轮没有真机、模拟器、新 NAS 写入、真实 OAuth 授权或跨 App 恢复 E2E。

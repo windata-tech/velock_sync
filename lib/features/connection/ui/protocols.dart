@@ -10,12 +10,13 @@ import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
 class Protocols extends HookConsumerWidget {
-  const Protocols({super.key});
+  const Protocols({super.key, this.returnTo});
+  final String? returnTo;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AdaptiveScaffold(
-      title: syncText(context, '选择远端协议', 'Choose Remote Protocol'),
+      title: syncText(context, '选择云端位置', 'Choose cloud storage'),
       leading: PlatformIconButton(
         padding: EdgeInsets.zero,
         cupertino: (context, platform) =>
@@ -49,7 +50,7 @@ class Protocols extends HookConsumerWidget {
             ),
           ),
           AdaptiveListSection(
-            header: syncText(context, '可用协议', 'Available Protocols'),
+            header: syncText(context, '保存到哪里', 'Where to save'),
             headerTrailing: _InlineHelpAction(
               onPressed: () => context.pushNamed(AppRoutes.connectionHelp.name),
             ),
@@ -69,7 +70,10 @@ class Protocols extends HookConsumerWidget {
                   maxLines: 2,
                 ),
                 showChevron: true,
-                onTap: () => context.pushNamed(AppRoutes.newWebDav.name),
+                onTap: () => context.pushNamed(
+                  AppRoutes.newWebDav.name,
+                  queryParameters: {'returnTo': ?returnTo},
+                ),
               ),
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
@@ -88,6 +92,7 @@ class Protocols extends HookConsumerWidget {
                 showChevron: true,
                 onTap: () => context.pushNamed(
                   AppRoutes.newOAuth.name,
+                  queryParameters: {'returnTo': ?returnTo},
                   pathParameters: {
                     'provider': RemoteProviderType.googleDrive.name,
                   },
@@ -110,6 +115,7 @@ class Protocols extends HookConsumerWidget {
                 showChevron: true,
                 onTap: () => context.pushNamed(
                   AppRoutes.newOAuth.name,
+                  queryParameters: {'returnTo': ?returnTo},
                   pathParameters: {
                     'provider': RemoteProviderType.oneDrive.name,
                   },

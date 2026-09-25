@@ -11,70 +11,47 @@ import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
-import 'package:velock_sync/widgets/adaptive_widgets.dart';
-import 'package:velock_sync/widgets/app_components.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('sync home presents backup and folder sync as two domains', (
-    tester,
-  ) async {
-    final database = await SyncStateDatabase.inMemory();
-    addTearDown(database.close);
-    final repository = SyncProfileRepository(database);
+  testWidgets(
+    'Velock home has only backup and recovery, not ordinary folders',
+    (tester) async {
+      final database = await SyncStateDatabase.inMemory();
+      addTearDown(database.close);
+      final repository = SyncProfileRepository(database);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          syncStateDatabaseProvider.overrideWithValue(database),
-          syncProfileRepositoryProvider.overrideWithValue(repository),
-        ],
-        child: const MaterialApp(
-          locale: const Locale('zh', 'CN'),
-          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            syncStateDatabaseProvider.overrideWithValue(database),
+            syncProfileRepositoryProvider.overrideWithValue(repository),
           ],
-          home: SyncProfilesHome(),
+          child: const MaterialApp(
+            locale: Locale('zh', 'CN'),
+            supportedLocales: [Locale('zh', 'CN'), Locale('en')],
+            localizationsDelegates: [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            home: SyncProfilesHome(),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('备份与同步'), findsWidgets);
-    // 两个域都还没有内容：各自只给一个动作按钮，而不是「已经建好的行」。
-    expect(find.widgetWithText(AppTextButton, '开启格间备份'), findsOneWidget);
-    expect(find.widgetWithText(AppTextButton, '新建文件夹同步'), findsOneWidget);
-    expect(
-      find.ancestor(
-        of: find.byKey(const Key('velock-backup-enable')),
-        matching: find.byType(AdaptiveListTile),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.ancestor(
-        of: find.byKey(const Key('selected-folder-create')),
-        matching: find.byType(AdaptiveListTile),
-      ),
-      findsNothing,
-    );
-    expect(find.text('开启格间备份'), findsOneWidget);
-    expect(find.text('新建文件夹同步'), findsOneWidget);
-    // 区段头不再重复状态与计数。
-    expect(find.byKey(const Key('velock-backup-status')), findsNothing);
-    expect(find.text('未开启'), findsNothing);
-    expect(find.text('未创建'), findsNothing);
-    expect(find.text('格间备份 · 未开启'), findsNothing);
-    expect(find.text('尚未开启'), findsNothing);
-    expect(find.byKey(const Key('velock-backup-not-configured')), findsNothing);
-    expect(find.text('其他文件'), findsOneWidget);
-    expect(find.text('开始同步格间数据'), findsNothing);
-    expect(find.textContaining('换机助手'), findsNothing);
-  });
+      expect(find.text('格间备份'), findsWidgets);
+      expect(find.byKey(const Key('velock-backup-enable')), findsOneWidget);
+      expect(find.text('开始备份'), findsOneWidget);
+      expect(find.text('从云端恢复'), findsOneWidget);
+      expect(find.byKey(const Key('selected-folder-create')), findsNothing);
+      expect(find.text('其他文件'), findsNothing);
+      expect(find.textContaining('零知识'), findsNothing);
+      expect(find.textContaining('Profile'), findsNothing);
+    },
+  );
 
   testWidgets('enabled 格间 backup reads as section state, not as a row', (
     tester,
@@ -94,9 +71,9 @@ void main() {
           ),
         ],
         child: const MaterialApp(
-          locale: const Locale('zh', 'CN'),
-          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: const [
+          locale: Locale('zh', 'CN'),
+          supportedLocales: [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
@@ -108,22 +85,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // 正常态区段头不再挂徽章，也不再有状态说明行。
-    expect(find.byKey(const Key('velock-backup-status')), findsNothing);
-    expect(find.text('已开启'), findsNothing);
-    expect(find.textContaining('最近成功备份'), findsNothing);
-    expect(find.textContaining('零知识备份'), findsNothing);
-    // 实例：铺在分组卡片里的那一行，副标题只留最近一次运行时间。
     expect(find.text('test1 的 Velock'), findsOneWidget);
-    expect(find.text('尚未备份'), findsOneWidget);
-    expect(
-      find.ancestor(
-        of: find.text('test1 的 Velock'),
-        matching: find.byType(AdaptiveListTile),
-      ),
-      findsOneWidget,
-    );
-    // 已有配置时不再出现入口行，避免状态/入口/实例三种语义混在一张卡里。
+    expect(find.text('还没有完成首次备份'), findsOneWidget);
+    expect(find.byKey(const Key('backup-primary-action')), findsOneWidget);
+    expect(find.text('立即备份'), findsOneWidget);
     expect(find.byKey(const Key('velock-backup-enable')), findsNothing);
+    expect(find.byKey(const Key('selected-folder-create')), findsNothing);
   });
 
   testWidgets('new sync chooser explains both supported data categories', (
@@ -132,9 +99,9 @@ void main() {
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
-          locale: const Locale('zh', 'CN'),
-          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: const [
+          locale: Locale('zh', 'CN'),
+          supportedLocales: [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,

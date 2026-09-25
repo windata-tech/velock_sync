@@ -1,4 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart' show Provider;
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
@@ -7,6 +8,18 @@ import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
 part '../../../generated/features/connection/state/protocol_provider.g.dart';
+
+/// A one-shot probe seam. It preserves the non-autoDispose save lifecycle while
+/// allowing navigation tests to exercise saving without touching a real cloud.
+typedef ProtocolConnectionProbe =
+    Future<bool> Function({
+      required CredentialStore credentials,
+      required ProtocolModel protocol,
+    });
+
+final protocolConnectionProbeProvider = Provider<ProtocolConnectionProbe>(
+  (ref) => probeProtocolConnection,
+);
 
 /// Runs a one-shot connectivity probe for [protocol].
 ///
@@ -92,7 +105,7 @@ Future<bool> probeProtocolConnection({
 
 @riverpod
 Future<bool> protocolConnectChecker(Ref ref, ProtocolModel protocol) {
-  return probeProtocolConnection(
+  return ref.read(protocolConnectionProbeProvider)(
     credentials: ref.read(credentialStoreProvider),
     protocol: protocol,
   );

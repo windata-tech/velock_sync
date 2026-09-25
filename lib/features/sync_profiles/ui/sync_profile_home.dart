@@ -1,150 +1,210 @@
-/// Sync-profiles home page: profile list, Velock connection banner, and
-/// per-profile quick actions.
+/// The two product domains have separate destinations; they never share a list.
 library;
 
-import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:async';
-
+import 'package:velock_sync/sync_core/model/sync_failure.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/core/state/common.dart';
+import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
+import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
-import 'package:velock_sync/widgets/app_components.dart';
 import 'sync_profile_workspace_shared.dart';
 import 'sync_profile_providers.dart';
 
 class SyncProfilesHome extends ConsumerStatefulWidget {
-  const SyncProfilesHome({super.key});
-
+  const SyncProfilesHome({
+    super.key,
+    this.kind = SyncDatasetKind.velockManaged,
+  });
+  final SyncDatasetKind kind;
   @override
   ConsumerState<SyncProfilesHome> createState() => _SyncProfilesHomeState();
 }
 
-class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome> {
-  late Future<_SyncProfilesLoadResult> _profiles;
+class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
+    with WidgetsBindingObserver {
+  late Future<_HomeData> _profiles;
+  final Set<String> _running = {};
+  bool get _isVelock => widget.kind == SyncDatasetKind.velockManaged;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _profiles = _load();
   }
 
-  Future<_SyncProfilesLoadResult> _load() async {
-    final profiles = await ref
-        .read(syncProfileRepositoryProvider)
-        .listSummaries();
-    final hasVelockProfile = profiles.any(
-      (profile) => profile.kind == SyncDatasetKind.velockManaged,
-    );
-    if (!hasVelockProfile) {
-      return _SyncProfilesLoadResult(profiles: profiles);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) _refresh();
+  }
+
+  Future<_HomeData> _load() async {
+    final all = await ref.read(syncProfileRepositoryProvider).listSummaries();
+    final profiles = all
+        .where((p) => p.kind == widget.kind && !p.isIsolated)
+        .toList();
+    VelockWizardAvailability? availability;
+    final snapshots = <String, SyncedDataSnapshot>{};
+    if (_isVelock && profiles.isNotEmpty) {
+      final ready = await ref
+          .read(velockWizardReadinessServiceProvider)
+          .inspect(syncAppInstanceId: profiles.first.deviceId)
+          .timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => const VelockWizardReadiness(
+              VelockWizardAvailability.temporarilyUnavailable,
+            ),
+          );
+      availability = ready.availability;
+      for (final p in profiles) {
+        snapshots[p.profileId] = await ref
+            .read(syncStateDatabaseProvider)
+            .readSyncedDataSnapshot(p.profileId);
+      }
     }
-    final velockProfile = profiles.firstWhere(
-      (profile) => profile.kind == SyncDatasetKind.velockManaged,
-    );
-    final readiness = await ref
-        .read(velockWizardReadinessServiceProvider)
-        .inspect(syncAppInstanceId: velockProfile.deviceId)
-        .timeout(
-          const Duration(seconds: 1),
-          onTimeout: () => const VelockWizardReadiness(
-            VelockWizardAvailability.temporarilyUnavailable,
-          ),
-        );
-    if (readiness.availability == VelockWizardAvailability.accessRevoked) {
-      await ref
-          .read(syncProfileRepositoryProvider)
-          .setState(velockProfile.profileId, SyncProfileState.accessRequired);
-    }
-    return _SyncProfilesLoadResult(
-      profiles: profiles,
-      velockAvailability: readiness.availability,
+    return _HomeData(
+      profiles,
+      snapshots,
+      availability,
+      all.where((p) => p.isIsolated).toList(),
     );
   }
 
-  void _refresh() => setState(() {
-    _profiles = _load();
-  });
+  void _refresh() {
+    if (mounted) {
+      setState(() {
+        _profiles = _load();
+      });
+    }
+  }
 
   Future<void> _refreshAndWait() async {
-    final profiles = _load();
+    final pending = _load();
     setState(() {
-      _profiles = profiles;
+      _profiles = pending;
     });
-    await profiles;
+    await pending;
+  }
+
+  Future<void> _open(String route) async {
+    await context.push(route);
+    if (mounted) _refresh();
+  }
+
+  Future<void> _action(
+    SyncProfileSummary profile,
+    BackupPresentation state,
+  ) async {
+    if (_running.contains(profile.profileId)) return;
+    switch (state.action) {
+      case BackupAction.openVelock:
+        await openVelockForBackup(context, ref);
+        return;
+      case BackupAction.manage:
+      case BackupAction.resolve:
+        await _open('/sync-profiles/${profile.profileId}');
+        return;
+      case BackupAction.resume:
+        setState(() => _running.add(profile.profileId));
+        try {
+          await ref
+              .read(syncProfileRepositoryProvider)
+              .setState(profile.profileId, SyncProfileState.active);
+          if (mounted) _refresh();
+        } on Object {
+          if (mounted) {
+            showMessage(
+              context,
+              syncText(
+                context,
+                '暂时无法继续传输，请稍后重试。',
+                'Could not resume transfer. Please try again.',
+              ),
+            );
+          }
+        } finally {
+          if (mounted) setState(() => _running.remove(profile.profileId));
+        }
+        return;
+      case BackupAction.transfer:
+        setState(() => _running.add(profile.profileId));
+        try {
+          final result = await runSyncWithProgress(
+            context,
+            ref,
+            profile.profileId,
+          );
+          if (mounted) await presentFirstSyncResult(context, result);
+        } on Object catch (error) {
+          if (mounted) {
+            showMessage(
+              context,
+              backupFailureMessage(
+                context,
+                SyncFailureClassifier.classify(error).errorCode,
+              ),
+            );
+          }
+        } finally {
+          if (mounted) {
+            setState(() => _running.remove(profile.profileId));
+            _refresh();
+          }
+        }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<int>(profilesRevisionProvider, (previous, next) {
-      if (previous != next) _refresh();
+    ref.listen<int>(profilesRevisionProvider, (before, after) {
+      if (before != after) _refresh();
     });
-    void createProfile() => context.push(AppRoutes.syncProfilesNew.path);
-    return FutureBuilder<_SyncProfilesLoadResult>(
+    return FutureBuilder<_HomeData>(
       future: _profiles,
       builder: (context, snapshot) => AdaptiveSliverScaffold(
-        title: syncText(context, '备份与同步', "Backup & Sync"),
+        title: syncText(
+          context,
+          _isVelock ? '格间备份' : '文件同步',
+          _isVelock ? 'Velock backup' : 'File sync',
+        ),
+        onRefresh: _refreshAndWait,
         actions: [
-          if (isApplePlatform(context))
-            Semantics(
-              button: true,
-              label: syncText(context, '新建同步', "New sync"),
-              child: AdaptiveIconButton(
-                key: const Key('sync-profile-create'),
-                tooltip: syncText(context, '新建同步', "New sync"),
-                onPressed: createProfile,
-                icon: const Icon(CupertinoIcons.add),
-              ),
-            ),
           AdaptiveIconButton(
-            tooltip: syncText(context, '刷新同步配置', "Refresh sync profiles"),
+            tooltip: syncText(context, '刷新状态', 'Refresh status'),
             onPressed: _refreshAndWait,
-            icon: Icon(
-              adaptiveIcon(
-                context,
-                material: Icons.refresh_rounded,
-                cupertino: CupertinoIcons.refresh,
-              ),
-            ),
+            icon: const Icon(CupertinoIcons.refresh),
           ),
         ],
-        floatingActionButton: isApplePlatform(context)
-            ? null
-            : FloatingActionButton.extended(
-                key: const Key('sync-profile-create'),
-                tooltip: syncText(context, '新建同步', "New sync"),
-                onPressed: createProfile,
-                icon: const Icon(Icons.add_rounded),
-                label: Text(syncText(context, '新建同步', "New sync")),
-              ),
-        slivers: _profileSlivers(context, snapshot, onCreate: createProfile),
+        slivers: _slivers(snapshot),
       ),
     );
   }
 
-  List<Widget> _profileSlivers(
-    BuildContext context,
-    AsyncSnapshot<_SyncProfilesLoadResult> snapshot, {
-    required VoidCallback onCreate,
-  }) {
+  List<Widget> _slivers(AsyncSnapshot<_HomeData> snapshot) {
     if (snapshot.connectionState != ConnectionState.done) {
       return [
         SliverFillRemaining(
           hasScrollBody: false,
           child: AdaptiveLoadingState(
-            label: syncText(
-              context,
-              '正在加载备份与同步配置',
-              "Loading backup and sync profiles",
-            ),
+            label: syncText(context, '正在读取状态', 'Loading status'),
           ),
         ),
       ];
@@ -156,227 +216,185 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome> {
           child: AdaptiveErrorState(
             message: syncText(
               context,
-              '无法读取备份与同步配置。',
-              "Could not load backup and sync profiles.",
+              '暂时无法读取状态，未改动你的数据。',
+              'Could not load the status. Your data has not been changed.',
             ),
             onRetry: _refresh,
           ),
         ),
       ];
     }
-
-    final loaded = snapshot.requireData;
-    final profiles = loaded.profiles;
-    final velockProfiles = profiles
-        .where((profile) => profile.kind == SyncDatasetKind.velockManaged)
-        .toList(growable: false);
-    final folderProfiles = profiles
-        .where((profile) => profile.kind == SyncDatasetKind.selectedFolder)
-        .toList(growable: false);
-    final unavailableProfiles = profiles
-        .where((profile) => profile.kind == null)
-        .toList(growable: false);
-    final velockIssue =
-        loaded.velockAvailability != null &&
-        loaded.velockAvailability != VelockWizardAvailability.ready &&
-        velockProfiles.isNotEmpty;
-    final velockStatus = _velockDomainStatus(
-      profiles: velockProfiles,
-      velockAvailability: loaded.velockAvailability,
-      context: context,
-    );
-
+    final data = snapshot.requireData;
     return [
-      if (velockIssue)
-        SliverToBoxAdapter(
-          child: VelockConnectionBanner(
-            availability: loaded.velockAvailability!,
-            onRetry: _refresh,
-          ),
-        ),
       SliverToBoxAdapter(
-        child: AdaptiveListSection(
-          header: syncText(context, '格间', "Velock"),
-          // The disconnection banner right above already carries the next step,
-          // so the header only states the condition it summarises.
-          headerDetail: velockIssue || velockStatus.detail == null
-              ? null
-              : _SectionStatusDetail(
-                  message: velockStatus.detail!,
-                  tone: velockStatus.tone,
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            if (_isVelock) ...[
+              if (data.profiles.isEmpty)
+                BackupWelcomeCard(
+                  onStart: () => _open(AppRoutes.velockDatasetWizard.path),
                 ),
-          // The intro belongs to the moment before anything exists; once a
-          // profile is listed it only repeats itself.
-          footer: velockProfiles.isEmpty
-              ? Text(
-                  syncText(
-                    context,
-                    '零知识备份：只搬运格间已加密的数据，恢复由格间本体处理。',
-                    "Zero-knowledge backup: only encrypted Velock data is transferred. Recovery is handled by Velock.",
+              for (final profile in data.profiles) ...[
+                BackupStatusCard(
+                  name: profile.displayName ?? 'Velock',
+                  presentation: _presentation(profile, data),
+                  onAction: () =>
+                      _action(profile, _presentation(profile, data)),
+                ),
+                AdaptiveListSection(
+                  children: [
+                    AdaptiveListTile(
+                      leading: const Icon(CupertinoIcons.slider_horizontal_3),
+                      title: Text(
+                        syncText(
+                          context,
+                          '备份详情与管理',
+                          'Backup details and settings',
+                        ),
+                      ),
+                      subtitle: Text(
+                        syncText(
+                          context,
+                          '保存位置、需要处理的事项和详细记录',
+                          'Cloud location, items needing attention and history',
+                        ),
+                      ),
+                      showChevron: true,
+                      onTap: () => _open('/sync-profiles/${profile.profileId}'),
+                    ),
+                  ],
+                ),
+              ],
+              AdaptiveListSection(
+                children: [
+                  AdaptiveListTile(
+                    widgetKey: const Key('velock-cloud-restore'),
+                    leading: Icon(
+                      CupertinoIcons.cloud_download,
+                      color: context.appPrimary,
+                    ),
+                    title: Text(
+                      syncText(context, '从云端恢复', 'Restore from cloud'),
+                    ),
+                    subtitle: Text(
+                      syncText(
+                        context,
+                        '换手机、重装，或找回原来的数据',
+                        'A new phone, a reinstall, or your existing data',
+                      ),
+                    ),
+                    showChevron: true,
+                    onTap: () => _open(AppRoutes.velockRecovery.path),
                   ),
-                )
-              : null,
-          emptyContent: Align(
-            alignment: Alignment.centerLeft,
-            child: AppTextButton(
-              key: const Key('velock-backup-enable'),
-              icon: adaptiveIcon(
-                context,
-                material: Icons.add_rounded,
-                cupertino: CupertinoIcons.add,
+                ],
               ),
-              label: syncText(context, '开启格间备份', "Enable Velock backup"),
-              onPressed: () =>
-                  context.pushNamed(AppRoutes.velockDatasetWizard.name),
-            ),
-          ),
-          children: [
-            for (final profile in velockProfiles)
-              _ProfileTile(
-                summary: profile,
-                onChanged: _refresh,
-                velockAvailability: loaded.velockAvailability,
-              ),
-          ],
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: AdaptiveListSection(
-          header: syncText(context, '其他文件', "Other files"),
-          emptyContent: Align(
-            alignment: Alignment.centerLeft,
-            child: AppTextButton(
-              key: const Key('selected-folder-create'),
-              icon: adaptiveIcon(
-                context,
-                material: Icons.add_rounded,
-                cupertino: CupertinoIcons.add,
-              ),
-              label: syncText(context, '新建文件夹同步', "New folder sync"),
-              onPressed: () =>
-                  context.pushNamed(AppRoutes.selectedFolderProfiles.name),
-            ),
-          ),
-          children: [
-            for (final profile in folderProfiles)
-              _ProfileTile(summary: profile, onChanged: _refresh),
-          ],
-        ),
-      ),
-      if (unavailableProfiles.isNotEmpty)
-        SliverToBoxAdapter(
-          child: AdaptiveListSection(
-            header: syncText(context, '无法读取的配置', "Unreadable profiles"),
-            children: [
-              for (final profile in unavailableProfiles)
-                _ProfileTile(summary: profile, onChanged: _refresh),
+            ] else ...[
+              if (data.profiles.isEmpty)
+                BackupCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        CupertinoIcons.folder,
+                        color: context.appPrimary,
+                        size: 38,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        syncText(
+                          context,
+                          '同步你的文件夹',
+                          'Keep your folders in sync',
+                        ),
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        syncText(
+                          context,
+                          '选择一个文件夹，在设备之间保持一致。它与格间备份相互独立。',
+                          'Choose a folder to keep up to date across devices. This is separate from Velock backup.',
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      BackupActionButton(
+                        key: const Key('selected-folder-create'),
+                        label: syncText(context, '添加文件夹', 'Add a folder'),
+                        onPressed: () =>
+                            _open(AppRoutes.selectedFolderProfiles.path),
+                      ),
+                    ],
+                  ),
+                ),
+              if (data.profiles.isNotEmpty)
+                AdaptiveListSection(
+                  header: syncText(context, '我的文件夹', 'My folders'),
+                  children: [
+                    for (final profile in data.profiles)
+                      _ProfileTile(summary: profile, onChanged: _refresh),
+                    AdaptiveListTile(
+                      widgetKey: const Key('selected-folder-create'),
+                      leading: const Icon(CupertinoIcons.add),
+                      title: Text(syncText(context, '添加文件夹', 'Add a folder')),
+                      showChevron: true,
+                      onTap: () => _open(AppRoutes.selectedFolderProfiles.path),
+                    ),
+                  ],
+                ),
             ],
-          ),
+            if (data.isolated.isNotEmpty)
+              AdaptiveListSection(
+                header: syncText(
+                  context,
+                  '需要检查的旧连接',
+                  'Existing connections needing attention',
+                ),
+                children: [
+                  for (final profile in data.isolated)
+                    _ProfileTile(summary: profile, onChanged: _refresh),
+                ],
+              ),
+            const SizedBox(height: 24),
+          ],
         ),
+      ),
     ];
   }
+
+  BackupPresentation _presentation(SyncProfileSummary p, _HomeData data) =>
+      BackupPresentation.from(
+        state: p.state,
+        activity: p.activity,
+        availability: data.availability,
+        pendingIncoming: data.snapshots[p.profileId]?.pendingIncomingCount ?? 0,
+        pendingOutgoing: data.snapshots[p.profileId]?.pendingOutgoingCount ?? 0,
+        isolated: p.isIsolated,
+        running: _running.contains(p.profileId),
+      );
 }
 
-class _SyncProfilesLoadResult {
-  const _SyncProfilesLoadResult({
-    required this.profiles,
-    this.velockAvailability,
-  });
-
+class _HomeData {
+  const _HomeData(
+    this.profiles,
+    this.snapshots,
+    this.availability,
+    this.isolated,
+  );
   final List<SyncProfileSummary> profiles;
-  final VelockWizardAvailability? velockAvailability;
-}
-
-/// line of context, and only speaks up when something needs attention.
-class _DomainStatus {
-  const _DomainStatus({required this.tone, this.detail});
-
-  final AppTone tone;
-
-  /// One sentence of context, or null when the section holds nothing but an
-  /// entry to start the domain.
-  final String? detail;
-}
-
-_DomainStatus _velockDomainStatus({
-  required BuildContext context,
-  required List<SyncProfileSummary> profiles,
-  required VelockWizardAvailability? velockAvailability,
-}) {
-  if (profiles.isEmpty) {
-    // The empty slot below already reads as "not set up yet", so the header
-    // adds nothing here.
-    return const _DomainStatus(tone: AppTone.neutral);
-  }
-
-  final velockUnavailable =
-      velockAvailability != null &&
-      velockAvailability != VelockWizardAvailability.ready;
-  if (velockUnavailable) {
-    return _DomainStatus(
-      tone: AppTone.danger,
-      detail: syncText(
-        context,
-        '请打开格间完成授权；恢复连接后备份会自动继续。',
-        "Open Velock to authorize access. Backup resumes automatically when the connection is restored.",
-      ),
-    );
-  }
-
-  final attention = profiles.where(_velockProfileNeedsAttention).length;
-  if (attention > 0) {
-    return _DomainStatus(
-      tone: AppTone.attention,
-      detail: syncText(
-        context,
-        '格间已重置或授权已失效。请移除下方配置，再用「＋ → 备份格间数据」重新配对。',
-        "Velock was reset or access expired. Remove the profile below, then use + → Back up Velock data to pair again.",
-      ),
-    );
-  }
-
-  // Nothing to report when the domain is healthy: the run itself carries its
-  // timestamp, so the header stays text-free.
-  return const _DomainStatus(tone: AppTone.ok);
-}
-
-bool _velockProfileNeedsAttention(SyncProfileSummary profile) =>
-    profile.isIsolated ||
-    profile.activity?.latestRun?.state == 'failed' ||
-    profile.state == SyncProfileState.accessRequired ||
-    profile.state == SyncProfileState.reauthorizationRequired ||
-    profile.state == SyncProfileState.blockedByConfiguration ||
-    profile.state == SyncProfileState.error;
-
-/// One line of section-level context under a section header.
-class _SectionStatusDetail extends StatelessWidget {
-  const _SectionStatusDetail({required this.message, required this.tone});
-
-  final String message;
-  final AppTone tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final needsAction = tone == AppTone.attention || tone == AppTone.danger;
-    return Text(
-      message,
-      style: AppType.rowSubtitle.copyWith(
-        color: needsAction ? tone.color(context) : context.appSecondaryLabel,
-      ),
-    );
-  }
+  final Map<String, SyncedDataSnapshot> snapshots;
+  final VelockWizardAvailability? availability;
+  final List<SyncProfileSummary> isolated;
 }
 
 class _ProfileTile extends ConsumerWidget {
-  const _ProfileTile({
-    required this.summary,
-    required this.onChanged,
-    this.velockAvailability,
-  });
+  const _ProfileTile({required this.summary, required this.onChanged});
 
   final SyncProfileSummary summary;
   final VoidCallback onChanged;
-  final VelockWizardAvailability? velockAvailability;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -389,7 +407,7 @@ class _ProfileTile extends ConsumerWidget {
       state: summary.state,
       isIsolated: summary.isIsolated,
       lastRunFailed: summary.activity?.latestRun?.state == 'failed',
-      velockAvailability: velockAvailability,
+      velockAvailability: null,
     );
     // When the pairing binding is gone the row already states the cause and
     // the next step, so the generic "sync unfinished" line is redundant.
@@ -533,13 +551,9 @@ class _ProfileTile extends ConsumerWidget {
           )) {
             return;
           }
-          final forceRunning =
-              summary.kind == SyncDatasetKind.velockManaged &&
-              velockAvailability != null &&
-              velockAvailability != VelockWizardAvailability.ready;
           await ref
               .read(syncProfileRepositoryProvider)
-              .remove(summary.profileId, forceRunning: forceRunning);
+              .remove(summary.profileId);
       }
       onChanged();
     } on SyncProfileRemovalWhileRunningException {

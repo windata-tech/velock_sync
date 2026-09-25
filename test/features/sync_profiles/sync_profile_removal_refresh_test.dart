@@ -66,13 +66,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('设置'));
+    await tester.tap(find.text('管理'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('移除同步配置'));
+    await tester.ensureVisible(find.text('断开此连接'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('移除同步配置'));
+    await tester.tap(find.text('断开此连接'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '移除'));
+    await tester.tap(find.widgetWithText(FilledButton, '断开'));
     await tester.pumpAndSettle();
 
     // The detail page leaves and the shared revision changes, so the sync home

@@ -20,9 +20,10 @@ import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 class NewWebDav extends HookConsumerWidget {
-  const NewWebDav({super.key, this.replacementConnectionId});
+  const NewWebDav({super.key, this.replacementConnectionId, this.returnTo});
 
   final String? replacementConnectionId;
+  final String? returnTo;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -209,10 +210,11 @@ class NewWebDav extends HookConsumerWidget {
                         // used to land here in the catch and delete the
                         // just-stored password even though the connection was
                         // already saved.
-                        final isConnected = await probeProtocolConnection(
-                          credentials: ref.read(credentialStoreProvider),
-                          protocol: protocolModel,
-                        );
+                        final isConnected =
+                            await ref.read(protocolConnectionProbeProvider)(
+                              credentials: ref.read(credentialStoreProvider),
+                              protocol: protocolModel,
+                            );
                         if (isConnected) {
                           if (replacementConnection != null) {
                             await ref
@@ -231,7 +233,7 @@ class NewWebDav extends HookConsumerWidget {
                           }
                           connectionPersisted = true;
                           if (context.mounted) {
-                            context.goNamed(AppRoutes.connections.name);
+                            context.go(returnTo ?? AppRoutes.connections.path);
                           } else {
                             Fluttertoast.showToast(msg: savedMessage);
                           }

@@ -19,30 +19,34 @@ abstract final class AppFormat {
     final difference = reference.difference(local);
 
     if (difference.isNegative) return _time(local);
-    if (difference.inMinutes < 1)
+    if (difference.inMinutes < 1) {
       return _optionalSyncText(context, '刚刚', "Just now");
-    if (difference.inMinutes < 60)
+    }
+    if (difference.inMinutes < 60) {
       return _optionalSyncText(
         context,
         '${difference.inMinutes} 分钟前',
         "${difference.inMinutes} min ago",
       );
+    }
 
     final today = DateTime(reference.year, reference.month, reference.day);
     final day = DateTime(local.year, local.month, local.day);
     final dayDelta = today.difference(day).inDays;
-    if (dayDelta == 0)
+    if (dayDelta == 0) {
       return _optionalSyncText(
         context,
         '今天 ${_time(local)}',
         "Today ${_time(local)}",
       );
-    if (dayDelta == 1)
+    }
+    if (dayDelta == 1) {
       return _optionalSyncText(
         context,
         '昨天 ${_time(local)}',
         "Yesterday ${_time(local)}",
       );
+    }
     if (local.year == reference.year) {
       return _optionalSyncText(
         context,
@@ -93,13 +97,21 @@ abstract final class AppFormat {
     BuildContext? context,
   }) {
     final normalized = code?.trim().toLowerCase() ?? '';
-    if (normalized.isEmpty)
+    if (normalized.isEmpty) {
       return fallback ??
           _optionalSyncText(
             context,
             '同步未完成，请稍后重试。',
             "Sync did not complete. Please try again later.",
           );
+    }
+    if (normalized == 'provider.webdav.atomic_create_unsupported') {
+      return _optionalSyncText(
+        context,
+        '这个云端位置不能安全保存备份，已停止传输以保护已有数据。请检查云端服务设置或联系服务提供方。',
+        'This cloud location cannot safely save backups. Transfers stopped to protect existing data. Check storage settings or contact the provider.',
+      );
+    }
     if (normalized == 'remote.velock_history_incomplete') {
       return _optionalSyncText(
         context,

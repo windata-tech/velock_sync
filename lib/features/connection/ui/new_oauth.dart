@@ -22,10 +22,10 @@ import 'package:velock_sync/providers/oauth/oauth_remote_folder_picker.dart';
 import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
-import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/app_components.dart';
 import 'package:velock_sync/widgets/app_format.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
+import 'package:velock_sync/l10n/sync_locale.dart';
 
 /// Creates a Google Drive or OneDrive connection through system-browser PKCE.
 /// It deliberately never renders, stores, or logs an access/refresh token.
@@ -34,10 +34,12 @@ class NewOAuthConnection extends HookConsumerWidget {
     super.key,
     required this.providerType,
     this.replacementConnectionId,
+    this.returnTo,
   });
 
   final RemoteProviderType providerType;
   final String? replacementConnectionId;
+  final String? returnTo;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -50,7 +52,9 @@ class NewOAuthConnection extends HookConsumerWidget {
         [providerType],
       ),
     );
-    useListenable(clientIdController);
+    // A manually entered public client ID is applied only after Save. Switching
+    // screens on every keystroke would dismiss the developer form mid-entry.
+    final manualClientId = useState<String?>(null);
     useEffect(() {
       if (savedClientId.hasData && clientIdController.text.isEmpty) {
         clientIdController.text = savedClientId.data ?? '';
@@ -69,7 +73,8 @@ class NewOAuthConnection extends HookConsumerWidget {
     try {
       config = OAuthPublicClientConfiguration.forProvider(providerType);
     } on Object catch (error) {
-      final clientId = clientIdController.text.trim();
+      final clientId = (manualClientId.value ?? savedClientId.data ?? '')
+          .trim();
       if (clientId.isEmpty) {
         registrationError = error;
       } else {
@@ -87,15 +92,33 @@ class NewOAuthConnection extends HookConsumerWidget {
     Future<void> saveClientId() async {
       final clientId = clientIdController.text.trim();
       if (clientId.isEmpty) {
-        showPlatformMessage(context, '请输入公开 OAuth Client ID。');
+        showPlatformMessage(
+          context,
+          syncText(context, '请输入公开 Client ID。', 'Enter the public Client ID.'),
+        );
         return;
       }
-      await localDataManager.setStringAsync(
-        _oauthClientIdKey(providerType),
-        clientId,
-      );
-      if (context.mounted) {
-        showPlatformMessage(context, 'Client ID 已保存，可以开始授权。');
+      try {
+        OAuthPublicClientConfiguration.fromClientId(
+          providerType: providerType,
+          clientId: clientId,
+        );
+        await localDataManager.setStringAsync(
+          _oauthClientIdKey(providerType),
+          clientId,
+        );
+        if (context.mounted) manualClientId.value = clientId;
+      } on Object {
+        if (context.mounted) {
+          showPlatformMessage(
+            context,
+            syncText(
+              context,
+              '无法保存授权配置，请检查后重试。',
+              'Could not save the authorization settings. Check them and retry.',
+            ),
+          );
+        }
       }
     }
 
@@ -145,7 +168,7 @@ class NewOAuthConnection extends HookConsumerWidget {
         // Plain probe: avoids the Riverpod 3 UnmountedRefException race that
         // an autoDispose provider's `.future` can hit when the provider is
         // disposed while the await is pending.
-        final connected = await probeProtocolConnection(
+        final connected = await ref.read(protocolConnectionProbeProvider)(
           credentials: ref.read(credentialStoreProvider),
           protocol: protocol,
         );
@@ -165,14 +188,21 @@ class NewOAuthConnection extends HookConsumerWidget {
               );
         }
         saved = true;
-        if (context.mounted) context.goNamed(AppRoutes.connections.name);
+        if (context.mounted) context.go(returnTo ?? AppRoutes.connections.path);
       } on Object catch (error, stackTrace) {
         loge(
           'OAuth authorization or connection check failed: ${error.runtimeType}',
           stackTrace: stackTrace,
         );
         if (context.mounted) {
-          showPlatformMessage(context, '授权或连接检查失败，请重试。');
+          showPlatformMessage(
+            context,
+            syncText(
+              context,
+              '未能完成登录或连接，请重试。',
+              'Sign-in or connection did not finish. Please retry.',
+            ),
+          );
         }
       } finally {
         if (!saved && credentialRef != null) {
@@ -184,10 +214,15 @@ class NewOAuthConnection extends HookConsumerWidget {
       }
     }
 
+    final provider = _providerLabel(providerType);
     return PlatformScaffold(
       appBar: WDAppBar(
         title: Text(
-          '${replacementConnectionId == null ? '连接' : '重新授权'} ${_providerLabel(providerType)}',
+          syncText(
+            context,
+            '${replacementConnectionId == null ? '连接' : '重新登录'} $provider',
+            '${replacementConnectionId == null ? 'Connect' : 'Sign in again to'} $provider',
+          ),
         ),
         trailingActions: [
           PlatformTextButton(
@@ -196,20 +231,7 @@ class NewOAuthConnection extends HookConsumerWidget {
               AppRoutes.connectionHelp.name,
               queryParameters: {'provider': providerType.name},
             ),
-            child: const Text('说明'),
-          ),
-          PlatformTextButton(
-            padding: EdgeInsets.zero,
-            onPressed: config == null || isLoading.value
-                ? null
-                : authorizeAndSave,
-            child: isLoading.value
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(replacementConnectionId == null ? '保存' : '重授权'),
+            child: Text(syncText(context, '帮助', 'Help')),
           ),
         ],
       ),
@@ -223,66 +245,107 @@ class NewOAuthConnection extends HookConsumerWidget {
                   error: registrationError,
                   clientIdController: clientIdController,
                   onSave: saveClientId,
+                  onChooseAnother: () => context.goNamed(
+                    AppRoutes.protocols.name,
+                    queryParameters: {'returnTo': ?returnTo},
+                  ),
                 )
               : Form(
                   key: formKey,
                   child: ListView(
-                    padding: const EdgeInsets.only(
-                      top: AppSpacing.md,
-                      bottom: AppSpacing.xl,
-                    ),
+                    padding: const EdgeInsets.all(AppSpacing.page),
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.page,
-                          0,
-                          AppSpacing.page,
-                          AppSpacing.sm,
+                      const SizedBox(height: 12),
+                      const Icon(CupertinoIcons.cloud, size: 42),
+                      const SizedBox(height: 20),
+                      Text(
+                        syncText(
+                          context,
+                          '连接你的 $provider',
+                          'Connect your $provider',
                         ),
-                        child: Text(
-                          '将使用系统浏览器完成安全授权。Refresh Token 仅写入系统安全存储。',
-                          style: TextStyle(
-                            color: context.appSecondaryLabel,
-                            height: 1.4,
+                        style: const TextStyle(
+                          fontSize: 25,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        syncText(
+                          context,
+                          '在浏览器中登录你的云端账号，然后选择保存位置。无需把云盘密码交给 Sync。',
+                          'Sign in to your cloud account in the browser, then choose where to save. You do not give your cloud password to Sync.',
+                        ),
+                        style: TextStyle(
+                          color: context.appSecondaryLabel,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      PlatformElevatedButton(
+                        widgetKey: const Key('oauth-sign-in'),
+                        onPressed: isLoading.value ? null : authorizeAndSave,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            syncText(
+                              context,
+                              isLoading.value ? '正在连接…' : '登录并选择保存位置',
+                              isLoading.value
+                                  ? 'Connecting…'
+                                  : 'Sign in and choose a location',
+                            ),
+                            textAlign: TextAlign.center,
                           ),
                         ),
                       ),
-                      AdaptiveListSection(
-                        header: '远端空间',
+                      const SizedBox(height: 24),
+                      ExpansionTile(
+                        key: const Key('oauth-advanced-location'),
+                        title: Text(
+                          syncText(
+                            context,
+                            '更多设置（可选）',
+                            'More settings (optional)',
+                          ),
+                        ),
+                        childrenPadding: const EdgeInsets.all(12),
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.md,
-                              AppSpacing.md,
-                              AppSpacing.md,
-                              AppSpacing.sm,
-                            ),
-                            child: TextFormField(
-                              controller: rootController,
-                              decoration: const InputDecoration(
-                                labelText: '远端根目录 ID',
-                                helperText:
-                                    'Google 默认 appDataFolder；OneDrive 可填写已选目录 ID。',
+                          TextFormField(
+                            controller: accountController,
+                            decoration: InputDecoration(
+                              labelText: syncText(
+                                context,
+                                '账号备注',
+                                'Account nickname',
                               ),
-                              validator: (value) =>
-                                  value == null || value.trim().isEmpty
-                                  ? '请输入远端根目录 ID'
-                                  : null,
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.md,
-                              AppSpacing.sm,
-                              AppSpacing.md,
-                              AppSpacing.md,
-                            ),
-                            child: TextFormField(
-                              controller: accountController,
-                              decoration: const InputDecoration(
-                                labelText: '账号显示名称（可选）',
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            key: const Key('oauth-root-id'),
+                            controller: rootController,
+                            decoration: InputDecoration(
+                              labelText: syncText(
+                                context,
+                                '起始文件夹标识（高级）',
+                                'Starting folder ID (advanced)',
                               ),
+                              helperText: syncText(
+                                context,
+                                '一般无需修改，登录后可以直接选择文件夹。',
+                                'Usually leave this unchanged. Pick a folder after signing in.',
+                              ),
+                              helperMaxLines: 3,
                             ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                ? syncText(
+                                    context,
+                                    '请填写文件夹标识或保留默认值。',
+                                    'Enter a folder ID or keep the default.',
+                                  )
+                                : null,
                           ),
                         ],
                       ),
@@ -365,8 +428,14 @@ class _OAuthFolderPickerSheetState extends State<_OAuthFolderPickerSheet> {
         child: Column(
           children: [
             ListTile(
-              title: const Text('选择远端同步位置'),
-              subtitle: Text(_parentId == null ? '根目录' : '当前文件夹'),
+              title: Text(syncText(context, '选择云端位置', 'Choose cloud storage')),
+              subtitle: Text(
+                syncText(
+                  context,
+                  _parentId == null ? '所有文件夹' : '当前文件夹',
+                  _parentId == null ? 'All folders' : 'Current folder',
+                ),
+              ),
               leading: _history.isEmpty
                   ? const Icon(Icons.folder_outlined)
                   : IconButton(
@@ -375,15 +444,23 @@ class _OAuthFolderPickerSheetState extends State<_OAuthFolderPickerSheet> {
                     ),
               trailing: TextButton(
                 onPressed: () => Navigator.pop(context, selectedId),
-                child: const Text('选择当前目录'),
+                child: Text(syncText(context, '保存在这里', 'Save here')),
               ),
             ),
             if (widget.providerType == RemoteProviderType.googleDrive &&
                 _parentId == null)
               ListTile(
                 leading: const Icon(Icons.lock_outline),
-                title: const Text('应用专属安全空间'),
-                subtitle: const Text('appDataFolder（推荐用于加密同步）'),
+                title: Text(
+                  syncText(context, 'Sync 专用文件夹', 'Sync’s private folder'),
+                ),
+                subtitle: Text(
+                  syncText(
+                    context,
+                    '自动管理，不会与其他文件混在一起',
+                    'Managed automatically, separate from your other files',
+                  ),
+                ),
                 onTap: () => Navigator.pop(context, 'appDataFolder'),
               ),
             const Divider(height: 1),
@@ -406,7 +483,15 @@ class _OAuthFolderPickerSheetState extends State<_OAuthFolderPickerSheet> {
                   }
                   final items = snapshot.requireData;
                   if (items.isEmpty) {
-                    return const Center(child: Text('当前目录没有可访问的子文件夹。'));
+                    return Center(
+                      child: Text(
+                        syncText(
+                          context,
+                          '这里没有其他文件夹。',
+                          'There are no other folders here.',
+                        ),
+                      ),
+                    );
                   }
                   return ListView.builder(
                     itemCount: items.length,
@@ -439,12 +524,14 @@ class _MissingOAuthRegistration extends StatelessWidget {
     required this.error,
     required this.clientIdController,
     required this.onSave,
+    required this.onChooseAnother,
   });
 
   final RemoteProviderType providerType;
   final Object? error;
   final TextEditingController clientIdController;
   final Future<void> Function() onSave;
+  final VoidCallback onChooseAnother;
 
   @override
   Widget build(BuildContext context) {
@@ -453,104 +540,72 @@ class _MissingOAuthRegistration extends StatelessWidget {
         ? 'GOOGLE_OAUTH_CLIENT_ID'
         : 'ONEDRIVE_OAUTH_CLIENT_ID';
     return ListView(
-      padding: const EdgeInsets.only(top: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.page),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.page,
-            0,
-            AppSpacing.page,
-            AppSpacing.sm,
+        const SizedBox(height: 12),
+        const Icon(CupertinoIcons.exclamationmark_circle, size: 40),
+        const SizedBox(height: 20),
+        Text(
+          syncText(
+            context,
+            '此版本暂未开通 $provider',
+            '$provider is not set up in this build',
           ),
+          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          syncText(
+            context,
+            '这是应用的连接配置尚未准备好，不是你的账号有问题。你可以先选择其他云端位置，或使用已开通此服务的版本。',
+            'The app’s connection configuration is not ready; there is no problem with your account. Choose another location or use a build with this service configured.',
+          ),
+          style: TextStyle(color: context.appSecondaryLabel, height: 1.5),
+        ),
+        const SizedBox(height: 22),
+        PlatformElevatedButton(
+          widgetKey: const Key('oauth-choose-another'),
+          onPressed: onChooseAnother,
           child: Text(
-            '使用你自己的 Google Cloud / Azure 应用注册公开 Client ID，'
-            '授权会在系统浏览器中完成。',
-            style: AppType.footnote.copyWith(color: context.appSecondaryLabel),
+            syncText(context, '选择其他保存位置', 'Choose another location'),
+            textAlign: TextAlign.center,
           ),
         ),
-        AdaptiveListSection(
-          header: '授权配置',
-          footer: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '只填写公开 Client ID，不要填写 Client Secret。',
-                style: AppType.footnote.copyWith(
-                  color: context.appSecondaryLabel,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '自定义构建也可以用 --dart-define 传入 $clientIdKey；'
-                '这里保存的值只写入本机配置，不包含任何用户令牌。',
-                style: AppType.footnote.copyWith(
-                  color: context.appSecondaryLabel,
-                ),
-              ),
-            ],
+        const SizedBox(height: 22),
+        ExpansionTile(
+          key: const Key('oauth-developer-settings'),
+          title: Text(syncText(context, '开发者配置', 'Developer settings')),
+          subtitle: Text(
+            syncText(context, '普通用户无需配置', 'Not required for everyday use'),
           ),
+          childrenPadding: const EdgeInsets.all(12),
           children: [
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '公开 Client ID',
-                    style: AppType.caption.copyWith(
-                      color: context.appSecondaryLabel,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  TextField(
-                    key: const Key('oauth-client-id-field'),
-                    controller: clientIdController,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    style: AppType.body,
-                    decoration: const InputDecoration(
-                      hintText:
-                          '例如：1234567890-abcdef.apps.googleusercontent.com',
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    '可在云控制台的 OAuth 客户端页面找到。',
-                    style: AppType.footnote.copyWith(
-                      color: context.appSecondaryLabel,
-                    ),
-                  ),
-                ],
+            Text(
+              syncText(
+                context,
+                '自定义构建可填写公开 Client ID，或在构建时传入 $clientIdKey。不要填写 Client Secret。',
+                'For custom builds, enter a public Client ID or provide $clientIdKey at build time. Do not enter a Client Secret.',
               ),
             ),
-            AppFormRow(
-              label: '构建变量',
+            const SizedBox(height: 16),
+            TextField(
+              key: const Key('oauth-client-id-field'),
+              controller: clientIdController,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(labelText: 'Client ID'),
+            ),
+            const SizedBox(height: 12),
+            PlatformTextButton(
+              widgetKey: const Key('oauth-save-client-id'),
+              onPressed: onSave,
               child: Text(
-                clientIdKey,
-                style: AppType.mono.copyWith(color: context.appSecondaryLabel),
+                syncText(context, '保存开发者配置', 'Save developer settings'),
               ),
             ),
-            const AppFormRow(
-              label: '回调地址',
-              child: Text('velocksync://oauth/callback', style: AppType.mono),
-            ),
-          ],
-        ),
-        AdaptiveListSection(
-          header: '当前状态',
-          footer: AppDetailDisclosure(
-            detail:
-                '${error.runtimeType}\n'
-                '错误代码：${_errorCode(error)}',
-          ),
-          children: [
-            AdaptiveListTile(
-              leading: AdaptiveIconBadge(
-                icon: CupertinoIcons.exclamationmark_triangle,
-                color: AppTone.attention.color(context),
-              ),
-              title: Text('$provider 授权未就绪', style: AppType.rowTitleStrong),
-              subtitle: const Text('填写并保存 Client ID 后即可继续授权。', maxLines: 2),
+            const Text('velocksync://oauth/callback', style: AppType.mono),
+            AppDetailDisclosure(
+              detail: '${error.runtimeType}\n${_errorCode(error)}',
             ),
           ],
         ),

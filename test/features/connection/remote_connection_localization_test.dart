@@ -97,7 +97,7 @@ void main() {
       expect(find.text('Velock'), findsOneWidget);
       await tester.tap(find.text('Choose Remote Protocol'));
       await tester.pumpAndSettle();
-      expect(find.text('Available Protocols'), findsOneWidget);
+      expect(find.text('Where to save'), findsOneWidget);
       expect(find.text('Other Services'), findsOneWidget);
       expect(find.text('Baidu Netdisk'), findsOneWidget);
       await tester.tap(find.text('WebDAV'));
