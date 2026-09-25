@@ -129,3 +129,6 @@ ui_test_results/
 
 # Local developer credentials (local-only, never commit)
 tool/local_webdav/*.local.env
+
+# Tutorial host configuration and demo credentials
+/tool/ios_ui_test/tutorial/*.local.json

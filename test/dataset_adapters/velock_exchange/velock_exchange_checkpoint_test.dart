@@ -8,6 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_store.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
+import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
+import 'package:velock_sync/sync_core/engine/sync_profile_runner.dart';
+import 'package:velock_sync/sync_core/engine/vault_protocol.dart';
+import 'package:velock_sync/sync_core/engine/logical_keys.dart';
+import 'package:velock_sync/sync_core/testing/in_memory_object_store.dart';
 
 void main() {
   test(
@@ -109,6 +114,64 @@ void main() {
         ),
       );
       expect(rejected.disposition, CheckpointImportDisposition.rejected);
+
+      // Real regression: the source has no pending outbox but a signed local
+      // progress checkpoint. A replacement empty remote is NOT a full backup.
+      final database = await SyncStateDatabase.inMemory();
+      addTearDown(database.close);
+      final remote = InMemoryObjectStore();
+      final runner = SyncProfileRunner(database);
+      Future<void> run() async {
+        await runner.run(
+          profileId: 'history-profile',
+          vaultId: vaultId,
+          deviceId: 'consumer-1',
+          dataset: adapter,
+          remote: remote,
+          protocol: VaultProtocolDocument(
+            vaultId: vaultId,
+            createdAt: DateTime.utc(2026, 9, 19),
+          ),
+        );
+      }
+
+      await expectLater(run(), throwsA(isA<Exception>()));
+      final failed = (await database.latestSyncRun('history-profile'))!;
+      expect(failed.state, 'failed');
+      expect(failed.errorCode, 'remote.velock_history_incomplete');
+      expect(
+        await remote.stat(LogicalKeys.checkpointCommit(vaultId, checkpointId)),
+        isNull,
+        reason: 'A failed backup must not publish a progress-only checkpoint',
+      );
+
+      // A pre-existing progress checkpoint on the remote does not excuse the
+      // missing commits either (the previously reproduced bad run did this).
+      await remote.put(
+        LogicalKeys.checkpointCommit(vaultId, checkpointId),
+        Stream.value(commit),
+        contentLength: commit.length,
+      );
+      await expectLater(run(), throwsA(isA<Exception>()));
+      expect(
+        (await database.latestSyncRun('history-profile'))!.state,
+        'failed',
+      );
+
+      // This check proves commit-name continuity only; opaque body integrity
+      // remains the importer's job, not a claim that these test bytes restore.
+      for (var sequence = 1; sequence <= 4; sequence++) {
+        await remote.put(
+          LogicalKeys.commit(vaultId, producerId, sequence, 'batch-$sequence'),
+          Stream.value([1]),
+          contentLength: 1,
+        );
+      }
+      await run();
+      expect(
+        (await database.latestSyncRun('history-profile'))!.state,
+        'completed',
+      );
     },
   );
 }

@@ -15,6 +15,7 @@ import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/protocol_provider.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
@@ -25,6 +26,7 @@ class NewWebDav extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final savedMessage = syncText(context, '连接已保存。', 'Connection saved.');
     final formKey = useMemoized(() => GlobalKey<FormState>());
     final replacement = replacementConnectionId == null
         ? const AsyncData<ConnectionModel?>(null)
@@ -109,11 +111,14 @@ class NewWebDav extends HookConsumerWidget {
       }
       final confirmed = await showAdaptiveConfirmation(
         context,
-        title: '使用不安全的 HTTP？',
-        message:
-            'HTTP 会使服务器地址、账号和传输内容面临被窃听或篡改的风险。仅在你确认服务器位于可信网络且不支持 HTTPS 时继续。',
-        confirmLabel: '仍然使用 HTTP',
-        cancelLabel: '保持 HTTPS',
+        title: syncText(context, '使用不安全的 HTTP？', 'Use Insecure HTTP?'),
+        message: syncText(
+          context,
+          'HTTP 会使服务器地址、账号和传输内容面临被窃听或篡改的风险。仅在你确认服务器位于可信网络且不支持 HTTPS 时继续。',
+          'HTTP exposes the server address, credentials, and transferred data to interception or tampering. Continue only if the server is on a trusted network and does not support HTTPS.',
+        ),
+        confirmLabel: syncText(context, '仍然使用 HTTP', 'Use HTTP Anyway'),
+        cancelLabel: syncText(context, '保持 HTTPS', 'Keep HTTPS'),
         isDestructive: true,
       );
       if (confirmed == true && context.mounted) {
@@ -126,7 +131,15 @@ class NewWebDav extends HookConsumerWidget {
       return const Center(child: PlatformCircularProgressIndicator());
     }
     if (replacementConnectionId != null && existingWebDav == null) {
-      return const Center(child: Text('要编辑的 WebDAV 连接不可用。'));
+      return Center(
+        child: Text(
+          syncText(
+            context,
+            '要编辑的 WebDAV 连接不可用。',
+            'The WebDAV connection to edit is unavailable.',
+          ),
+        ),
+      );
     }
 
     return PlatformScaffold(
@@ -140,7 +153,11 @@ class NewWebDav extends HookConsumerWidget {
               MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
           onPressed: () => context.pop(),
         ),
-        title: Text(existingWebDav == null ? '新建 WebDAV 连接' : '编辑 WebDAV 连接'),
+        title: Text(
+          existingWebDav == null
+              ? syncText(context, '新建 WebDAV 连接', 'New WebDAV Connection')
+              : syncText(context, '编辑 WebDAV 连接', 'Edit WebDAV Connection'),
+        ),
         trailingActions: [
           PlatformTextButton(
             padding: EdgeInsets.zero,
@@ -149,7 +166,7 @@ class NewWebDav extends HookConsumerWidget {
               queryParameters: {'provider': RemoteProviderType.webDav.name},
             ),
             child: Text(
-              '说明',
+              syncText(context, '说明', 'Help'),
               style: TextStyle(color: context.appSecondaryLabel),
             ),
           ),
@@ -216,7 +233,7 @@ class NewWebDav extends HookConsumerWidget {
                           if (context.mounted) {
                             context.goNamed(AppRoutes.connections.name);
                           } else {
-                            Fluttertoast.showToast(msg: '连接已保存。');
+                            Fluttertoast.showToast(msg: savedMessage);
                           }
                         } else {
                           await ref
@@ -224,7 +241,11 @@ class NewWebDav extends HookConsumerWidget {
                               .deleteCredential(createdCredentialRef);
                           if (context.mounted) {
                             Fluttertoast.showToast(
-                              msg: '连接测试失败：请检查地址、端口、账号密码。',
+                              msg: syncText(
+                                context,
+                                '连接测试失败：请检查地址、端口、账号密码。',
+                                'Connection test failed. Check the address, port, username, and password.',
+                              ),
                             );
                           }
                         }
@@ -248,8 +269,16 @@ class NewWebDav extends HookConsumerWidget {
                         if (context.mounted) {
                           Fluttertoast.showToast(
                             msg: connectionPersisted
-                                ? '连接已保存，但状态检查未完成。'
-                                : '连接保存失败，请重试。',
+                                ? syncText(
+                                    context,
+                                    '连接已保存，但状态检查未完成。',
+                                    'Connection saved, but the status check did not finish.',
+                                  )
+                                : syncText(
+                                    context,
+                                    '连接保存失败，请重试。',
+                                    'Unable to save connection. Please try again.',
+                                  ),
                           );
                         }
                         return;
@@ -266,8 +295,8 @@ class NewWebDav extends HookConsumerWidget {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text(
-                    '保存',
+                : Text(
+                    syncText(context, '保存', 'Save'),
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
           ),
@@ -304,7 +333,7 @@ class PrefixWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(width: 96, child: child);
+    return SizedBox(width: 112, child: child);
   }
 }
 
@@ -336,38 +365,66 @@ class _WebDavFormFields extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            const Text('启用 HTTPS'),
+            Text(syncText(context, '启用 HTTPS', 'Enable HTTPS')),
             Spacer(),
-            PlatformSwitch(value: enableHTTPS, onChanged: onEnableHTTPSChanged),
+            Semantics(
+              label: syncText(context, '启用 HTTPS', 'Enable HTTPS'),
+              identifier: 'webdav_https',
+              child: PlatformSwitch(
+                value: enableHTTPS,
+                onChanged: onEnableHTTPSChanged,
+              ),
+            ),
           ],
         ),
       ),
       PlatformTextFormField(
+        key: const ValueKey('webdav_address'),
         controller: addressController,
         validator: (value) {
           if (value == null || value.isEmpty) {
-            return '请输入服务器地址';
+            return syncText(context, '请输入服务器地址', 'Enter a server address');
           }
           if (!isUrl(value, protocols: ['http', 'https'])) {
-            return '请输入有效的服务器地址';
+            return syncText(
+              context,
+              '请输入有效的服务器地址',
+              'Enter a valid server address',
+            );
           }
           final expectedScheme = enableHTTPS ? 'https://' : 'http://';
           if (!value.toLowerCase().startsWith(expectedScheme)) {
             return enableHTTPS
-                ? '启用 HTTPS 时地址必须以 https:// 开头'
-                : '使用 HTTP 时地址必须以 http:// 开头';
+                ? syncText(
+                    context,
+                    '启用 HTTPS 时地址必须以 https:// 开头',
+                    'The address must start with https:// when HTTPS is enabled',
+                  )
+                : syncText(
+                    context,
+                    '使用 HTTP 时地址必须以 http:// 开头',
+                    'The address must start with http:// when using HTTP',
+                  );
           }
           return null;
         },
-        hintText: '例如：https://example.com/webdav',
+        hintText: syncText(
+          context,
+          '例如：https://example.com/webdav',
+          'e.g. https://example.com/webdav',
+        ),
         material: (context, platform) {
           return MaterialTextFormFieldData(
-            decoration: InputDecoration(labelText: '服务器地址'),
+            decoration: InputDecoration(
+              labelText: syncText(context, '服务器地址', 'Server Address'),
+            ),
           );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(child: const Text('服务器地址')),
+            prefix: PrefixWrapper(
+              child: Text(syncText(context, '服务器地址', 'Server Address')),
+            ),
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             // decoration: BoxDecoration(
             //   border: Border.all(color: context.dividerColor),
@@ -377,22 +434,25 @@ class _WebDavFormFields extends StatelessWidget {
         },
       ),
       PlatformTextFormField(
+        key: const ValueKey('webdav_port'),
         controller: portController,
         validator: (value) {
           if (value == null || value.isEmpty) {
-            return '请输入端口';
+            return syncText(context, '请输入端口', 'Enter a port');
           }
           return null;
         },
-        hintText: '例如：8888',
+        hintText: syncText(context, '例如：8888', 'e.g. 8888'),
         material: (context, platform) {
           return MaterialTextFormFieldData(
-            decoration: InputDecoration(labelText: '端口'),
+            decoration: InputDecoration(
+              labelText: syncText(context, '端口', 'Port'),
+            ),
           );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(child: const Text('端口')),
+            prefix: PrefixWrapper(child: Text(syncText(context, '端口', 'Port'))),
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             // decoration: BoxDecoration(
             //   border: Border.all(color: context.dividerColor),
@@ -405,20 +465,29 @@ class _WebDavFormFields extends StatelessWidget {
 
     final formOptionalChildren = [
       PlatformTextFormField(
+        key: const ValueKey('webdav_path'),
         controller: pathController,
         validator: (value) {
           return null;
         },
         maxLines: 1,
-        hintText: '例如：/ 或者 /path/to/webdav',
+        hintText: syncText(
+          context,
+          '例如：/ 或者 /path/to/webdav',
+          'e.g. / or /path/to/webdav',
+        ),
         material: (context, platform) {
           return MaterialTextFormFieldData(
-            decoration: InputDecoration(labelText: '子路径'),
+            decoration: InputDecoration(
+              labelText: syncText(context, '子路径', 'Subpath'),
+            ),
           );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(child: const Text('子路径')),
+            prefix: PrefixWrapper(
+              child: Text(syncText(context, '子路径', 'Subpath')),
+            ),
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             // decoration: BoxDecoration(
             //   border: Border.all(color: context.dividerColor),
@@ -428,23 +497,28 @@ class _WebDavFormFields extends StatelessWidget {
         },
       ),
       PlatformTextFormField(
+        key: const ValueKey('webdav_user'),
         controller: userController,
         validator: (value) {
           if (passwordController.text.isNotEmpty &&
               (value == null || value.isEmpty)) {
-            return '请输入用户名';
+            return syncText(context, '请输入用户名', 'Enter a username');
           }
           return null;
         },
-        hintText: '请输入用户名',
+        hintText: syncText(context, '请输入用户名', 'Enter a username'),
         material: (context, platform) {
           return MaterialTextFormFieldData(
-            decoration: InputDecoration(labelText: '用户名'),
+            decoration: InputDecoration(
+              labelText: syncText(context, '用户名', 'Username'),
+            ),
           );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(child: const Text('用户名')),
+            prefix: PrefixWrapper(
+              child: Text(syncText(context, '用户名', 'Username')),
+            ),
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             // decoration: BoxDecoration(
             //   border: Border.all(color: context.dividerColor),
@@ -454,6 +528,7 @@ class _WebDavFormFields extends StatelessWidget {
         },
       ),
       PlatformTextFormField(
+        key: const ValueKey('webdav_password'),
         controller: passwordController,
         obscureText: true,
         autocorrect: false,
@@ -462,19 +537,29 @@ class _WebDavFormFields extends StatelessWidget {
           if (userController.text.isNotEmpty &&
               !passwordOptional &&
               (value == null || value.isEmpty)) {
-            return '请输入密码';
+            return syncText(context, '请输入密码', 'Enter a password');
           }
           return null;
         },
-        hintText: passwordOptional ? '留空则保留原密码' : '请输入密码',
+        hintText: passwordOptional
+            ? syncText(
+                context,
+                '留空则保留原密码',
+                'Leave blank to keep the current password',
+              )
+            : syncText(context, '请输入密码', 'Enter a password'),
         material: (context, platform) {
           return MaterialTextFormFieldData(
-            decoration: InputDecoration(labelText: '密码'),
+            decoration: InputDecoration(
+              labelText: syncText(context, '密码', 'Password'),
+            ),
           );
         },
         cupertino: (context, platform) {
           return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(child: const Text('密码')),
+            prefix: PrefixWrapper(
+              child: Text(syncText(context, '密码', 'Password')),
+            ),
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             // decoration: BoxDecoration(
             //   border: Border.all(color: context.dividerColor),
@@ -487,8 +572,14 @@ class _WebDavFormFields extends StatelessWidget {
 
     return Column(
       children: [
-        AdaptiveListSection(header: '基本信息', children: formChildren),
-        AdaptiveListSection(header: '选填信息', children: formOptionalChildren),
+        AdaptiveListSection(
+          header: syncText(context, '基本信息', 'Basic Information'),
+          children: formChildren,
+        ),
+        AdaptiveListSection(
+          header: syncText(context, '选填信息', 'Optional Information'),
+          children: formOptionalChildren,
+        ),
       ],
     );
   }

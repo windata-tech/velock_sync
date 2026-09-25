@@ -1,3 +1,4 @@
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -29,7 +30,16 @@ void main() {
           syncStateDatabaseProvider.overrideWithValue(database),
           syncProfileRepositoryProvider.overrideWithValue(repository),
         ],
-        child: const MaterialApp(home: SyncProfilesHome()),
+        child: const MaterialApp(
+          locale: const Locale('zh', 'CN'),
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: SyncProfilesHome(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -83,7 +93,16 @@ void main() {
             const _ReadyReadinessService(),
           ),
         ],
-        child: const MaterialApp(home: SyncProfilesHome()),
+        child: const MaterialApp(
+          locale: const Locale('zh', 'CN'),
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: SyncProfilesHome(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -111,7 +130,18 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: NewSyncProfile())),
+      const ProviderScope(
+        child: MaterialApp(
+          locale: const Locale('zh', 'CN'),
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: NewSyncProfile(),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 

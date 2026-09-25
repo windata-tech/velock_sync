@@ -2,6 +2,7 @@
 /// by the sync-profiles pages (home, wizard, detail, settings).
 library;
 
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -41,15 +42,51 @@ class VelockConnectionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = switch (availability) {
-      VelockWizardAvailability.appNotInstalled => 'Velock 本体未安装，连接已断开',
-      VelockWizardAvailability.authorizationRequired => 'Velock 连接未授权',
-      VelockWizardAvailability.accessRevoked => 'Velock 已撤销同步授权',
-      VelockWizardAvailability.unsupportedVersion => 'Velock 版本不受支持',
-      VelockWizardAvailability.signatureMismatch => 'Velock 身份验证失败',
-      VelockWizardAvailability.configurationMissing => 'Velock 连接已断开',
-      VelockWizardAvailability.temporarilyUnavailable => 'Velock 连接暂不可用',
-      VelockWizardAvailability.unsupportedPlatform => '当前平台不支持 Velock 连接',
-      VelockWizardAvailability.ready => 'Velock 连接正常',
+      VelockWizardAvailability.appNotInstalled => _optionalSyncText(
+        context,
+        'Velock 本体未安装，连接已断开',
+        "Velock is not installed; disconnected",
+      ),
+      VelockWizardAvailability.authorizationRequired => _optionalSyncText(
+        context,
+        'Velock 连接未授权',
+        "Velock connection not authorized",
+      ),
+      VelockWizardAvailability.accessRevoked => _optionalSyncText(
+        context,
+        'Velock 已撤销同步授权',
+        "Velock revoked sync access",
+      ),
+      VelockWizardAvailability.unsupportedVersion => _optionalSyncText(
+        context,
+        'Velock 版本不受支持',
+        "Unsupported Velock version",
+      ),
+      VelockWizardAvailability.signatureMismatch => _optionalSyncText(
+        context,
+        'Velock 身份验证失败',
+        "Velock identity verification failed",
+      ),
+      VelockWizardAvailability.configurationMissing => _optionalSyncText(
+        context,
+        'Velock 连接已断开',
+        "Velock disconnected",
+      ),
+      VelockWizardAvailability.temporarilyUnavailable => _optionalSyncText(
+        context,
+        'Velock 连接暂不可用',
+        "Velock connection temporarily unavailable",
+      ),
+      VelockWizardAvailability.unsupportedPlatform => _optionalSyncText(
+        context,
+        '当前平台不支持 Velock 连接',
+        "Velock connection is not supported on this platform",
+      ),
+      VelockWizardAvailability.ready => _optionalSyncText(
+        context,
+        'Velock 连接正常',
+        "Velock connected",
+      ),
     };
     return Container(
       key: const Key('velock-connection-banner'),
@@ -91,7 +128,7 @@ class VelockConnectionBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  velockAvailabilitySubtitle(availability),
+                  velockAvailabilitySubtitle(availability, context: context),
                   style: TextStyle(
                     color: context.appSecondaryLabel,
                     fontSize: 13,
@@ -104,7 +141,7 @@ class VelockConnectionBanner extends StatelessWidget {
           TextButton(
             key: const Key('retry-velock-connection'),
             onPressed: onRetry,
-            child: const Text('重新检测'),
+            child: Text(_optionalSyncText(context, '重新检测', "Check again")),
           ),
         ],
       ),
@@ -143,100 +180,154 @@ ProfileStatusPresentation profileStatusPresentation(
       velockAvailability != null &&
       velockAvailability != VelockWizardAvailability.ready;
   if (isIsolated) {
-    return const ProfileStatusPresentation(
-      label: '需要处理',
+    return ProfileStatusPresentation(
+      label: _optionalSyncText(context, '需要处理', "Needs attention"),
       tone: AppTone.danger,
       icon: CupertinoIcons.exclamationmark_circle,
-      detail: '此配置无法安全读取，请重新创建同步配置。',
+      detail: _optionalSyncText(
+        context,
+        '此配置无法安全读取，请重新创建同步配置。',
+        "This profile cannot be read safely. Create a new sync profile.",
+      ),
     );
   }
   if (velockUnavailable) {
     return ProfileStatusPresentation(
-      label: velockAvailabilityLabel(velockAvailability),
+      label: velockAvailabilityLabel(velockAvailability, context: context),
       tone: AppTone.danger,
       icon: CupertinoIcons.exclamationmark_circle,
-      detail: velockAvailabilitySubtitle(velockAvailability),
+      detail: velockAvailabilitySubtitle(velockAvailability, context: context),
     );
   }
   if (lastRunFailed) {
-    return const ProfileStatusPresentation(
-      label: '上次失败',
+    return ProfileStatusPresentation(
+      label: _optionalSyncText(context, '上次失败', "Last run failed"),
       tone: AppTone.danger,
       icon: CupertinoIcons.exclamationmark_circle,
     );
   }
   return switch (state) {
     SyncProfileState.active => ProfileStatusPresentation(
-      label: kind == SyncDatasetKind.velockManaged ? '已保护' : '已同步',
+      label: kind == SyncDatasetKind.velockManaged
+          ? _optionalSyncText(context, '已保护', "Protected")
+          : _optionalSyncText(context, '已同步', "Synced"),
       tone: AppTone.ok,
       icon: CupertinoIcons.check_mark_circled,
     ),
-    SyncProfileState.paused => const ProfileStatusPresentation(
-      label: '已暂停',
+    SyncProfileState.paused => ProfileStatusPresentation(
+      label: _optionalSyncText(context, '已暂停', "Paused"),
       tone: AppTone.neutral,
       icon: CupertinoIcons.pause_circle,
     ),
-    SyncProfileState.accessRequired => const ProfileStatusPresentation(
-      label: '需要授权',
+    SyncProfileState.accessRequired => ProfileStatusPresentation(
+      label: _optionalSyncText(context, '需要授权', "Authorization required"),
       tone: AppTone.attention,
       icon: CupertinoIcons.exclamationmark_triangle,
     ),
-    SyncProfileState.reauthorizationRequired => const ProfileStatusPresentation(
-      label: '凭据失效',
+    SyncProfileState.reauthorizationRequired => ProfileStatusPresentation(
+      label: _optionalSyncText(context, '凭据失效', "Credentials expired"),
       tone: AppTone.attention,
       icon: CupertinoIcons.exclamationmark_triangle,
     ),
-    SyncProfileState.blockedByConfiguration => const ProfileStatusPresentation(
-      label: '配置不完整',
+    SyncProfileState.blockedByConfiguration => ProfileStatusPresentation(
+      label: _optionalSyncText(context, '配置不完整', "Incomplete setup"),
       tone: AppTone.attention,
       icon: CupertinoIcons.exclamationmark_triangle,
     ),
-    SyncProfileState.error => const ProfileStatusPresentation(
-      label: '需要处理',
+    SyncProfileState.error => ProfileStatusPresentation(
+      label: _optionalSyncText(context, '需要处理', "Needs attention"),
       tone: AppTone.danger,
       icon: CupertinoIcons.exclamationmark_circle,
     ),
   };
 }
 
-String _latestRunFailureMessage(SyncRunRecord? run) {
+String _latestRunFailureMessage(SyncRunRecord? run, {BuildContext? context}) {
   if (run?.errorCode == 'provider.http.401') {
-    return '上次同步失败：WebDAV 认证失败，请重新输入用户名和密码；地址和目录会保留。';
+    return _optionalSyncText(
+      context,
+      '上次同步失败：WebDAV 认证失败，请重新输入用户名和密码；地址和目录会保留。',
+      "Last sync failed: WebDAV authentication failed. Enter your username and password again; the address and folder will be kept.",
+    );
   }
   if (run?.errorCode == 'provider.http.403') {
-    return '上次同步失败：当前账号没有远端同步目录的访问权限。';
+    return _optionalSyncText(
+      context,
+      '上次同步失败：当前账号没有远端同步目录的访问权限。',
+      "Last sync failed: this account cannot access the remote sync folder.",
+    );
   }
   if (run?.errorCode == 'provider.http.404') {
-    return '上次同步失败：远端同步目录不存在，请检查 WebDAV 路径。';
+    return _optionalSyncText(
+      context,
+      '上次同步失败：远端同步目录不存在，请检查 WebDAV 路径。',
+      "Last sync failed: the remote sync folder does not exist. Check the WebDAV path.",
+    );
   }
   if (run?.errorCode == 'provider.http.409') {
-    return '上次同步失败：远端同步目录存在冲突，请确认没有其他设备同时同步。';
+    return _optionalSyncText(
+      context,
+      '上次同步失败：远端同步目录存在冲突，请确认没有其他设备同时同步。',
+      "Last sync failed: the remote sync folder has a conflict. Check that no other device is syncing at the same time.",
+    );
   }
-  return '上次同步失败：${AppFormat.errorSummary(run?.errorCode)}';
+  return _optionalSyncText(
+    context,
+    '上次同步失败：${AppFormat.errorSummary(run?.errorCode, context: context)}',
+    "Last sync failed: ${AppFormat.errorSummary(run?.errorCode, context: context)}",
+  );
 }
 
-String latestRunFailureSubtitle(SyncRunRecord? run) {
-  final message = _latestRunFailureMessage(run);
-  return message.startsWith('上次同步失败：')
-      ? message.substring('上次同步失败：'.length)
+String latestRunFailureSubtitle(SyncRunRecord? run, {BuildContext? context}) {
+  final message = _latestRunFailureMessage(run, context: context);
+  return message.startsWith(
+        _optionalSyncText(context, '上次同步失败：', "Last sync failed: "),
+      )
+      ? message.substring(
+          _optionalSyncText(context, '上次同步失败：', "Last sync failed: ").length,
+        )
       : message;
 }
 
-String firstSyncResultMessage(SyncProfileDispatchResult? result) {
-  if (result == null) return '同步配置已创建；首次同步未执行，请稍后点击立即同步。';
+String firstSyncResultMessage(
+  SyncProfileDispatchResult? result, {
+  BuildContext? context,
+}) {
+  if (result == null)
+    return _optionalSyncText(
+      context,
+      '同步配置已创建；首次同步未执行，请稍后点击立即同步。',
+      "Sync profile created. The first sync did not run; tap Sync now later.",
+    );
   if (result.didRun) {
     final upload = result.run?.upload.publishedBatchCount ?? 0;
     final download = result.run?.download.importedBatchCount ?? 0;
     final pending = result.run?.download.pendingBatchCount ?? 0;
     if (pending > 0) {
-      return '已下载 $pending 批格间数据，请打开格间并解锁以完成恢复。';
+      return _optionalSyncText(
+        context,
+        '已下载 $pending 批格间数据，请打开格间并解锁以完成恢复。',
+        "Downloaded $pending batches of Velock data. Open and unlock Velock to finish recovery.",
+      );
     }
     if (upload == 0 && download == 0) {
-      return '同步配置已创建；当前没有新的数据需要同步。';
+      return _optionalSyncText(
+        context,
+        '同步配置已创建；当前没有新的数据需要同步。',
+        "Sync profile created. There is no new data to sync.",
+      );
     }
-    return '格间同步完成：上传 $upload 批，恢复 $download 批。';
+    return _optionalSyncText(
+      context,
+      '格间同步完成：上传 $upload 批，恢复 $download 批。',
+      "Velock sync complete: uploaded $upload batches and restored $download batches.",
+    );
   }
-  return '同步配置已创建，但首次同步失败；请检查远端连接后点击“立即同步”。';
+  return _optionalSyncText(
+    context,
+    '同步配置已创建，但首次同步失败；请检查远端连接后点击“立即同步”。',
+    "Sync profile created, but the first sync failed. Check the remote connection and tap Sync now.",
+  );
 }
 
 Future<SyncProfileDispatchResult?> runSyncWithProgress(
@@ -247,7 +338,7 @@ Future<SyncProfileDispatchResult?> runSyncWithProgress(
   showAdaptiveBlockingProgress(
     context,
     key: const Key('sync-progress-dialog'),
-    message: '正在同步…',
+    message: _optionalSyncText(context, '正在同步…', "Syncing…"),
   );
   try {
     return await ref.read(syncProfileRunServiceProvider).runNow(profileId);
@@ -263,9 +354,13 @@ Future<bool> confirmSyncProfileRemoval(
   String displayName,
 ) => showAdaptiveConfirmation(
   context,
-  title: '删除同步配置？',
-  message: '“$displayName”将从本机删除。远端同步空间和文件不会被删除。',
-  confirmLabel: '删除',
+  title: _optionalSyncText(context, '删除同步配置？', "Delete sync profile?"),
+  message: _optionalSyncText(
+    context,
+    '“$displayName”将从本机删除。远端同步空间和文件不会被删除。',
+    "“$displayName” will be deleted from this device. The remote sync space and files will not be deleted.",
+  ),
+  confirmLabel: _optionalSyncText(context, '删除', "Delete"),
   isDestructive: true,
 );
 
@@ -278,7 +373,7 @@ Future<void> presentSyncResult(
     await _offerOpenVelock(context, pending);
     return;
   }
-  showMessage(context, _syncResultMessage(result));
+  showMessage(context, _syncResultMessage(result, context: context));
 }
 
 Future<void> presentFirstSyncResult(
@@ -290,16 +385,20 @@ Future<void> presentFirstSyncResult(
     await _offerOpenVelock(context, pending);
     return;
   }
-  showMessage(context, firstSyncResultMessage(result));
+  showMessage(context, firstSyncResultMessage(result, context: context));
 }
 
 Future<void> _offerOpenVelock(BuildContext context, int pending) async {
   final shouldOpen = await showAdaptiveConfirmation(
     context,
-    title: '同步完成',
-    message: '已下载 $pending 批格间数据。\n是否现在打开格间继续恢复？',
-    confirmLabel: '打开格间',
-    cancelLabel: '稍后',
+    title: _optionalSyncText(context, '同步完成', "Sync complete"),
+    message: _optionalSyncText(
+      context,
+      '已下载 $pending 批格间数据。\n是否现在打开格间继续恢复？',
+      "Downloaded $pending batches of Velock data.\nOpen Velock now to continue recovery?",
+    ),
+    confirmLabel: _optionalSyncText(context, '打开格间', "Open Velock"),
+    cancelLabel: _optionalSyncText(context, '稍后', "Later"),
   );
   if (!shouldOpen || !context.mounted) return;
   final launched = await launchUrl(
@@ -307,37 +406,79 @@ Future<void> _offerOpenVelock(BuildContext context, int pending) async {
     mode: LaunchMode.externalApplication,
   );
   if (!launched && context.mounted) {
-    showMessage(context, '无法打开格间，请手动打开。');
+    showMessage(
+      context,
+      _optionalSyncText(
+        context,
+        '无法打开格间，请手动打开。',
+        "Could not open Velock. Please open it manually.",
+      ),
+    );
   }
 }
 
-String _syncResultMessage(SyncProfileDispatchResult result) {
+String _syncResultMessage(
+  SyncProfileDispatchResult result, {
+  BuildContext? context,
+}) {
   if (result.didFail) {
     final failure = SyncFailureClassifier.classify(result.error!);
     if (failure.providerStatusCode == 409) {
-      return '同步失败：远端同步目录存在冲突（HTTP 409）。请确认没有其他设备同时同步，或检查远端目录后重试。';
+      return _optionalSyncText(
+        context,
+        '同步失败：远端同步目录存在冲突（HTTP 409）。请确认没有其他设备同时同步，或检查远端目录后重试。',
+        "Sync failed: remote sync folder conflict (HTTP 409). Check that no other device is syncing, or check the remote folder and retry.",
+      );
     }
-    return '同步失败：${failure.suggestedAction}';
+    return _optionalSyncText(
+      context,
+      '同步失败：${failure.suggestedAction}',
+      "Sync failed: ${AppFormat.errorSummary(failure.errorCode, context: context)}",
+    );
   }
   if (!result.didRun) {
-    return '同步未启动：${dispatchLabel(result.status)}';
+    return _optionalSyncText(
+      context,
+      '同步未启动：${dispatchLabel(result.status, context: context)}',
+      "Sync did not start: ${dispatchLabel(result.status, context: context)}",
+    );
   }
   final upload = result.run?.upload.publishedBatchCount ?? 0;
   final imported = result.run?.download.importedBatchCount ?? 0;
   final pending = result.run?.download.pendingBatchCount ?? 0;
   if (pending > 0) {
-    return '已下载 $pending 批远端数据，请打开格间并解锁以完成恢复。';
+    return _optionalSyncText(
+      context,
+      '已下载 $pending 批远端数据，请打开格间并解锁以完成恢复。',
+      "Downloaded $pending remote batches. Open and unlock Velock to finish recovery.",
+    );
   }
   if (upload > 0 && imported > 0) {
-    return '同步完成：已上传 $upload 批本地变更，并恢复 $imported 批远端数据。';
+    return _optionalSyncText(
+      context,
+      '同步完成：已上传 $upload 批本地变更，并恢复 $imported 批远端数据。',
+      "Sync complete: uploaded $upload local batches and restored $imported remote batches.",
+    );
   }
   if (upload > 0) {
-    return '已上传 $upload 批本地变更。';
+    return _optionalSyncText(
+      context,
+      '已上传 $upload 批本地变更。',
+      "Uploaded $upload local batches.",
+    );
   }
   if (imported > 0) {
-    return '已恢复 $imported 批远端数据。';
+    return _optionalSyncText(
+      context,
+      '已恢复 $imported 批远端数据。',
+      "Restored $imported remote batches.",
+    );
   }
-  return '没有新的本地变更或远端数据。';
+  return _optionalSyncText(
+    context,
+    '没有新的本地变更或远端数据。',
+    "No new local changes or remote data.",
+  );
 }
 
 /// Full itemised list of everything this device has moved.
@@ -346,19 +487,26 @@ Future<void> showSyncedObjectsSheet(
   List<TransferJobRecord> history,
 ) => showAppDetailSheet(
   context,
-  title: '已同步对象明细',
+  title: _optionalSyncText(context, '已同步对象明细', "Synced object details"),
   rows: [
     for (final transfer in history)
       AppDetailSheetRow(
-        label:
-            '${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey))} · '
-            '${transfer.direction == TransferJobDirection.upload ? '上传' : '恢复'}',
+        label: _optionalSyncText(
+          context,
+          '${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey), context: context)} · '
+              '${transfer.direction == TransferJobDirection.upload ? '上传' : '恢复'}',
+          "${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey), context: context)} · ${transfer.direction == TransferJobDirection.upload ? 'Upload' : 'Restore'}",
+        ),
         value:
             '${AppFormat.bytes(transfer.completedBytes)} · '
             '${AppFormat.stamp(transfer.completedAt)}',
       ),
   ],
-  footnote: '格间备份以加密对象为单位（批次 / 数据块 / 提交）；原始文件名只在格间 App 内可见。',
+  footnote: _optionalSyncText(
+    context,
+    '格间备份以加密对象为单位（批次 / 数据块 / 提交）；原始文件名只在格间 App 内可见。',
+    "Velock backup counts encrypted objects (batches / blobs / commits). Original filenames are only visible in Velock.",
+  ),
 );
 
 /// Read-only run record. Human conclusion first; raw protocol fields stay in
@@ -386,53 +534,118 @@ Future<void> showRunDetails(
       items.fold(0, (sum, item) => sum + item.completedBytes);
   final detailLines = [
     for (final transfer in transferred)
-      '${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey))} · '
-          '${transfer.direction == TransferJobDirection.upload ? '上传' : '恢复'} · '
-          '${AppFormat.bytes(transfer.completedBytes)} · '
-          '${AppFormat.stamp(transfer.completedAt)}',
+      _optionalSyncText(
+        context,
+        '${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey), context: context)} · '
+            '${transfer.direction == TransferJobDirection.upload ? '上传' : '恢复'} · '
+            '${AppFormat.bytes(transfer.completedBytes)} · '
+            '${AppFormat.stamp(transfer.completedAt)}',
+        "${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey), context: context)} · ${transfer.direction == TransferJobDirection.upload ? 'Upload' : 'Restore'} · ${AppFormat.bytes(transfer.completedBytes)} · ${AppFormat.stamp(transfer.completedAt)}",
+      ),
   ];
 
   final failed = run.state == 'failed';
   final technical = <String>[
-    if (run.errorCode != null) '错误代码：${run.errorCode}',
-    if (run.errorCategory != null) '错误分类：${run.errorCategory}',
-    if (run.providerStatusCode != null) '服务状态码：${run.providerStatusCode}',
-    if (run.retryable != null) '可重试：${run.retryable! ? '是' : '否'}',
-    if (run.retryAfter != null) '建议等待：${run.retryAfter!.inSeconds} 秒',
+    if (run.errorCode != null)
+      _optionalSyncText(
+        context,
+        '错误代码：${run.errorCode}',
+        "Error code: ${run.errorCode}",
+      ),
+    if (run.errorCategory != null)
+      _optionalSyncText(
+        context,
+        '错误分类：${run.errorCategory}',
+        "Error category: ${run.errorCategory}",
+      ),
+    if (run.providerStatusCode != null)
+      _optionalSyncText(
+        context,
+        '服务状态码：${run.providerStatusCode}',
+        "Provider status code: ${run.providerStatusCode}",
+      ),
+    if (run.retryable != null)
+      _optionalSyncText(
+        context,
+        '可重试：${run.retryable! ? '是' : '否'}',
+        "Retryable: ${run.retryable! ? 'Yes' : 'No'}",
+      ),
+    if (run.retryAfter != null)
+      _optionalSyncText(
+        context,
+        '建议等待：${run.retryAfter!.inSeconds} 秒',
+        "Suggested wait: ${run.retryAfter!.inSeconds} seconds",
+      ),
   ].join('\n');
   return showAppDetailSheet(
     context,
-    title: '同步记录 · ${runStateLabel(run.state)}',
+    title: _optionalSyncText(
+      context,
+      '同步记录 · ${runStateLabel(run.state, context: context)}',
+      "Sync run · ${runStateLabel(run.state, context: context)}",
+    ),
     rows: [
-      AppDetailSheetRow(label: '开始时间', value: AppFormat.stamp(run.startedAt)),
-      AppDetailSheetRow(label: '结束时间', value: AppFormat.stamp(run.completedAt)),
       AppDetailSheetRow(
-        label: '结果',
-        value: runStateLabel(run.state),
+        label: _optionalSyncText(context, '开始时间', "Started"),
+        value: AppFormat.stamp(run.startedAt),
+      ),
+      AppDetailSheetRow(
+        label: _optionalSyncText(context, '结束时间', "Finished"),
+        value: AppFormat.stamp(run.completedAt),
+      ),
+      AppDetailSheetRow(
+        label: _optionalSyncText(context, '结果', "Result"),
+        value: runStateLabel(run.state, context: context),
         tone: failed ? AppTone.danger : AppTone.ok,
       ),
       if (failed)
         AppDetailSheetRow(
-          label: '可能原因',
-          value: AppFormat.errorSummary(run.errorCode),
+          label: _optionalSyncText(context, '可能原因', "Possible cause"),
+          value: AppFormat.errorSummary(run.errorCode, context: context),
         ),
       if (run.suggestedAction != null)
-        AppDetailSheetRow(label: '建议操作', value: run.suggestedAction!),
+        AppDetailSheetRow(
+          label: _optionalSyncText(context, '建议操作', "Suggested action"),
+          value: _optionalSyncText(
+            context,
+            run.suggestedAction!,
+            AppFormat.errorSummary(run.errorCode, context: context),
+          ),
+        ),
       AppDetailSheetRow(
-        label: '上传对象',
-        value: '${uploaded.length} 个 · ${AppFormat.bytes(bytesOf(uploaded))}',
+        label: _optionalSyncText(context, '上传对象', "Uploaded objects"),
+        value: _optionalSyncText(
+          context,
+          '${uploaded.length} 个 · ${AppFormat.bytes(bytesOf(uploaded))}',
+          "${uploaded.length} objects · ${AppFormat.bytes(bytesOf(uploaded))}",
+        ),
       ),
       AppDetailSheetRow(
-        label: '恢复对象',
-        value:
-            '${downloaded.length} 个 · ${AppFormat.bytes(bytesOf(downloaded))}',
+        label: _optionalSyncText(context, '恢复对象', "Restored objects"),
+        value: _optionalSyncText(
+          context,
+          '${downloaded.length} 个 · ${AppFormat.bytes(bytesOf(downloaded))}',
+          "${downloaded.length} objects · ${AppFormat.bytes(bytesOf(downloaded))}",
+        ),
       ),
       AppDetailSheetRow(
-        label: '传输明细',
-        value: detailLines.isEmpty ? '本次没有传输任何对象' : detailLines.join('\n'),
+        label: _optionalSyncText(context, '传输明细', "Transfer details"),
+        value: detailLines.isEmpty
+            ? _optionalSyncText(
+                context,
+                '本次没有传输任何对象',
+                "No objects were transferred in this run",
+              )
+            : detailLines.join('\n'),
       ),
     ],
-    footnote: technical.isEmpty ? null : '技术详情\n$technical',
+    footnote: technical.isEmpty
+        ? null
+        : _optionalSyncText(
+            context,
+            '技术详情\n$technical',
+            "Technical details\n$technical",
+          ),
   );
 }
 
@@ -465,11 +678,19 @@ class SyncedKindRow extends StatelessWidget {
       icon: _syncedKindIcon(context, kind.kind),
       size: AppSizes.listLeadingCompact,
     ),
-    title: Text(_syncedKindLabel(kind.kind)),
+    title: Text(_syncedKindLabel(kind.kind, context: context)),
     subtitle: Text(
       kind.remoteCount != null
-          ? '远端 ${kind.remoteCount} 个对象'
-          : '上传 ${kind.uploadedCount} 项 · 下载 ${kind.downloadedCount} 项',
+          ? _optionalSyncText(
+              context,
+              '远端 ${kind.remoteCount} 个对象',
+              "${kind.remoteCount} remote objects",
+            )
+          : _optionalSyncText(
+              context,
+              '上传 ${kind.uploadedCount} 项 · 下载 ${kind.downloadedCount} 项',
+              "Uploaded ${kind.uploadedCount} · Downloaded ${kind.downloadedCount}",
+            ),
     ),
     trailing: Text(
       AppFormat.bytes(kind.bytes),
@@ -517,15 +738,15 @@ class SyncedDataRow extends StatelessWidget {
   );
 }
 
-String _syncedKindLabel(String kind) => switch (kind) {
-  'batches' => '增量批次',
-  'blobs' => '数据块',
-  'commits' => '提交校验',
-  'checkpoints' => '检查点',
-  'acknowledgements' => '同步回执',
-  'protocol' => '协议与设备',
-  'maintenance' => '保留与清理',
-  _ => '其他对象',
+String _syncedKindLabel(String kind, {BuildContext? context}) => switch (kind) {
+  'batches' => _optionalSyncText(context, '增量批次', "Incremental batches"),
+  'blobs' => _optionalSyncText(context, '数据块', "Blobs"),
+  'commits' => _optionalSyncText(context, '提交校验', "Commit verification"),
+  'checkpoints' => _optionalSyncText(context, '检查点', "Checkpoints"),
+  'acknowledgements' => _optionalSyncText(context, '同步回执', "Sync receipts"),
+  'protocol' => _optionalSyncText(context, '协议与设备', "Protocol & devices"),
+  'maintenance' => _optionalSyncText(context, '保留与清理', "Retention & cleanup"),
+  _ => _optionalSyncText(context, '其他对象', "Other objects"),
 };
 
 IconData _syncedKindIcon(BuildContext context, String kind) => switch (kind) {
@@ -628,7 +849,13 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
       setState(() => _remote = snapshot);
     } on Object {
       if (!mounted) return;
-      setState(() => _error = '无法读取远端清单，请检查连接后重试。');
+      setState(
+        () => _error = _optionalSyncText(
+          context,
+          '无法读取远端清单，请检查连接后重试。',
+          "Could not read the remote inventory. Check the connection and retry.",
+        ),
+      );
     } finally {
       if (mounted) setState(() => _scanning = false);
     }
@@ -643,13 +870,25 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
         snapshot.pendingUploadCount + snapshot.pendingDownloadCount;
     final kinds = _mergedKinds();
     return AdaptiveListSection(
-      header: '已同步的数据',
+      header: _optionalSyncText(context, '已同步的数据', "Synced data"),
       footer: Text(
         remote != null && remote.totalCount == 0
-            ? '远端目前没有这个空间的加密对象。'
+            ? _optionalSyncText(
+                context,
+                '远端目前没有这个空间的加密对象。',
+                "No encrypted objects for this space are stored remotely yet.",
+              )
             : widget.profile.kind == SyncDatasetKind.velockManaged
-            ? '格间备份按加密对象统计（批次 / 数据块 / 提交）；原始文件名只在格间 App 内可见。'
-            : '按加密对象统计；文件路径不会离开本机。',
+            ? _optionalSyncText(
+                context,
+                '格间备份按加密对象统计（批次 / 数据块 / 提交）；原始文件名只在格间 App 内可见。',
+                "Velock backup counts encrypted objects (batches / blobs / commits). Original filenames are only visible in Velock.",
+              )
+            : _optionalSyncText(
+                context,
+                '按加密对象统计；文件路径不会离开本机。',
+                "Counts encrypted objects. File paths never leave this device.",
+              ),
       ),
       children: [
         Padding(
@@ -661,11 +900,29 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
           ),
           child: AppMetricGrid(
             metrics: [
-              AppMetric(value: '${snapshot.uploadedCount}', label: '本机已上传'),
-              AppMetric(value: '${snapshot.downloadedCount}', label: '本机已恢复'),
+              AppMetric(
+                value: '${snapshot.uploadedCount}',
+                label: _optionalSyncText(
+                  context,
+                  '本机已上传',
+                  "Uploaded on this device",
+                ),
+              ),
+              AppMetric(
+                value: '${snapshot.downloadedCount}',
+                label: _optionalSyncText(
+                  context,
+                  '本机已恢复',
+                  "Restored on this device",
+                ),
+              ),
               AppMetric(
                 value: AppFormat.bytes(snapshot.totalBytes),
-                label: '本机累计流量',
+                label: _optionalSyncText(
+                  context,
+                  '本机累计流量',
+                  "Total transferred",
+                ),
               ),
             ],
           ),
@@ -673,30 +930,44 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
         if (lastActivity != null)
           SyncedDataRow(
             icon: Icons.schedule_outlined,
-            label: '最近同步',
-            value: AppFormat.relativeTime(lastActivity),
+            label: _optionalSyncText(context, '最近同步', "Last sync"),
+            value: AppFormat.relativeTime(lastActivity, context: context),
           ),
         SyncedDataRow(
           icon: Icons.layers_outlined,
-          label: '增量批次',
-          value:
-              '已发布 ${snapshot.publishedOutgoingCount} · '
-              '已应用 ${snapshot.appliedIncomingCount}',
+          label: _optionalSyncText(context, '增量批次', "Incremental batches"),
+          value: _optionalSyncText(
+            context,
+            '已发布 ${snapshot.publishedOutgoingCount} · '
+                '已应用 ${snapshot.appliedIncomingCount}',
+            "Published ${snapshot.publishedOutgoingCount} · Applied ${snapshot.appliedIncomingCount}",
+          ),
         ),
         if (pendingTransfers > 0)
           SyncedDataRow(
             icon: Icons.sync_outlined,
-            label: '待传输对象',
-            value:
-                '上传 ${snapshot.pendingUploadCount} · '
-                '下载 ${snapshot.pendingDownloadCount}',
+            label: _optionalSyncText(context, '待传输对象', "Pending objects"),
+            value: _optionalSyncText(
+              context,
+              '上传 ${snapshot.pendingUploadCount} · '
+                  '下载 ${snapshot.pendingDownloadCount}',
+              "Upload ${snapshot.pendingUploadCount} · Download ${snapshot.pendingDownloadCount}",
+            ),
           ),
         for (final kind in kinds) SyncedKindRow(kind: kind),
         for (final device in snapshot.devices)
           SyncedDataRow(
             icon: Icons.devices_outlined,
-            label: '远端设备 ${shortId(device.deviceId)}',
-            value: '已应用 ${device.appliedSequence} 个增量',
+            label: _optionalSyncText(
+              context,
+              '远端设备 ${shortId(device.deviceId)}',
+              "Remote device ${shortId(device.deviceId)}",
+            ),
+            value: _optionalSyncText(
+              context,
+              '已应用 ${device.appliedSequence} 个增量',
+              "Applied ${device.appliedSequence} changes",
+            ),
           ),
         if (widget.history.isNotEmpty) ...[
           AdaptiveListTile(
@@ -709,9 +980,15 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
               ),
               size: AppSizes.listLeadingCompact,
             ),
-            title: const Text('已同步对象明细'),
+            title: Text(
+              _optionalSyncText(context, '已同步对象明细', "Synced object details"),
+            ),
             subtitle: Text(
-              '共 ${widget.history.length} 个对象，最近 ${AppFormat.relativeTime(widget.history.first.completedAt)}',
+              _optionalSyncText(
+                context,
+                '共 ${widget.history.length} 个对象，最近 ${AppFormat.relativeTime(widget.history.first.completedAt, context: context)}',
+                "${widget.history.length} objects; latest ${AppFormat.relativeTime(widget.history.first.completedAt, context: context)}",
+              ),
             ),
             showChevron: true,
             onTap: () => showSyncedObjectsSheet(context, widget.history),
@@ -720,19 +997,38 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
         if (_queue != null) ...[
           SyncedDataRow(
             icon: Icons.outbox_outlined,
-            label: '格间待上传批次',
-            value: '${_queue!.outboxReadyCount} 个',
+            label: _optionalSyncText(
+              context,
+              '格间待上传批次',
+              "Velock batches awaiting upload",
+            ),
+            value: _optionalSyncText(
+              context,
+              '${_queue!.outboxReadyCount} 个',
+              "${_queue!.outboxReadyCount}",
+            ),
           ),
           SyncedDataRow(
             icon: Icons.move_to_inbox_outlined,
-            label: '待格间导入',
-            value: '${_queue!.inboxReadyCount} 个',
+            label: _optionalSyncText(
+              context,
+              '待格间导入',
+              "Awaiting Velock import",
+            ),
+            value: _optionalSyncText(
+              context,
+              '${_queue!.inboxReadyCount} 个',
+              "${_queue!.inboxReadyCount}",
+            ),
           ),
           if (_queue!.lastOutboxReceiptAt != null)
             SyncedDataRow(
               icon: Icons.handshake_outlined,
-              label: '上次数据交接',
-              value: AppFormat.relativeTime(_queue!.lastOutboxReceiptAt),
+              label: _optionalSyncText(context, '上次数据交接', "Last data handoff"),
+              value: AppFormat.relativeTime(
+                _queue!.lastOutboxReceiptAt,
+                context: context,
+              ),
             ),
           if (_queue!.isEmpty && snapshot.uploadedCount == 0)
             Padding(
@@ -741,7 +1037,11 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
                 vertical: AppSpacing.xs,
               ),
               child: Text(
-                '格间目前没有新的待同步内容；在格间里新增或修改数据后会自动排队。',
+                _optionalSyncText(
+                  context,
+                  '格间目前没有新的待同步内容；在格间里新增或修改数据后会自动排队。',
+                  "No new Velock data is waiting to sync. Changes made in Velock are queued automatically.",
+                ),
                 style: AppType.rowSubtitle.copyWith(
                   color: context.appSecondaryLabel,
                 ),
@@ -750,16 +1050,23 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
         ],
         SyncedDataRow(
           icon: Icons.cloud_outlined,
-          label: '远端已保存',
+          label: _optionalSyncText(context, '远端已保存', "Stored remotely"),
           value: remote == null
-              ? '未扫描'
-              : '${remote.totalCount} 个对象 · ${AppFormat.bytes(remote.totalBytes)}',
+              ? _optionalSyncText(context, '未扫描', "Not scanned")
+              : _optionalSyncText(
+                  context,
+                  '${remote.totalCount} 个对象 · ${AppFormat.bytes(remote.totalBytes)}',
+                  "${remote.totalCount} objects · ${AppFormat.bytes(remote.totalBytes)}",
+                ),
         ),
         if (remote != null && remote.lastUpdatedAt != null)
           SyncedDataRow(
             icon: Icons.update_outlined,
-            label: '远端最近更新',
-            value: AppFormat.relativeTime(remote.lastUpdatedAt),
+            label: _optionalSyncText(context, '远端最近更新', "Last remote update"),
+            value: AppFormat.relativeTime(
+              remote.lastUpdatedAt,
+              context: context,
+            ),
           ),
         if (remote != null)
           for (final entry in remote.entries)
@@ -771,12 +1078,18 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
               ),
             ),
         if (remote != null && remote.truncated)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(
               horizontal: AppSpacing.rowHorizontal,
               vertical: AppSpacing.xs,
             ),
-            child: Text('清单较大，仅统计了前 600 个对象。'),
+            child: Text(
+              _optionalSyncText(
+                context,
+                '清单较大，仅统计了前 600 个对象。',
+                "Large inventory: only the first 600 objects were counted.",
+              ),
+            ),
           ),
         if (_error != null)
           Padding(
@@ -797,7 +1110,11 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
             children: [
               Expanded(
                 child: Text(
-                  '从远端存储读取实际已保存的加密对象。',
+                  _optionalSyncText(
+                    context,
+                    '从远端存储读取实际已保存的加密对象。',
+                    "Read the encrypted objects actually stored remotely.",
+                  ),
                   style: AppType.rowSubtitle.copyWith(
                     color: context.appSecondaryLabel,
                   ),
@@ -811,7 +1128,15 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
               else
                 TextButton(
                   onPressed: _scanRemote,
-                  child: Text(remote == null ? '扫描远端' : '重新扫描'),
+                  child: Text(
+                    remote == null
+                        ? _optionalSyncText(
+                            context,
+                            '扫描远端',
+                            "Scan remote storage",
+                          )
+                        : _optionalSyncText(context, '重新扫描', "Scan again"),
+                  ),
                 ),
             ],
           ),
@@ -887,7 +1212,10 @@ class RetryState extends StatelessWidget {
         children: [
           Text(message),
           const SizedBox(height: 8),
-          OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+          OutlinedButton(
+            onPressed: onRetry,
+            child: Text(_optionalSyncText(context, '重试', "Retry")),
+          ),
         ],
       ),
     ),
@@ -901,7 +1229,14 @@ Future<void> exportSelectedFolderRecovery(
 ) async {
   final rootKeyRef = profile.dataset['rootKeyRef'];
   if (rootKeyRef is! String || rootKeyRef.isEmpty) {
-    showMessage(context, '无法读取此配置的恢复密钥引用。');
+    showMessage(
+      context,
+      _optionalSyncText(
+        context,
+        '无法读取此配置的恢复密钥引用。',
+        "Could not read the recovery key reference for this profile.",
+      ),
+    );
     return;
   }
   final passphrase = await requestProfileRecoveryPassphrase(context);
@@ -927,7 +1262,14 @@ Future<void> exportSelectedFolderRecovery(
       stackTrace: stackTrace,
     );
     if (context.mounted) {
-      showMessage(context, '无法生成恢复包；请检查本机密钥状态。');
+      showMessage(
+        context,
+        _optionalSyncText(
+          context,
+          '无法生成恢复包；请检查本机密钥状态。',
+          "Could not create a recovery package. Check this device’s keys.",
+        ),
+      );
     }
   }
 }
@@ -935,23 +1277,35 @@ Future<void> exportSelectedFolderRecovery(
 Future<String?> requestProfileRecoveryPassphrase(BuildContext context) async {
   final values = await showAdaptiveTextInputs(
     context: context,
-    title: '生成恢复包',
-    message: '恢复包和口令需通过不同的受保护渠道保存。',
-    inputs: const [
+    title: _optionalSyncText(context, '生成恢复包', "Create recovery package"),
+    message: _optionalSyncText(
+      context,
+      '恢复包和口令需通过不同的受保护渠道保存。',
+      "Keep the recovery package and passphrase in separate secure locations.",
+    ),
+    inputs: [
       AdaptiveTextInput(
-        label: '恢复口令',
-        placeholder: '恢复口令',
+        label: _optionalSyncText(context, '恢复口令', "Recovery passphrase"),
+        placeholder: _optionalSyncText(context, '恢复口令', "Recovery passphrase"),
         obscureText: true,
         autocorrect: false,
       ),
       AdaptiveTextInput(
-        label: '再次输入恢复口令',
-        placeholder: '再次输入恢复口令',
+        label: _optionalSyncText(
+          context,
+          '再次输入恢复口令',
+          "Repeat recovery passphrase",
+        ),
+        placeholder: _optionalSyncText(
+          context,
+          '再次输入恢复口令',
+          "Repeat recovery passphrase",
+        ),
         obscureText: true,
         autocorrect: false,
       ),
     ],
-    confirmLabel: '生成',
+    confirmLabel: _optionalSyncText(context, '生成', "Create"),
     isValid: (values) => values[0].isNotEmpty && values[0] == values[1],
   );
   if (values == null) return null;
@@ -963,17 +1317,34 @@ Future<void> showProfileRecoveryPackage(
   String recoveryPackage,
 ) => showAdaptiveNotice(
   context: context,
-  title: '一次性恢复包',
-  message: '请安全保存。此窗口关闭后应用不会保留或自动复制该恢复包。',
+  title: _optionalSyncText(context, '一次性恢复包', "One-time recovery package"),
+  message: _optionalSyncText(
+    context,
+    '请安全保存。此窗口关闭后应用不会保留或自动复制该恢复包。',
+    "Store this securely. After this window closes, the app will not retain or automatically copy the package.",
+  ),
   details: SelectableText(recoveryPackage),
-  confirmLabel: '我已安全保存',
+  confirmLabel: _optionalSyncText(
+    context,
+    '我已安全保存',
+    "I have saved it securely",
+  ),
 );
 
-String kindLabel(SyncDatasetKind? kind) => switch (kind) {
-  SyncDatasetKind.selectedFolder => '文件夹同步',
-  SyncDatasetKind.velockManaged => '格间备份',
-  null => '不可用',
-};
+String kindLabel(SyncDatasetKind? kind, {BuildContext? context}) =>
+    switch (kind) {
+      SyncDatasetKind.selectedFolder => _optionalSyncText(
+        context,
+        '文件夹同步',
+        "Folder sync",
+      ),
+      SyncDatasetKind.velockManaged => _optionalSyncText(
+        context,
+        '格间备份',
+        "Velock backup",
+      ),
+      null => _optionalSyncText(context, '不可用', "Unavailable"),
+    };
 
 IconData adaptiveKindIcon(BuildContext context, SyncDatasetKind? kind) =>
     switch (kind) {
@@ -994,46 +1365,129 @@ IconData adaptiveKindIcon(BuildContext context, SyncDatasetKind? kind) =>
       ),
     };
 
-String velockAvailabilityLabel(VelockWizardAvailability availability) =>
-    switch (availability) {
-      VelockWizardAvailability.appNotInstalled => '本体未安装',
-      VelockWizardAvailability.authorizationRequired => '本体未授权',
-      VelockWizardAvailability.accessRevoked => '授权已撤销',
-      VelockWizardAvailability.unsupportedVersion => '版本不支持',
-      VelockWizardAvailability.signatureMismatch => '身份验证失败',
-      VelockWizardAvailability.configurationMissing => '本体不可用',
-      VelockWizardAvailability.temporarilyUnavailable => '本体暂不可用',
-      VelockWizardAvailability.unsupportedPlatform => '平台不支持',
-      VelockWizardAvailability.ready => '已启用',
-    };
-
-String velockAvailabilitySubtitle(VelockWizardAvailability availability) =>
-    switch (availability) {
-      VelockWizardAvailability.appNotInstalled => '请先安装 Velock 本体。',
-      VelockWizardAvailability.authorizationRequired => '请在 Velock 本体中重新授权。',
-      VelockWizardAvailability.accessRevoked => '格间已重置或授权被撤销，请移除本配置后重新配对。',
-      VelockWizardAvailability.unsupportedVersion => '请升级 Velock 本体后重试。',
-      VelockWizardAvailability.signatureMismatch => '已安装的 Velock 本体无法验证。',
-      VelockWizardAvailability.configurationMissing => 'Velock 本体的同步通道不可用。',
-      VelockWizardAvailability.temporarilyUnavailable => 'Velock 本体暂时无法访问。',
-      VelockWizardAvailability.unsupportedPlatform => '当前平台不支持 Velock 本体。',
-      VelockWizardAvailability.ready => 'Velock 安全空间',
-    };
-
-String transferStateLabel(TransferJobState state) => switch (state) {
-  TransferJobState.queued => '等待中',
-  TransferJobState.running => '进行中',
-  TransferJobState.paused => '已暂停',
-  TransferJobState.retryWaiting => '等待重试',
-  TransferJobState.completed => '已完成',
-  TransferJobState.failed => '失败',
-  TransferJobState.cancelled => '已取消',
+String velockAvailabilityLabel(
+  VelockWizardAvailability availability, {
+  BuildContext? context,
+}) => switch (availability) {
+  VelockWizardAvailability.appNotInstalled => _optionalSyncText(
+    context,
+    '本体未安装',
+    "Velock not installed",
+  ),
+  VelockWizardAvailability.authorizationRequired => _optionalSyncText(
+    context,
+    '本体未授权',
+    "Velock not authorized",
+  ),
+  VelockWizardAvailability.accessRevoked => _optionalSyncText(
+    context,
+    '授权已撤销',
+    "Access revoked",
+  ),
+  VelockWizardAvailability.unsupportedVersion => _optionalSyncText(
+    context,
+    '版本不支持',
+    "Unsupported version",
+  ),
+  VelockWizardAvailability.signatureMismatch => _optionalSyncText(
+    context,
+    '身份验证失败',
+    "Verification failed",
+  ),
+  VelockWizardAvailability.configurationMissing => _optionalSyncText(
+    context,
+    '本体不可用',
+    "Velock unavailable",
+  ),
+  VelockWizardAvailability.temporarilyUnavailable => _optionalSyncText(
+    context,
+    '本体暂不可用',
+    "Velock temporarily unavailable",
+  ),
+  VelockWizardAvailability.unsupportedPlatform => _optionalSyncText(
+    context,
+    '平台不支持',
+    "Unsupported platform",
+  ),
+  VelockWizardAvailability.ready => _optionalSyncText(
+    context,
+    '已启用',
+    "Enabled",
+  ),
 };
 
-String runStateLabel(String state) => switch (state) {
-  'running' => '运行中',
-  'completed' => '已完成',
-  'failed' => '失败',
+String velockAvailabilitySubtitle(
+  VelockWizardAvailability availability, {
+  BuildContext? context,
+}) => switch (availability) {
+  VelockWizardAvailability.appNotInstalled => _optionalSyncText(
+    context,
+    '请先安装 Velock 本体。',
+    "Install Velock first.",
+  ),
+  VelockWizardAvailability.authorizationRequired => _optionalSyncText(
+    context,
+    '请在 Velock 本体中重新授权。',
+    "Authorize access again in Velock.",
+  ),
+  VelockWizardAvailability.accessRevoked => _optionalSyncText(
+    context,
+    '格间已重置或授权被撤销，请移除本配置后重新配对。',
+    "Velock was reset or access revoked. Remove this profile and pair again.",
+  ),
+  VelockWizardAvailability.unsupportedVersion => _optionalSyncText(
+    context,
+    '请升级 Velock 本体后重试。',
+    "Update Velock and retry.",
+  ),
+  VelockWizardAvailability.signatureMismatch => _optionalSyncText(
+    context,
+    '已安装的 Velock 本体无法验证。',
+    "The installed Velock app could not be verified.",
+  ),
+  VelockWizardAvailability.configurationMissing => _optionalSyncText(
+    context,
+    'Velock 本体的同步通道不可用。',
+    "The Velock sync channel is unavailable.",
+  ),
+  VelockWizardAvailability.temporarilyUnavailable => _optionalSyncText(
+    context,
+    'Velock 本体暂时无法访问。',
+    "Velock is temporarily inaccessible.",
+  ),
+  VelockWizardAvailability.unsupportedPlatform => _optionalSyncText(
+    context,
+    '当前平台不支持 Velock 本体。',
+    "Velock is not supported on this platform.",
+  ),
+  VelockWizardAvailability.ready => _optionalSyncText(
+    context,
+    'Velock 安全空间',
+    "Velock secure space",
+  ),
+};
+
+String transferStateLabel(
+  TransferJobState state, {
+  BuildContext? context,
+}) => switch (state) {
+  TransferJobState.queued => _optionalSyncText(context, '等待中', "Queued"),
+  TransferJobState.running => _optionalSyncText(context, '进行中', "In progress"),
+  TransferJobState.paused => _optionalSyncText(context, '已暂停', "Paused"),
+  TransferJobState.retryWaiting => _optionalSyncText(
+    context,
+    '等待重试',
+    "Waiting to retry",
+  ),
+  TransferJobState.completed => _optionalSyncText(context, '已完成', "Completed"),
+  TransferJobState.failed => _optionalSyncText(context, '失败', "Failed"),
+  TransferJobState.cancelled => _optionalSyncText(context, '已取消', "Cancelled"),
+};
+
+String runStateLabel(String state, {BuildContext? context}) => switch (state) {
+  'running' => _optionalSyncText(context, '运行中', "Running"),
+  'completed' => _optionalSyncText(context, '已完成', "Completed"),
+  'failed' => _optionalSyncText(context, '失败', "Failed"),
   _ => state,
 };
 
@@ -1043,71 +1497,180 @@ String runStateLabel(String state) => switch (state) {
 /// names the state, so the row only answers "when did it last run" — the long
 /// "格间备份 · 后台同步已开启 · 最近成功备份：…" line repeated everything the
 /// rest of the row said.
-String profileSecondaryText(SyncProfileSummary summary) {
+String profileSecondaryText(
+  SyncProfileSummary summary, {
+  BuildContext? context,
+}) {
   final activity = summary.activity;
   if (activity != null && activity.unresolvedConflictCount > 0) {
-    return '${activity.unresolvedConflictCount} 个冲突待处理';
+    return _optionalSyncText(
+      context,
+      '${activity.unresolvedConflictCount} 个冲突待处理',
+      "${activity.unresolvedConflictCount} conflicts to resolve",
+    );
   }
   if (activity != null &&
       activity.pendingUploadCount + activity.pendingDownloadCount > 0) {
-    return '有待传输项目';
+    return _optionalSyncText(context, '有待传输项目', "Transfers pending");
   }
   final run = activity?.latestRun;
   if (run == null) {
-    return summary.kind == SyncDatasetKind.selectedFolder ? '尚未同步' : '尚未备份';
+    return summary.kind == SyncDatasetKind.selectedFolder
+        ? _optionalSyncText(context, '尚未同步', "Not synced yet")
+        : _optionalSyncText(context, '尚未备份', "Not backed up yet");
   }
-  if (run.state == 'running') return '正在同步…';
-  return AppFormat.relativeTime(run.completedAt ?? run.startedAt);
+  if (run.state == 'running')
+    return _optionalSyncText(context, '正在同步…', "Syncing…");
+  return AppFormat.relativeTime(
+    run.completedAt ?? run.startedAt,
+    context: context,
+  );
 }
 
-String dispatchLabel(SyncProfileDispatchStatus status) => switch (status) {
-  SyncProfileDispatchStatus.completed => '已完成',
-  SyncProfileDispatchStatus.skippedNotRunnable => '当前状态不允许同步',
-  SyncProfileDispatchStatus.skippedUnsupported => '此配置不受支持',
-  SyncProfileDispatchStatus.failed => '发生错误',
+String dispatchLabel(
+  SyncProfileDispatchStatus status, {
+  BuildContext? context,
+}) => switch (status) {
+  SyncProfileDispatchStatus.completed => _optionalSyncText(
+    context,
+    '已完成',
+    "Completed",
+  ),
+  SyncProfileDispatchStatus.skippedNotRunnable => _optionalSyncText(
+    context,
+    '当前状态不允许同步',
+    "Sync is not allowed in the current state",
+  ),
+  SyncProfileDispatchStatus.skippedUnsupported => _optionalSyncText(
+    context,
+    '此配置不受支持',
+    "This profile is not supported",
+  ),
+  SyncProfileDispatchStatus.failed => _optionalSyncText(
+    context,
+    '发生错误',
+    "An error occurred",
+  ),
 };
 
-String velockReadinessTitle(VelockWizardAvailability availability) =>
-    switch (availability) {
-      VelockWizardAvailability.ready => '可以开始 Velock 安全配对',
-      VelockWizardAvailability.appNotInstalled => '未找到 Velock App',
-      VelockWizardAvailability.authorizationRequired => '需要在 Velock 中授权',
-      VelockWizardAvailability.accessRevoked => 'Velock 已撤销授权',
-      VelockWizardAvailability.unsupportedVersion => 'Velock 版本不受支持',
-      VelockWizardAvailability.signatureMismatch => 'Velock 身份验证失败',
-      VelockWizardAvailability.configurationMissing => '配对通道尚未配置',
-      VelockWizardAvailability.temporarilyUnavailable => 'Velock 暂时不可用',
-      VelockWizardAvailability.unsupportedPlatform => '当前平台不受支持',
-    };
+String velockReadinessTitle(
+  VelockWizardAvailability availability, {
+  BuildContext? context,
+}) => switch (availability) {
+  VelockWizardAvailability.ready => _optionalSyncText(
+    context,
+    '可以开始 Velock 安全配对',
+    "Ready for secure Velock pairing",
+  ),
+  VelockWizardAvailability.appNotInstalled => _optionalSyncText(
+    context,
+    '未找到 Velock App',
+    "Velock app not found",
+  ),
+  VelockWizardAvailability.authorizationRequired => _optionalSyncText(
+    context,
+    '需要在 Velock 中授权',
+    "Authorization required in Velock",
+  ),
+  VelockWizardAvailability.accessRevoked => _optionalSyncText(
+    context,
+    'Velock 已撤销授权',
+    "Velock revoked access",
+  ),
+  VelockWizardAvailability.unsupportedVersion => _optionalSyncText(
+    context,
+    'Velock 版本不受支持',
+    "Unsupported Velock version",
+  ),
+  VelockWizardAvailability.signatureMismatch => _optionalSyncText(
+    context,
+    'Velock 身份验证失败',
+    "Velock identity verification failed",
+  ),
+  VelockWizardAvailability.configurationMissing => _optionalSyncText(
+    context,
+    '配对通道尚未配置',
+    "Pairing channel not configured",
+  ),
+  VelockWizardAvailability.temporarilyUnavailable => _optionalSyncText(
+    context,
+    'Velock 暂时不可用',
+    "Velock temporarily unavailable",
+  ),
+  VelockWizardAvailability.unsupportedPlatform => _optionalSyncText(
+    context,
+    '当前平台不受支持',
+    "This platform is not supported",
+  ),
+};
 
-String velockReadinessMessage(VelockWizardAvailability availability) =>
-    switch (availability) {
-      VelockWizardAvailability.ready =>
-        '已验证独立 Velock App、发布签名、Exchange V1 和公开配对身份。'
-            '下一步会切换到 Velock，由你解锁并明确批准一次性挑战；此时仍不会创建 Profile。',
-      VelockWizardAvailability.appNotInstalled =>
-        '请先安装独立的 Velock App，完成初始化后返回重试。',
-      VelockWizardAvailability.authorizationRequired =>
-        'Velock 的 Exchange 拒绝了访问。请在 Velock 中明确允许 Velock Sync 后重试。',
-      VelockWizardAvailability.accessRevoked =>
-        'Velock 已撤销此设备的同步授权。请在 Velock 中重新批准配对后继续。',
-      VelockWizardAvailability.unsupportedVersion =>
-        '当前 Velock App 不支持 Exchange V1，请升级 Velock 后重试。',
-      VelockWizardAvailability.signatureMismatch =>
-        '已安装应用未通过发布签名校验。为保护数据，本应用不会继续连接。',
-      VelockWizardAvailability.configurationMissing =>
-        '受保护的 Exchange 数据通道可探测，但当前构建尚未提供签名授权/配对控制通道。'
-            '本应用不会猜测身份，也不会创建半成品 Profile。',
-      VelockWizardAvailability.temporarilyUnavailable =>
-        'Velock 的受保护 Exchange 当前无法访问；未保存任何配置，可稍后重试。',
-      VelockWizardAvailability.unsupportedPlatform =>
-        '格间备份仅支持已配置的 Apple Exchange 构建。',
-    };
+String velockReadinessMessage(
+  VelockWizardAvailability availability, {
+  BuildContext? context,
+}) => switch (availability) {
+  VelockWizardAvailability.ready => _optionalSyncText(
+    context,
+    '已验证独立 Velock App、发布签名、Exchange V1 和公开配对身份。'
+        '下一步会切换到 Velock，由你解锁并明确批准一次性挑战；此时仍不会创建 Profile。',
+    "The independent Velock app, release signature, Exchange V1, and public pairing identity have been verified. Next, switch to Velock, unlock it, and explicitly approve the one-time challenge. No profile is created at this stage.",
+  ),
+  VelockWizardAvailability.appNotInstalled => _optionalSyncText(
+    context,
+    '请先安装独立的 Velock App，完成初始化后返回重试。',
+    "Install the independent Velock app and complete its setup, then return and retry.",
+  ),
+  VelockWizardAvailability.authorizationRequired => _optionalSyncText(
+    context,
+    'Velock 的 Exchange 拒绝了访问。请在 Velock 中明确允许 Velock Sync 后重试。',
+    "Velock Exchange denied access. Explicitly allow Velock Sync in Velock and retry.",
+  ),
+  VelockWizardAvailability.accessRevoked => _optionalSyncText(
+    context,
+    'Velock 已撤销此设备的同步授权。请在 Velock 中重新批准配对后继续。',
+    "Velock revoked sync access for this device. Approve pairing again in Velock to continue.",
+  ),
+  VelockWizardAvailability.unsupportedVersion => _optionalSyncText(
+    context,
+    '当前 Velock App 不支持 Exchange V1，请升级 Velock 后重试。',
+    "This version of Velock does not support Exchange V1. Update Velock and retry.",
+  ),
+  VelockWizardAvailability.signatureMismatch => _optionalSyncText(
+    context,
+    '已安装应用未通过发布签名校验。为保护数据，本应用不会继续连接。',
+    "The installed app failed release-signature verification. The connection will not continue, to protect your data.",
+  ),
+  VelockWizardAvailability.configurationMissing => _optionalSyncText(
+    context,
+    '受保护的 Exchange 数据通道可探测，但当前构建尚未提供签名授权/配对控制通道。'
+        '本应用不会猜测身份，也不会创建半成品 Profile。',
+    "The protected Exchange data channel is detectable, but this build does not provide the signed authorization/pairing control channel. The app will not guess identities or create an incomplete profile.",
+  ),
+  VelockWizardAvailability.temporarilyUnavailable => _optionalSyncText(
+    context,
+    'Velock 的受保护 Exchange 当前无法访问；未保存任何配置，可稍后重试。',
+    "Protected Velock Exchange is currently inaccessible. No configuration was saved. Try again later.",
+  ),
+  VelockWizardAvailability.unsupportedPlatform => _optionalSyncText(
+    context,
+    '格间备份仅支持已配置的 Apple Exchange 构建。',
+    "Velock backup requires a configured Apple Exchange build.",
+  ),
+};
 
-String conflictLabel(String type) => switch (type.split(':').first) {
-  'modify-modify' => '两个设备都修改了内容',
-  'delete-modify' => '删除与修改发生冲突',
-  _ => '需要处理的同步冲突',
+String conflictLabel(String type, {BuildContext? context}) => switch (type
+    .split(':')
+    .first) {
+  'modify-modify' => _optionalSyncText(
+    context,
+    '两个设备都修改了内容',
+    "Both devices edited this content",
+  ),
+  'delete-modify' => _optionalSyncText(
+    context,
+    '删除与修改发生冲突',
+    "Deletion conflicts with an edit",
+  ),
+  _ => _optionalSyncText(context, '需要处理的同步冲突', "Sync conflict needs attention"),
 };
 
 String shortId(String value) =>
@@ -1123,3 +1686,7 @@ int supportedCellularLimit(int value) {
 
 void showMessage(BuildContext context, String message) =>
     showPlatformMessage(context, message);
+
+// Omitted context preserves the legacy Chinese-only formatter API.
+String _optionalSyncText(BuildContext? context, String zh, String en) =>
+    context == null ? zh : syncText(context, zh, en);

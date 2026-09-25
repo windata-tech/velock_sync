@@ -3,6 +3,8 @@
 library;
 
 import 'dart:async';
+import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/l10n/sync_language_setting.dart';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -147,8 +149,11 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
   Widget build(BuildContext context) => FutureBuilder<SyncSettingsSnapshot>(
     future: _snapshot,
     builder: (context, snapshot) => AdaptiveSliverScaffold(
-      title: '设置',
-      slivers: _settingsSlivers(context, snapshot),
+      title: syncText(context, '设置', 'Settings'),
+      slivers: [
+        const SliverToBoxAdapter(child: SyncLanguageSetting()),
+        ..._settingsSlivers(context, snapshot),
+      ],
     ),
   );
 

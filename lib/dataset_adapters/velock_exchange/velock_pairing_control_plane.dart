@@ -5,6 +5,9 @@ import 'package:cryptography/cryptography.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 
 final RegExp _opaqueId = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$');
+// Binding hashes are unpadded SHA-256 base64url, including leading - or _.
+// Keep the stricter opaque-ID grammar for filenames and other identifiers.
+final RegExp _bindingHash = RegExp(r'^[A-Za-z0-9_-]{43}$');
 
 class VelockPairingDescriptor {
   const VelockPairingDescriptor({
@@ -372,7 +375,9 @@ Map<String, dynamic> _object(Uint8List bytes, Set<String> expected) {
 String _id(Map<String, dynamic> json, String key) => _requireId(json[key], key);
 
 String _requireId(Object? value, String name) {
-  if (value is! String || !_opaqueId.hasMatch(value)) {
+  if (value is! String ||
+      !(_opaqueId.hasMatch(value) ||
+          (name == 'exchangeBindingId' && _bindingHash.hasMatch(value)))) {
     throw FormatException('Invalid Velock pairing $name.');
   }
   return value;

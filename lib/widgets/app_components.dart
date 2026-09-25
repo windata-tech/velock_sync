@@ -1,3 +1,4 @@
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -561,13 +562,13 @@ Future<void> showAppDetailSheet(
   required String title,
   required List<AppDetailSheetRow> rows,
   String? footnote,
-  String closeLabel = '关闭',
+  String? closeLabel,
 }) {
   final content = _AppDetailSheetBody(
     title: title,
     rows: rows,
     footnote: footnote,
-    closeLabel: closeLabel,
+    closeLabel: closeLabel ?? syncText(context, '关闭', 'Close'),
   );
   return showAdaptiveSheet(context, builder: (context) => content);
 }
@@ -688,13 +689,9 @@ class _AppDetailSheetBody extends StatelessWidget {
 
 /// Small disclosure used to reveal technical detail inline.
 class AppDetailDisclosure extends StatefulWidget {
-  const AppDetailDisclosure({
-    super.key,
-    this.label = '技术详情',
-    required this.detail,
-  });
+  const AppDetailDisclosure({super.key, this.label, required this.detail});
 
-  final String label;
+  final String? label;
   final String detail;
 
   @override
@@ -724,7 +721,7 @@ class _AppDetailDisclosureState extends State<AppDetailDisclosure> {
             ),
             const SizedBox(width: 4),
             Text(
-              widget.label,
+              widget.label ?? syncText(context, '技术详情', 'Technical details'),
               style: AppType.rowSubtitle.copyWith(
                 color: context.appPrimary,
                 fontWeight: FontWeight.w600,

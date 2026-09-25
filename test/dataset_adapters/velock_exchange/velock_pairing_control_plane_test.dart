@@ -43,6 +43,84 @@ void main() {
       );
     });
 
+    for (final prefix in ['-', '_']) {
+      test(
+        'accepts a SHA-256 base64url binding beginning with $prefix',
+        () async {
+          final binding = prefix + List.filled(42, 'A').join();
+          final descriptorJson =
+              jsonDecode(utf8.decode(_descriptorBytes(publicKey, now)))
+                  as Map<String, dynamic>;
+          descriptorJson['exchangeBindingId'] = binding;
+          final boundDescriptor = VelockPairingDescriptor.parse(
+            _bytes(descriptorJson),
+          );
+          final boundRequest = VelockPairingControlRequest(
+            requestId: request.requestId,
+            challenge: request.challenge,
+            producerId: request.producerId,
+            producerPublicKeyId: request.producerPublicKeyId,
+            exchangeBindingId: binding,
+            syncAppInstanceId: request.syncAppInstanceId,
+            createdAt: now,
+            expiresAt: request.expiresAt,
+          );
+          expect(boundRequest.toJson()['exchangeBindingId'], binding);
+          final unsigned = _unsignedResponse(publicKey, now)
+            ..['exchangeBindingId'] = binding;
+          final signature = await Ed25519().sign(
+            _bytes(unsigned),
+            keyPair: signingKey,
+          );
+          final response = VelockPairingControlResponse.parse(
+            _bytes({
+              ...unsigned,
+              'signature': base64UrlEncode(signature.bytes),
+            }),
+          );
+          expect(
+            await response.verify(
+              descriptor: boundDescriptor,
+              request: boundRequest,
+              now: () => now.add(const Duration(minutes: 1)),
+            ),
+            isTrue,
+          );
+        },
+      );
+    }
+
+    test('still rejects unsafe binding and path identifiers', () {
+      for (final invalid in [
+        '',
+        '.',
+        '..',
+        '../binding',
+        '/binding',
+        '-short',
+        '_short',
+        'a b',
+        'a' * 129,
+      ]) {
+        final json =
+            jsonDecode(utf8.decode(_descriptorBytes(publicKey, now)))
+                as Map<String, dynamic>;
+        json['exchangeBindingId'] = invalid;
+        expect(
+          () => VelockPairingDescriptor.parse(_bytes(json)),
+          throwsFormatException,
+        );
+      }
+      final json =
+          jsonDecode(utf8.decode(_descriptorBytes(publicKey, now)))
+              as Map<String, dynamic>;
+      json['producerId'] = "-${'A' * 42}";
+      expect(
+        () => VelockPairingDescriptor.parse(_bytes(json)),
+        throwsFormatException,
+      );
+    });
+
     test('strictly parses descriptor and rejects schema extension', () {
       expect(descriptor.producerId, 'producer-1');
       final json =

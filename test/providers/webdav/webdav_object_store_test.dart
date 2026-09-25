@@ -10,6 +10,7 @@ import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 
 import '../contracts/object_store_contract.dart';
 import '../contracts/object_store_contract_fixture.dart';
+import 'memory_webdav_adapter.dart';
 
 void main() {
   group('WebDavObjectStore', () {
@@ -119,9 +120,11 @@ void main() {
     });
 
     test(
-      'uses conditional create and translates 412 to immutable-object error',
+      'uses protected MOVE and translates 412 without changing immutable bytes',
       () async {
-        adapter.response = ResponseBody.fromBytes(const [], 412);
+        final memory = MemoryWebDavAdapter()
+          ..files['/root/velock-sync/blob'] = [7, 8, 9];
+        _useMemoryBackend(adapter, memory);
 
         await expectLater(
           store.put(
@@ -132,7 +135,16 @@ void main() {
           ),
           throwsA(isA<RemoteObjectAlreadyExistsException>()),
         );
-        expect(adapter.lastOptions!.headers['If-None-Match'], '*');
+        _expectProtectedPublishes(memory, '/root/velock-sync/blob', 1);
+        expect(
+          await store.read('velock-sync/blob').expand((part) => part).toList(),
+          [7, 8, 9],
+        );
+        expect(memory.files.keys, ['/root/velock-sync/blob']);
+        expect(
+          memory.collections.where((p) => p.contains('.velock-')),
+          isEmpty,
+        );
       },
     );
 
@@ -433,12 +445,24 @@ class _WebDavContractFixture implements ObjectStoreContractFixture {
   }
 
   Future<void> _immutableSafeRetry(RemoteObjectStore store) async {
+    final memory = MemoryWebDavAdapter();
+    _useMemoryBackend(_adapter, memory);
     var attempt = 0;
-    _adapter.handler = (options, body, _) async {
-      await body?.drain();
-      attempt++;
-      expect(options.headers['If-None-Match'], '*');
-      return ResponseBody.fromBytes(const [], attempt == 1 ? 503 : 412);
+    _adapter.handler = (options, body, cancelFuture) async {
+      final response = await memory.fetch(options, body, cancelFuture);
+      if (options.method == 'MOVE' &&
+          Uri.parse(options.headers['Destination'] as String).path ==
+              '/root/blobs/retry') {
+        attempt++;
+        // The server committed the first publish, but its response was lost.
+        // Retry must discover the collision rather than replace the bytes.
+        if (attempt == 1) {
+          expect(response.statusCode, 201);
+          return ResponseBody.fromBytes(const [], 503);
+        }
+        expect(response.statusCode, 412);
+      }
+      return response;
     };
     await expectLater(
       store.put(
@@ -452,20 +476,23 @@ class _WebDavContractFixture implements ObjectStoreContractFixture {
     await expectLater(
       store.put(
         'blobs/retry',
-        Stream.value([1]),
+        Stream.value([9]),
         contentLength: 1,
         ifAbsent: true,
       ),
       throwsA(isA<RemoteObjectAlreadyExistsException>()),
     );
     expect(attempt, 2);
+    _expectProtectedPublishes(memory, '/root/blobs/retry', 2);
+    expect(await store.read('blobs/retry').expand((p) => p).toList(), [1]);
+    expect(memory.files.keys, ['/root/blobs/retry']);
+    expect(memory.collections.where((p) => p.contains('.velock-')), isEmpty);
   }
 
   Future<void> _immutableCollision(RemoteObjectStore store) async {
-    _adapter.handler = (options, body, _) async {
-      await body?.drain();
-      return ResponseBody.fromBytes(const [], 412);
-    };
+    final memory = MemoryWebDavAdapter()
+      ..files['/root/blobs/collision'] = [1, 2, 3];
+    _useMemoryBackend(_adapter, memory);
     await expectLater(
       store.put(
         'blobs/collision',
@@ -475,6 +502,14 @@ class _WebDavContractFixture implements ObjectStoreContractFixture {
       ),
       throwsA(isA<RemoteObjectAlreadyExistsException>()),
     );
+    _expectProtectedPublishes(memory, '/root/blobs/collision', 1);
+    expect(await store.read('blobs/collision').expand((p) => p).toList(), [
+      1,
+      2,
+      3,
+    ]);
+    expect(memory.files.keys, ['/root/blobs/collision']);
+    expect(memory.collections.where((p) => p.contains('.velock-')), isEmpty);
   }
 
   Future<void> _paginationDeduplication(RemoteObjectStore store) async {
@@ -675,3 +710,31 @@ String _webDavPropfindXml(List<String> names) =>
   <d:response><d:href>/root/blobs/</d:href></d:response>
   ${names.map((name) => '<d:response><d:href>/root/blobs/$name</d:href><d:propstat><d:prop><d:getcontentlength>1</d:getcontentlength></d:prop></d:propstat></d:response>').join()}
 </d:multistatus>''';
+
+void _useMemoryBackend(_RecordingAdapter adapter, MemoryWebDavAdapter memory) {
+  adapter.mkcolHandler = (options) => memory.fetch(options, null, null);
+  adapter.handler = memory.fetch;
+}
+
+void _expectProtectedPublishes(
+  MemoryWebDavAdapter memory,
+  String targetPath,
+  int count,
+) {
+  final publishes = memory.requests
+      .where(
+        (r) =>
+            r.method == 'MOVE' &&
+            Uri.parse(r.headers['Destination'] as String).path == targetPath,
+      )
+      .toList();
+  expect(publishes, hasLength(count));
+  for (final request in publishes) {
+    expect(request.headers['Overwrite'], 'F');
+    expect(request.uri.path, startsWith('/root/.velock-upload-'));
+  }
+  expect(
+    memory.requests.where((r) => r.method == 'PUT' && r.uri.path == targetPath),
+    isEmpty,
+  );
+}

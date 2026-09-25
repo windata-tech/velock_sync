@@ -7,6 +7,7 @@ import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
 class NewConnection extends ConsumerWidget {
@@ -20,11 +21,11 @@ class NewConnection extends ConsumerWidget {
     final connectionData =
         ref.watch(connectionCreationProvider) ??
         CreateConnectionDto.empty(
-          name: '新建连接',
-        ).copyWith(source: '格间', target: null);
+          name: syncText(context, '新建连接', 'New Connection'),
+        ).copyWith(source: syncText(context, '格间', 'Velock'), target: null);
 
     return AdaptiveScaffold(
-      title: '新建连接',
+      title: syncText(context, '新建连接', 'New Connection'),
       leading: PlatformIconButton(
         padding: EdgeInsets.zero,
         cupertino: (context, platform) =>
@@ -47,15 +48,25 @@ class NewConnection extends ConsumerWidget {
               AppSpacing.sm,
             ),
             child: Text(
-              '本地数据始终留在设备上，只有加密后的同步对象会写入远端空间。',
+              syncText(
+                context,
+                '本地数据始终留在设备上，只有加密后的同步对象会写入远端空间。',
+                'Local data stays on your device. Only encrypted sync objects are written to remote storage.',
+              ),
               style: AppType.footnote.copyWith(
                 color: context.appSecondaryLabel,
               ),
             ),
           ),
           AdaptiveListSection(
-            header: '本地数据',
-            footer: const Text('Velock Sync 不读取格间明文，也不保存格间密钥。'),
+            header: syncText(context, '本地数据', 'Local Data'),
+            footer: Text(
+              syncText(
+                context,
+                'Velock Sync 不读取格间明文，也不保存格间密钥。',
+                'Velock Sync does not read unencrypted Velock data or store Velock keys.',
+              ),
+            ),
             children: [
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
@@ -63,15 +74,20 @@ class NewConnection extends ConsumerWidget {
                   color: AppTone.brand.color(context),
                 ),
                 title: Text(
-                  connectionData.source ?? '格间',
+                  connectionData.source == null || connectionData.source == '格间'
+                      ? syncText(context, '格间', 'Velock')
+                      : connectionData.source!,
                   style: AppType.rowTitleStrong,
                 ),
-                subtitle: const Text('当前设备上的格间数据', maxLines: 2),
+                subtitle: Text(
+                  syncText(context, '当前设备上的格间数据', 'Velock data on this device'),
+                  maxLines: 2,
+                ),
               ),
             ],
           ),
           AdaptiveListSection(
-            header: '远端目标',
+            header: syncText(context, '远端目标', 'Remote Destination'),
             children: [
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
@@ -79,11 +95,16 @@ class NewConnection extends ConsumerWidget {
                   color: AppTone.brand.color(context),
                 ),
                 title: Text(
-                  connectionData.target ?? '选择远端协议',
+                  connectionData.target ??
+                      syncText(context, '选择远端协议', 'Choose Remote Protocol'),
                   style: AppType.rowTitleStrong,
                 ),
-                subtitle: const Text(
-                  'WebDAV、Google Drive 或 OneDrive',
+                subtitle: Text(
+                  syncText(
+                    context,
+                    'WebDAV、Google Drive 或 OneDrive',
+                    'WebDAV, Google Drive, or OneDrive',
+                  ),
                   maxLines: 2,
                 ),
                 showChevron: true,

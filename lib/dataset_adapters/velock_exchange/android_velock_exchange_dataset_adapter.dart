@@ -257,28 +257,46 @@ class AndroidVelockExchangeDatasetAdapter
   Future<ImportResult?> reconcileIncomingBatch(
     IncomingBatchReference batch,
   ) async {
+    if (batch.vaultId != vaultId) {
+      throw const FormatException('Vault mismatch.');
+    }
     final bytes = await _exchange.readInboxReceipt(batch.batchId);
     if (bytes == null) return null;
     final receipt = jsonDecode(utf8.decode(bytes));
     if (receipt is! Map<String, dynamic> ||
+        receipt['protocolVersion'] is! int ||
         receipt['protocolVersion'] != 1 ||
         receipt['batchId'] != batch.batchId ||
+        // Older peers omit vaultId; when present it must bind this receipt to
+        // the same vault as the request and adapter.
+        (receipt.containsKey('vaultId') && receipt['vaultId'] != vaultId) ||
         receipt['sourceDeviceId'] != batch.sourceDeviceId ||
+        receipt['sequence'] is! int ||
         receipt['sequence'] != batch.sequence ||
         receipt['status'] != 'imported') {
       throw const FormatException('Android inbox receipt is invalid.');
     }
-    final ack = receipt['ackArtifactRelativePath'];
-    if (ack is! String || !ack.startsWith('ack/')) {
-      throw const FormatException('Android inbox receipt has no ACK artifact.');
+    final ackPath = receipt['ackArtifactRelativePath'];
+    if (ackPath is! String ||
+        !ackPath.startsWith('ack/') ||
+        ackPath.contains('\\') ||
+        ackPath.contains('\u0000') ||
+        ackPath
+            .split('/')
+            .any((part) => part.isEmpty || part == '.' || part == '..')) {
+      throw const FormatException(
+        'Android inbox receipt has no valid ACK path.',
+      );
+    }
+    final ack = await _exchange.readInboxArtifact(
+      batchId: batch.batchId,
+      relativePath: ackPath,
+    );
+    if (ack.isEmpty) {
+      throw const FormatException('Android inbox ACK artifact is empty.');
     }
     return ImportResult(
-      acknowledgementArtifact: ImmutableArtifact.fromBytes(
-        await _exchange.readInboxArtifact(
-          batchId: batch.batchId,
-          relativePath: ack,
-        ),
-      ),
+      acknowledgementArtifact: ImmutableArtifact.fromBytes(ack),
     );
   }
 

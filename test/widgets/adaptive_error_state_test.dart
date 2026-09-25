@@ -1,3 +1,4 @@
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,7 +7,16 @@ import 'package:velock_sync/widgets/adaptive_widgets.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+  Widget wrap(Widget child) => MaterialApp(
+    locale: const Locale('zh', 'CN'),
+    supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+    localizationsDelegates: const [
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    home: Scaffold(body: child),
+  );
 
   testWidgets('keeps raw exception text collapsed and retries on demand', (
     tester,

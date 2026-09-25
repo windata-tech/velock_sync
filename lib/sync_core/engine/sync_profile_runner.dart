@@ -160,6 +160,12 @@ class SyncProfileRunner {
               uploadedBlobCount: uploadedBlobCount,
               publishedBatchCount: publishedBatchCount,
             );
+      // Do not swallow this with best-effort checkpoint publication below.
+      // Missing business history is a failed backup, even after a successful
+      // upload of the currently pending incremental batch.
+      if (dataset case final RemoteHistoryValidatingDatasetAdapter validator) {
+        await validator.verifyRemoteHistory(remote);
+      }
       await _publishCheckpoint(dataset: dataset, remote: remote);
       CheckpointRecoveryResult? checkpointRecovery;
       if (dataset

@@ -183,30 +183,43 @@ class VelockExchangeStore {
           entry.value,
         );
       }
+      // Hash the bytes actually staged, not a second opening of a source
+      // that may fail or change. READY must exist before the directory becomes
+      // visible to the peer, so a marker failure cannot strand a partial inbox.
+      final marker = Uint8List.fromList(
+        utf8.encode(
+          jsonEncode({
+            'batchId': batchId,
+            'envelopeSha256': await _sha256File(
+              File('${staging.path}/envelope.json'),
+            ),
+            'exchangeVersion': VelockExchangeV1Contract.exchangeVersion,
+            'publishedAt': _now().toUtc().toIso8601String(),
+          }),
+        ),
+      );
+      await _writeAtomic(File('${staging.path}/READY'), marker);
       final ready = Directory('${_inboxReady.path}/$batchId');
       if (await ready.exists()) {
-        // The same batch may already have been delivered to this device (for
-        // example after a profile was recreated). Its artifacts are
-        // deterministic, so an existing package is an idempotent no-op.
-        if (await staging.exists()) {
-          await staging.delete(recursive: true);
+        // A duplicate ID is idempotent only if the delivered artifacts match.
+        // Keep peer-created ACKs/receipts and the original READY unchanged.
+        for (final name in artifacts.keys) {
+          final existing = await _inboxFile('Ready/$batchId/$name');
+          if (existing == null ||
+              await _sha256File(existing) !=
+                  await _sha256File(File('${staging.path}/$name'))) {
+            throw const FormatException('Inbox batch ID content mismatch.');
+          }
         }
+        // Recover an orphan produced by older versions that renamed before
+        // writing READY. Only a byte-matching replay may repair that marker.
+        if (!await File('${ready.path}/READY').exists()) {
+          await _writeAtomic(File('${ready.path}/READY'), marker);
+        }
+        await staging.delete(recursive: true);
         return ready;
       }
       await staging.rename(ready.path);
-      await _writeAtomic(
-        File('${ready.path}/READY'),
-        Uint8List.fromList(
-          utf8.encode(
-            jsonEncode({
-              'batchId': batchId,
-              'envelopeSha256': await _sha256Artifact(envelope),
-              'exchangeVersion': VelockExchangeV1Contract.exchangeVersion,
-              'publishedAt': _now().toUtc().toIso8601String(),
-            }),
-          ),
-        ),
-      );
       return ready;
     } on Object {
       if (await staging.exists()) await staging.delete(recursive: true);
@@ -231,10 +244,10 @@ class VelockExchangeStore {
 
   Future<Uint8List?> readInboxReceipt(String batchId) async {
     _id(batchId, 'batchId');
-    final receipt = File('${_inboxReceipts.path}/$batchId.json');
-    return await receipt.exists()
-        ? Uint8List.fromList(await receipt.readAsBytes())
-        : null;
+    final receipt = await _inboxFile('Receipts/$batchId.json');
+    return receipt == null
+        ? null
+        : Uint8List.fromList(await receipt.readAsBytes());
   }
 
   Future<Uint8List> readInboxArtifact({
@@ -243,9 +256,8 @@ class VelockExchangeStore {
   }) async {
     _id(batchId, 'batchId');
     _artifactName(relativePath);
-    final file = File('${_inboxReady.path}/$batchId/$relativePath');
-    if (await FileSystemEntity.type(file.path, followLinks: false) !=
-        FileSystemEntityType.file) {
+    final file = await _inboxFile('Ready/$batchId/$relativePath');
+    if (file == null) {
       throw StateError('Inbox artifact is missing or not a regular file.');
     }
     return Uint8List.fromList(await file.readAsBytes());
@@ -307,8 +319,27 @@ class VelockExchangeStore {
     }
   }
 
-  Future<String> _sha256Artifact(ImmutableArtifact artifact) async =>
-      (await sha256.bind(await artifact.openRead()).single).toString();
+  Future<String> _sha256File(File file) async =>
+      (await sha256.bind(file.openRead()).single).toString();
+
+  /// Checking only the final file would still follow a symlinked ACK directory
+  /// (or batch/Receipts directory) outside the exchange boundary.
+  Future<File?> _inboxFile(String relativePath) async {
+    final parts = ['Inbox', ...relativePath.split('/')];
+    var path = root.path;
+    for (var index = 0; index < parts.length; index++) {
+      path = '$path/${parts[index]}';
+      final type = await FileSystemEntity.type(path, followLinks: false);
+      if (type == FileSystemEntityType.notFound) return null;
+      final expected = index == parts.length - 1
+          ? FileSystemEntityType.file
+          : FileSystemEntityType.directory;
+      if (type != expected) {
+        throw StateError('Inbox path is not a regular file or directory.');
+      }
+    }
+    return File(path);
+  }
 
   void _id(String value, String name) {
     if (value.isEmpty ||

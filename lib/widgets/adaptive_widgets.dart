@@ -1,3 +1,4 @@
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/cupertino.dart';
@@ -877,16 +878,16 @@ class AdaptiveErrorState extends StatefulWidget {
     super.key,
     required this.message,
     required this.onRetry,
-    this.title = '暂时无法加载',
+    this.title,
     this.details,
-    this.retryLabel = '重试',
+    this.retryLabel,
     this.secondaryAction,
   });
 
-  final String title;
+  final String? title;
   final String message;
   final String? details;
-  final String retryLabel;
+  final String? retryLabel;
   final VoidCallback onRetry;
   final Widget? secondaryAction;
 
@@ -940,7 +941,7 @@ class _AdaptiveErrorStateState extends State<AdaptiveErrorState> {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                widget.title,
+                widget.title ?? syncText(context, '暂时无法加载', 'Unable to load'),
                 textAlign: TextAlign.center,
                 style: titleStyle,
               ),
@@ -959,7 +960,7 @@ class _AdaptiveErrorStateState extends State<AdaptiveErrorState> {
               AppActionStack(
                 maxWidth: 420 - AppSpacing.xl * 2,
                 primary: AppPrimaryButton(
-                  label: widget.retryLabel,
+                  label: widget.retryLabel ?? syncText(context, '重试', 'Retry'),
                   onPressed: widget.onRetry,
                 ),
                 secondary: widget.secondaryAction,
@@ -974,7 +975,11 @@ class _AdaptiveErrorStateState extends State<AdaptiveErrorState> {
                         : Icons.keyboard_arrow_down,
                     size: 18,
                   ),
-                  label: Text(_showDetails ? '收起错误详情' : '查看错误详情'),
+                  label: Text(
+                    _showDetails
+                        ? syncText(context, '收起错误详情', 'Hide error details')
+                        : syncText(context, '查看错误详情', 'Show error details'),
+                  ),
                 ),
                 AnimatedSize(
                   duration: const Duration(milliseconds: 180),
@@ -1018,7 +1023,7 @@ class _ErrorDetailsPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '技术详情',
+                  syncText(context, '技术详情', 'Technical details'),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -1030,11 +1035,14 @@ class _ErrorDetailsPanel extends StatelessWidget {
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: details));
                   if (context.mounted) {
-                    showPlatformMessage(context, '错误详情已复制。');
+                    showPlatformMessage(
+                      context,
+                      syncText(context, '错误详情已复制。', 'Error details copied.'),
+                    );
                   }
                 },
                 icon: const Icon(Icons.copy_rounded, size: 16),
-                label: const Text('复制'),
+                label: Text(syncText(context, '复制', 'Copy')),
               ),
             ],
           ),
@@ -1090,14 +1098,14 @@ class AdaptiveActionMenu<T> extends StatelessWidget {
     super.key,
     required this.items,
     required this.onSelected,
-    this.tooltip = '更多操作',
+    this.tooltip,
     this.enabled = true,
     this.icon,
   });
 
   final List<AdaptiveActionItem<T>> items;
   final ValueChanged<T> onSelected;
-  final String tooltip;
+  final String? tooltip;
   final bool enabled;
   final Widget? icon;
 
@@ -1105,7 +1113,7 @@ class AdaptiveActionMenu<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isApplePlatform(context)) {
       return Semantics(
-        label: tooltip,
+        label: tooltip ?? syncText(context, '更多操作', 'More actions'),
         button: true,
         child: ExcludeSemantics(
           child: CupertinoButton(
@@ -1120,7 +1128,7 @@ class AdaptiveActionMenu<T> extends StatelessWidget {
     return SizedBox.square(
       dimension: AppSizes.listAction,
       child: PopupMenuButton<T>(
-        tooltip: tooltip,
+        tooltip: tooltip ?? syncText(context, '更多操作', 'More actions'),
         enabled: enabled,
         icon: icon ?? const Icon(Icons.more_horiz_rounded),
         padding: EdgeInsets.zero,

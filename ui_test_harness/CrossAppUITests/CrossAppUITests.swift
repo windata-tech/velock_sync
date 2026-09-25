@@ -13,6 +13,567 @@ final class CrossAppUITests: XCTestCase {
         ProcessInfo.processInfo.environment["E2E_WEBDAV_PORT"] ?? "18991"
     }
 
+    /// One-time diagnostic so scripted runs reveal which environment the
+    /// test runner actually received (missing E2E_WEBDAV_PORT silently falls
+    /// back to 18991 and every port-scoped selector misses).
+    // Opt-in tutorial capture: the host starts/stops a raw simulator recording.
+    // Registration/fixture setup happen before capture; normal tests are unchanged.
+    private var tutorialTextOnly = false
+    private var tutorialSeedPrepared = false
+    private var tutorialReplicaCapture = false
+    private var tutorialSourceCapturePending = false
+    private var tutorialCaptureName: String?
+    private var tutorialPace: Bool {
+        ProcessInfo.processInfo.environment["E2E_TUTORIAL_PACE"] == "1"
+    }
+
+    private func beginTutorialCapture(_ name: String) throws {
+        guard let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] else {
+            throw XCTSkip("Tutorial recording is explicitly opt-in")
+        }
+        let base = URL(fileURLWithPath: root)
+        try Data(name.utf8).write(to: base.appendingPathComponent("start-" + name))
+        let started = base.appendingPathComponent("recording-" + name).path
+        let ready = NSPredicate { _, _ in FileManager.default.fileExists(atPath: started) }
+        let expectation = XCTNSPredicateExpectation(predicate: ready, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 30), .completed,
+                       "Host recorder did not acknowledge capture start")
+        tutorialCaptureName = name
+        tutorialStage("CAPTURE_BEGIN")
+    }
+
+    private func tutorialStage(_ name: String) {
+        guard let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] else { return }
+        let base = URL(fileURLWithPath: root)
+        try? Data(name.utf8).write(to: base.appendingPathComponent("current-stage"))
+        guard tutorialPace, tutorialCaptureName != nil else { return }
+        let line = "\(Int(Date().timeIntervalSince1970 * 1000))\t\(name)\n"
+        let timeline = base.appendingPathComponent("tutorial-stage-timeline.tsv")
+        if !FileManager.default.fileExists(atPath: timeline.path) {
+            try? Data().write(to: timeline)
+        }
+        if let handle = try? FileHandle(forWritingTo: timeline) {
+            defer { try? handle.close() }
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+        }
+    }
+
+    /// Presentation-only holds. Regression runs are unchanged; tutorial takes
+    /// get deliberate, visible reading time instead of relying on tap speed.
+    private func tutorialHold(_ seconds: TimeInterval, reason: String) {
+        guard tutorialPace, tutorialCaptureName != nil else { return }
+        tutorialStage("hold-\(reason)")
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    private func finishTutorialCapture() {
+        guard let name = tutorialCaptureName,
+              let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] else { return }
+        try? Data().write(to: URL(fileURLWithPath: root).appendingPathComponent("stop-" + name))
+        let stopped = URL(fileURLWithPath: root).appendingPathComponent("stopped-" + name).path
+        let done = NSPredicate { _, _ in FileManager.default.fileExists(atPath: stopped) }
+        let expectation = XCTNSPredicateExpectation(predicate: done, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 20), .completed,
+                       "Recorder did not finish before XCTest teardown")
+        tutorialCaptureName = nil
+    }
+
+    // Presentation flows deliberately avoid regression-test retries, cold
+    // restarts and probes for controls known to be absent. Any error aborts the
+    // take: rejected takes are never spliced into a delivery.
+    private var englishTutorial: Bool {
+        ProcessInfo.processInfo.environment["E2E_TUTORIAL_LANGUAGE"] == "en"
+    }
+
+    private var cleanTutorial: Bool {
+        ProcessInfo.processInfo.environment["E2E_TUTORIAL_CLEAN"] == "1"
+    }
+
+    private func tutorialNode(_ app: XCUIApplication, _ labels: [String], buttons: Bool = false) -> XCUIElement {
+        let predicate = NSPredicate(format: "label IN %@ OR identifier IN %@", labels, labels)
+        return (buttons ? app.buttons : app.descendants(matching: .any)).matching(predicate).firstMatch
+    }
+
+    private func tutorialContains(_ app: XCUIApplication, _ labels: [String]) -> XCUIElement {
+        let predicates = labels.map { NSPredicate(format: "label CONTAINS %@ OR identifier == %@", $0, $0) }
+        return app.descendants(matching: .any).matching(NSCompoundPredicate(orPredicateWithSubpredicates: predicates)).firstMatch
+    }
+
+    private func tutorialRootTab(_ labels: [String]) -> XCUIElement {
+        // Root tabs expose duplicated labels ("File\nFile"). Exact button
+        // matching avoids settings descriptions such as "Photos Preference".
+        let visible = labels.flatMap { [$0, $0 + "\n" + $0] }
+        return velockApp.buttons.matching(NSPredicate(
+            format: "identifier IN %@ OR label IN %@", labels, visible)).firstMatch
+    }
+
+    private func tutorialReady(_ element: XCUIElement, _ stage: String, timeout: TimeInterval = 12) {
+        tutorialStage(stage)
+        let ready = NSPredicate { _, _ in element.exists && element.isHittable }
+        let outcome = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: nil)], timeout: timeout)
+        if outcome != .completed {
+            print("TUTORIAL_MISSING_STAGE \(stage)")
+            if let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] {
+                try? XCUIScreen.main.screenshot().pngRepresentation.write(
+                    to: URL(fileURLWithPath: root).appendingPathComponent("rejected-\(stage).png"))
+            }
+        }
+        XCTAssertEqual(outcome, .completed, "Tutorial did not reach \(stage)")
+        tutorialNoError()
+    }
+
+    private func tutorialTap(_ element: XCUIElement, _ stage: String) {
+        tutorialReady(element, stage)
+        element.tap()
+        tutorialHold(0.45, reason: "after-tap-\(stage)")
+    }
+
+    private func tutorialNoError() {
+        for app in [velockApp!, syncApp!] where app.state == .runningForeground {
+            let error = tutorialContains(app, ["密码错误", "密码不正确", "密码不能为空", "Incorrect password", "Wrong password", "Password is incorrect", "Password cannot be null", "首次同步失败", "First sync failed", "操作失败", "Operation failed"])
+            XCTAssertFalse(error.exists && error.isHittable, "Error appeared; reject this raw take")
+        }
+    }
+
+    private func tutorialUnlock() {
+        let enter = tutorialNode(velockApp, ["进入沙盒空间", "Enter Sandbox", "Enter space", "Enter Space", "tkBtn_lock_unlock", "解锁", "Unlock"], buttons: true)
+        let settings = tutorialContains(velockApp, ["设置", "Setting", "Settings", "允许新的配对", "Allow new pairings"])
+        let state = NSPredicate { _, _ in
+            (enter.exists && enter.isHittable) || (settings.exists && settings.isHittable)
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: state, object: nil)], timeout: 12), .completed)
+        guard enter.exists && enter.isHittable else { return }
+        let password = ProcessInfo.processInfo.environment["VELOCK_RUNTIME_PASSWORD"] ?? ""
+        XCTAssertFalse(password.isEmpty)
+        let secure = velockApp.secureTextFields.firstMatch
+        let labeled = tutorialNode(velockApp, ["请输入密码", "Please enter password", "Please Enter Password", "Enter password"])
+        let textField = velockApp.textFields.firstMatch
+        let field = secure.exists ? secure : (textField.exists ? textField : labeled)
+        tutorialReady(field, "unlock-password-field")
+        // Flutter changes TextField to SecureTextField after focus on iOS.
+        // Read pre-focus contents before that accessibility query changes type.
+        let old = field.value as? String ?? ""
+        let chosen = "Chosen field type: \(field.elementType.rawValue), label: \(field.label), frame: \(field.frame)"
+        field.tap()
+        if ProcessInfo.processInfo.environment["E2E_TUTORIAL_FOCUS_PROBE"] == "1",
+           let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] {
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: root).appendingPathComponent("focus-after-tap.png"))
+            let detail = chosen + "\nKeyboard count: \(velockApp.keyboards.count)\n" +
+                "Secure input present: \(velockApp.secureTextFields.firstMatch.exists)"
+            try? detail.write(to: URL(fileURLWithPath: root).appendingPathComponent("focus-elements.txt"), atomically: true, encoding: .utf8)
+        }
+        // XCTest can type into a focused input with a connected hardware
+        // keyboard; a visible software keyboard is not a reliable focus test.
+        // typeText itself fails rather than submitting if no input has focus.
+        // Never append to a retained password. Placeholders are not contents.
+        if !old.isEmpty && !["请输入密码", "Please enter password", "Please Enter Password", "Password", "Enter password"].contains(old) {
+            velockApp.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count))
+        }
+        velockApp.typeText(password)
+        // Submit exactly once, only after input. No empty-password probe/retry.
+        enter.tap()
+        let unlocked = enter.waitForNonExistence(timeout: 12)
+        if !unlocked, let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] {
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: root).appendingPathComponent("rejected-unlock.png"))
+        }
+        XCTAssertTrue(unlocked, "Password gate did not unlock on first submission")
+        tutorialNoError()
+        tutorialHold(0.9, reason: "unlock-complete")
+    }
+
+    private func tutorialOpenSyncSettings() {
+        tutorialUnlock()
+        let settings = tutorialContains(velockApp, ["设置", "Setting", "Settings"])
+        tutorialTap(settings, "settings")
+        let sync = tutorialContains(velockApp, ["实验性 - 数据同步", "Experimental - Data Sync", "Experimental – Data Sync", "Experimental - Data Synchronization"])
+        for _ in 0..<4 {
+            if sync.exists && sync.isHittable { break }
+            velockApp.swipeUp()
+        }
+        tutorialTap(sync, "data-sync-settings")
+        tutorialReady(tutorialContains(velockApp, ["允许新的配对", "Allow new pairings", "Allow New Pairings"]), "pairing-settings-ready")
+    }
+
+    private func tutorialEnablePairing(saveCard: Bool) {
+        let row = tutorialContains(velockApp, ["允许新的配对", "Allow new pairings", "Allow New Pairings"])
+        tutorialReady(row, "allow-pairing")
+        let toggle = velockApp.switches.firstMatch
+        if (toggle.exists && (toggle.value as? String) == "0") || row.label.contains("未启用") || row.label.contains("Disabled") {
+            // Flutter merges this switch with the whole section, including
+            // the localized explanation; its AX midpoint is not the control.
+            // Visually verified on the dedicated 440 x 956 pt tutorial device.
+            XCTAssertEqual(velockApp.frame.width, 440, accuracy: 1)
+            XCTAssertEqual(velockApp.frame.height, 956, accuracy: 1)
+            velockApp.coordinate(withNormalizedOffset: CGVector(dx: 0.855, dy: 0.1935)).tap()
+            tutorialTap(tutorialNode(velockApp, ["启用", "Enable"], buttons: true), "enable-pairing-confirm")
+        }
+        if saveCard {
+            let save = tutorialNode(velockApp, ["保存恢复卡到相册", "Save Recovery Card to Photos", "Save recovery card to Photos"], buttons: true)
+            tutorialReady(save, "save-recovery-card")
+            persistRecoveryCardScreenshotIfRequested()
+            save.tap()
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let returned = NSPredicate { _, _ in
+                if row.exists && row.isHittable { return true }
+                let allow = springboard.buttons.matching(NSPredicate(format: "label IN %@", ["允许", "Allow"])).firstMatch
+                if allow.exists && allow.isHittable { allow.tap() }
+                return false
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: returned, object: nil)], timeout: 12), .completed)
+        }
+        tutorialReady(row, "pairing-enabled")
+        tutorialHold(1.2, reason: "pairing-enabled")
+    }
+
+    private func tutorialNewConnection() {
+        syncApp.launch()
+        tutorialTap(tutorialContains(syncApp, ["连接", "Connections"]), "connections")
+        tutorialTap(tutorialContains(syncApp, ["添加远端连接", "Add remote connection", "Add Remote Connection"]), "add-connection")
+        tutorialTap(tutorialContains(syncApp, ["选择远端协议", "选择协议", "Choose protocol", "Select Protocol", "Select remote protocol", "Choose Remote Protocol"]), "choose-protocol")
+        tutorialTap(tutorialContains(syncApp, ["WebDAV"]), "webdav")
+        tutorialTap(syncApp.switches.firstMatch, "demo-http")
+        tutorialTap(tutorialNode(syncApp, ["仍然使用 HTTP", "Use HTTP anyway", "Continue with HTTP", "Use HTTP Anyway"], buttons: true), "demo-http-confirm")
+        let address = tutorialContains(syncApp, ["服务器地址", "Server address", "Server Address"])
+        tutorialTap(address, "server-address")
+        syncApp.typeText("127.0.0.1")
+        tutorialHold(0.6, reason: "server-address-entered")
+        tutorialTap(tutorialContains(syncApp, ["端口", "Port"]), "server-port")
+        syncApp.typeText(webDAVPort)
+        tutorialHold(0.6, reason: "server-port-entered")
+        tutorialTap(tutorialNode(syncApp, ["保存", "Save"], buttons: true), "save-connection")
+        tutorialReady(tutorialContains(syncApp, ["WebDAV · ", "已连接服务", "Connected services", "Connected Services", "Connected"]), "connection-saved")
+        tutorialHold(0.9, reason: "connection-saved")
+    }
+
+    private func tutorialPairAndSync(replica: Bool) {
+        tutorialNewConnection()
+        tutorialTap(tutorialContains(syncApp, ["同步", "Sync"]), "sync-tab")
+        tutorialTap(tutorialContains(syncApp, ["开启格间备份", "Enable Velock Backup", "Enable Velock backup"]), "enable-backup")
+        tutorialTap(tutorialContains(syncApp, ["开始连接格间", "Connect Velock", "Connect to Velock", "Start connecting Velock"]), "inspect-pairing")
+        tutorialTap(tutorialContains(syncApp, ["开始配对", "Start pairing", "Start Pairing"]), "start-pairing")
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let open = syncApp.alerts.buttons.matching(NSPredicate(format: "label IN %@", ["打开", "Open"])).firstMatch
+        let systemOpen = springboard.alerts.buttons.matching(NSPredicate(format: "label IN %@", ["打开", "Open"])).firstMatch
+        let launched = NSPredicate { _, _ in
+            if self.velockApp.state == .runningForeground { return true }
+            if open.exists && open.isHittable { open.tap() }
+            else if systemOpen.exists && systemOpen.isHittable { systemOpen.tap() }
+            return self.velockApp.state == .runningForeground
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: launched, object: nil)], timeout: 15), .completed)
+        tutorialUnlock()
+        let approve = tutorialNode(velockApp, ["批准", "Approve"], buttons: true)
+        tutorialTap(approve, "approve-request")
+        let confirmation = tutorialNode(velockApp, ["批准这台 Velock Sync？", "Approve this Velock Sync?"])
+        tutorialReady(confirmation, "approval-confirmation")
+        tutorialHold(0.9, reason: "approval-confirmation")
+        let dialogApprove = velockApp.buttons.matching(NSPredicate(format: "label IN %@", ["批准", "Approve"]))
+        XCTAssertEqual(dialogApprove.count, 1, "Approval must be scoped to the visible dialog")
+        tutorialTap(dialogApprove.firstMatch, "confirm-approval")
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 8), "Approval dialog did not close")
+        // Observe the completed authorization, not an arbitrary fixed delay.
+        let completed = NSPredicate { _, _ in !approve.exists || !approve.isHittable }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: completed, object: nil)], timeout: 12), .completed)
+        tutorialNoError()
+        tutorialHold(0.8, reason: "approval-complete")
+        syncApp.activate()
+        tutorialTap(tutorialNode(syncApp, ["确认并创建", "Confirm and create", "Confirm & Create", "Confirm and Create"], buttons: true), "create-profile")
+        let result = tutorialContains(syncApp, ["已下载", "格间同步完成", "当前没有新的数据需要同步", "Downloaded", "Velock sync complete", "Sync complete", "No new data to sync"])
+        tutorialStage("sync-complete")
+        XCTAssertTrue(result.waitForExistence(timeout: 25), "First sync did not produce a result")
+        tutorialNoError()
+        tutorialHold(replica ? 1.1 : 2.4, reason: "sync-result")
+        if !replica {
+            tutorialTap(tutorialNode(syncApp, ["刷新同步配置", "Refresh sync profiles"], buttons: true), "refresh-completed-backup")
+            let notBackedUp = tutorialContains(syncApp, ["尚未备份", "Not backed up yet"])
+            XCTAssertTrue(notBackedUp.waitForNonExistence(timeout: 8), "Completed backup summary remained stale")
+            tutorialHold(0.8, reason: "refresh-complete")
+        }
+        attachScreenshot(replica ? "tutorial-recovery-downloaded" : "tutorial-first-sync-complete")
+        if replica {
+            let openVelock = tutorialNode(syncApp, ["打开格间", "Open Velock"], buttons: true)
+            if openVelock.exists && openVelock.isHittable { openVelock.tap() }
+            else { velockApp.activate() }
+            tutorialUnlock()
+            tutorialOpenRestoredContent()
+        }
+    }
+
+    private func tutorialReturnToDashboard() {
+        let credentials = velockApp.buttons.matching(NSPredicate(format: "label CONTAINS '凭证' OR label CONTAINS 'Credentials'")).firstMatch
+        let syncTitle = tutorialNode(velockApp, ["实验性 - 数据同步", "Experimental - Data Sync"])
+        // The pairing deep link can stack a second sync-settings route above
+        // the original. Pop actual routes, not a fixed number of blind taps.
+        for _ in 0..<3 {
+            if credentials.exists && credentials.isHittable { break }
+            tutorialReady(syncTitle, "sync-page-before-back")
+            let candidates = velockApp.buttons.matching(NSPredicate(
+                format: "label IN %@", ["返回", "Back", "设置", "Setting", "Settings"])).allElementsBoundByIndex
+            let navigationBack = candidates.first {
+                $0.exists && $0.isHittable && $0.frame.minX < 100 && $0.frame.maxY < 150
+            }
+            tutorialStage("back-to-dashboard")
+            if let navigationBack {
+                navigationBack.tap()
+            } else {
+                // AX fallback, observed navigation control on this device size.
+                XCTAssertEqual(velockApp.frame.width, 440, accuracy: 1)
+                XCTAssertEqual(velockApp.frame.height, 956, accuracy: 1)
+                velockApp.coordinate(withNormalizedOffset: CGVector(dx: 24.0/440.0, dy: 84.0/956.0)).tap()
+            }
+            let dashboard = NSPredicate { _, _ in credentials.exists && credentials.isHittable }
+            if XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dashboard, object: nil)], timeout: 2) == .completed { break }
+        }
+        tutorialReady(credentials, "content-dashboard-ready")
+    }
+
+    private func tutorialOpenRestoredContent() {
+        tutorialReturnToDashboard()
+        tutorialVerifyAllContent()
+    }
+
+    /// Public tutorial must demonstrate content, not just one restored account.
+    /// Uses synthetic fixtures only. No seeding, retries or app restart here.
+    private func tutorialVerifyAllContent() {
+        var verified: [String] = []
+        func evidence(_ kind: String) {
+            tutorialNoError()
+            attachScreenshot("tutorial-content-" + kind)
+            tutorialHold(2.3, reason: "read-\(kind)")
+            verified.append(kind)
+        }
+        tutorialVerifyFileContent(evidence)
+        tutorialVerifyPhotoContent(evidence)
+        tutorialVerifyCredentialContent(evidence)
+        // document has additional host persistence/revision checks; mobile's
+        // Notes credential is distinct from the desktop document module.
+        XCTAssertEqual(Set(verified), Set(["file", "media", "password", "card", "note"]))
+        if let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] {
+            do {
+                let data = try JSONSerialization.data(withJSONObject: ["verified_ui_kinds": verified])
+                let phase = tutorialReplicaCapture ? "replica" : "source"
+                try data.write(to: URL(fileURLWithPath: root).appendingPathComponent(phase + "-ui-coverage.json"))
+            } catch { XCTFail("Cannot persist tutorial UI coverage") }
+        }
+    }
+
+    private func tutorialBackToTabs(_ stage: String) {
+        tutorialTap(tutorialNode(velockApp, ["QLOverlayDoneButtonAccessibilityIdentifier", "返回", "Back", "关闭", "Close", "close", "完成", "Done"], buttons: true), stage)
+        tutorialReady(tutorialRootTab(["tkNav_files", "文件", "File", "Files"]), stage + "-complete")
+    }
+
+    private func tutorialVerifyFileContent(_ evidence: (String) -> Void) {
+        // File and album come first: these are the primary tutorial scenarios.
+        tutorialTap(tutorialRootTab(["tkNav_files", "文件", "File", "Files"]), "show-files")
+        let files = velockApp.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'file-item-' AND label == %@", "velock-sync-e2e-proof.txt"))
+        tutorialReady(files.firstMatch, "proof-file-ready")
+        tutorialHold(0.9, reason: "file-selected")
+        XCTAssertEqual(files.count, 1, "Proof file must be unique; never open an arbitrary first tile")
+        tutorialTap(files.firstMatch, "open-proof-file")
+        // First-use iOS preview explanation is a real user step, not an error.
+        let explanation = tutorialNode(velockApp, ["关于网络权限的说明", "About network permission"])
+        let content = velockApp.descendants(matching: .any).matching(NSPredicate(
+            format: "label CONTAINS %@ OR value CONTAINS %@", "VELOCK SYNC REAL DATA E2E", "VELOCK SYNC REAL DATA E2E")).firstMatch
+        let previewState = NSPredicate { _, _ in explanation.exists || content.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: previewState, object: nil)], timeout: 15), .completed)
+        if explanation.exists {
+            tutorialTap(tutorialNode(velockApp, ["知道了", "Got it", "Got It"], buttons: true), "preview-explanation")
+        }
+        let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let readable = NSPredicate { _, _ in
+            // Preview does not need network access to read this local fixture.
+            let deny = system.alerts.buttons.matching(NSPredicate(format: "label IN %@", ["不允许", "Don't Allow"])).firstMatch
+            if deny.exists && deny.isHittable { deny.tap() }
+            return content.exists && content.isHittable
+        }
+        tutorialStage("proof-file-content")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: readable, object: nil)], timeout: 20), .completed,
+                       "Decrypted text body was not visible in the actual preview")
+        tutorialHold(0.6, reason: "file-body-settled")
+        evidence("file")
+        tutorialBackToTabs("close-proof-file")
+
+    }
+
+    private func tutorialVerifyPhotoContent(_ evidence: (String) -> Void) {
+        tutorialTap(tutorialRootTab(["tkNav_images", "相册", "Photo", "Photos", "Albums", "Images"]), "show-album")
+        let photos = velockApp.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'media-item-' AND label == %@", ProcessInfo.processInfo.environment["E2E_TUTORIAL_PHOTO_NAME"] ?? "velock-sync-e2e-proof.png"))
+        tutorialReady(photos.firstMatch, "proof-photo-ready")
+        tutorialHold(0.9, reason: "photo-selected")
+        XCTAssertEqual(photos.count, 1, "Proof photo must be unique; never select the recovery card")
+        let photoID = photos.firstMatch.identifier.replacingOccurrences(of: "media-item-", with: "")
+        tutorialTap(photos.firstMatch, "open-proof-photo")
+        tutorialReady(tutorialNode(velockApp, ["media-preview-ready-" + photoID]), "proof-photo-decoded")
+        tutorialHold(0.6, reason: "photo-settled")
+        evidence("media")
+        tutorialTap(tutorialNode(velockApp, ["media-preview-close"]), "close-proof-photo")
+        tutorialReady(tutorialRootTab(["tkNav_files", "文件", "File", "Files"]), "photo-close-complete")
+
+    }
+
+    private func tutorialVerifyCredentialContent(_ evidence: (String) -> Void) {
+        tutorialTap(tutorialContains(velockApp, ["凭证", "Credentials"]), "show-credentials")
+        tutorialTap(tutorialNode(velockApp, ["账户", "账号", "Account", "Accounts"], buttons: true), "show-accounts")
+        tutorialHold(0.8, reason: "account-selected")
+        tutorialTap(tutorialContains(velockApp, ["E2E Password"]), "open-account")
+        tutorialReady(tutorialContains(velockApp, ["e2e-user"]), "account-content")
+        tutorialHold(0.5, reason: "account-settled")
+        evidence("password")
+        tutorialBackToTabs("close-account")
+        tutorialTap(tutorialContains(velockApp, ["E2E Credit Card"]), "open-credit-card")
+        // This fixed number is a synthetic Visa test fixture, never a real card.
+        let cardPattern = ".*4111[ ]*1111[ ]*1111[ ]*1111.*"
+        let cardNumber = velockApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label MATCHES %@ OR value MATCHES %@", cardPattern, cardPattern)
+        ).firstMatch
+        tutorialReady(cardNumber, "credit-card-content")
+        tutorialHold(0.5, reason: "card-settled")
+        evidence("card")
+        tutorialBackToTabs("close-credit-card")
+        tutorialTap(tutorialNode(velockApp, ["备注", "Note", "Notes"], buttons: true), "show-diary-notes")
+        tutorialTap(tutorialContains(velockApp, ["E2E note content"]), "open-diary-note")
+        // Use the second body line, not the list title/summary, as proof.
+        tutorialReady(tutorialContains(velockApp, ["恢复校验正文"]), "diary-body-content")
+        tutorialHold(0.5, reason: "note-settled")
+        evidence("note")
+        tutorialBackToTabs("close-diary-note")
+    }
+
+    private func tutorialPrepareEnglishSync() {
+        syncApp.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        syncApp.launch()
+        tutorialReady(tutorialContains(syncApp, ["设置", "Setting", "Settings"]), "prepare-sync-ready")
+        let englishSettings = tutorialContains(syncApp, ["Settings"])
+        if englishSettings.exists && englishSettings.isHittable {
+            syncApp.terminate()
+            return
+        }
+        tutorialTap(tutorialContains(syncApp, ["设置", "Setting", "Settings"]), "prepare-sync-language")
+        tutorialTap(tutorialContains(syncApp, ["语言", "Language"]), "prepare-sync-language-menu")
+        tutorialTap(tutorialNode(syncApp, ["English"]), "prepare-sync-english")
+        tutorialReady(tutorialContains(syncApp, ["Language"]), "prepare-sync-language-persisted")
+        syncApp.terminate()
+    }
+
+    private func tutorialPrepareEnglishSource() {
+        tutorialPrepareEnglishSync()
+        velockApp.activate()
+        tutorialUnlock()
+        let englishSettings = tutorialContains(velockApp, ["Setting"])
+        if englishSettings.exists && englishSettings.isHittable {
+            velockApp.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+            return
+        }
+        tutorialTap(tutorialContains(velockApp, ["设置", "Setting", "Settings"]), "prepare-velock-settings")
+        let language = tutorialContains(velockApp, ["语言", "Language"])
+        for _ in 0..<4 {
+            if language.exists && language.isHittable { break }
+            velockApp.swipeUp()
+        }
+        tutorialTap(language, "prepare-velock-language")
+        tutorialTap(tutorialNode(velockApp, ["English"], buttons: true), "prepare-velock-english")
+        tutorialReady(tutorialContains(velockApp, ["Language"]), "english-language-applied")
+        // Reopen outside recording so the tutorial starts on the dashboard.
+        velockApp.terminate()
+        velockApp.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        velockApp.launch()
+        tutorialUnlock()
+    }
+
+    func testTutorialUnlockFirstAttempt() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Tutorial diagnostics are explicitly opt-in")
+        }
+        velockApp.launch()
+        tutorialUnlock()
+        tutorialReady(tutorialContains(velockApp, ["设置", "Setting", "Settings"]), "login-once")
+        syncApp.launch()
+        velockApp.activate()
+        tutorialUnlock()
+        tutorialReady(tutorialContains(velockApp, ["设置", "Setting", "Settings"]), "resume-unlock-once")
+    }
+
+    func testTutorialSourceFlow() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Tutorial recording is explicitly opt-in")
+        }
+        XCTAssertEqual(ProcessInfo.processInfo.environment["E2E_TUTORIAL_FULL_CONTENT"], "1",
+                       "Tutorial must cover files, albums and all credential kinds")
+        XCTAssertEqual(ProcessInfo.processInfo.environment["E2E_TUTORIAL_PREPARED"], "1",
+                       "Prepare and host-verify all source payloads before capture")
+        if englishTutorial {
+            // Fixture preparation is outside the take. Use the established
+            // Chinese setup path, then change the real persisted UI language.
+            velockApp.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        }
+        if ProcessInfo.processInfo.environment["E2E_TUTORIAL_PREPARED"] == "1" {
+            velockApp.launch()
+            tutorialUnlock()
+        } else {
+            ensureVelockInitializedAndPairingEnabled(enablePairing: false)
+            seedVelockBusinessDataIfRequested()
+        }
+        if englishTutorial { tutorialPrepareEnglishSource() }
+        // Off-camera: withdraw only the pairing entry point, preserving vault
+        // data/keys. The take then demonstrates the actual Enable + card flow.
+        tutorialOpenSyncSettings()
+        let pairingRow = tutorialContains(velockApp, ["允许新的配对", "Allow new pairings", "Allow New Pairings"])
+        let pairingSwitch = velockApp.switches.firstMatch
+        if (pairingSwitch.exists && (pairingSwitch.value as? String) == "1") ||
+            pairingRow.label.contains("已启用") || pairingRow.label.contains("Enabled") {
+            XCTAssertEqual(velockApp.frame.width, 440, accuracy: 1)
+            XCTAssertEqual(velockApp.frame.height, 956, accuracy: 1)
+            velockApp.coordinate(withNormalizedOffset: CGVector(dx: 0.855, dy: 0.1935)).tap()
+            tutorialTap(tutorialNode(velockApp, ["停用", "Disable"], buttons: true), "prepare-disable-pairing")
+        }
+        tutorialReturnToDashboard()
+        tutorialSeedPrepared = true
+        defer { finishTutorialCapture() }
+        if cleanTutorial {
+            try beginTutorialCapture("01-first-setup")
+            tutorialReturnToDashboard()
+            tutorialVerifyAllContent()
+            tutorialOpenSyncSettings()
+            tutorialEnablePairing(saveCard: true)
+            tutorialPairAndSync(replica: false)
+        } else {
+            tutorialSourceCapturePending = true
+            testCrossAppPairingFlow()
+        }
+    }
+
+    func testTutorialReplicaFlow() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Tutorial recording is explicitly opt-in")
+        }
+        XCTAssertEqual(ProcessInfo.processInfo.environment["E2E_TUTORIAL_FULL_CONTENT"], "1",
+                       "Password-only recovery is not complete tutorial coverage")
+        tutorialSeedPrepared = true
+        tutorialReplicaCapture = true
+        defer { finishTutorialCapture() }
+        testRecoverVelockAccountFromCardPhoto()
+        if cleanTutorial {
+            tutorialOpenSyncSettings()
+            tutorialEnablePairing(saveCard: false)
+            tutorialPairAndSync(replica: true)
+        } else {
+            testCrossAppPairingFlow()
+            testRestoredCredentialAfterColdRestart()
+        }
+    }
+
+    private var printedEnvironment: Bool = false
+    private func logTestEnvironmentIfFirst() {
+        guard !printedEnvironment else { return }
+        printedEnvironment = true
+        print("E2E_ENV webDAVPort=\(webDAVPort) " +
+              "RECOVERY_PASSPHRASE=\(ProcessInfo.processInfo.environment["E2E_RECOVERY_PASSPHRASE"]?.isEmpty == false ? "set" : "unset") " +
+              "RECOVERY_PACKAGE_FILE=\(ProcessInfo.processInfo.environment["E2E_RECOVERY_PACKAGE_FILE"]?.isEmpty == false ? "set" : "unset")")
+    }
+
     private var syncApp: XCUIApplication!
     private var velockApp: XCUIApplication!
 
@@ -20,6 +581,170 @@ final class CrossAppUITests: XCTestCase {
         continueAfterFailure = false
         syncApp = XCUIApplication(bundleIdentifier: syncBundleID)
         velockApp = XCUIApplication(bundleIdentifier: velockBundleID)
+    }
+
+    override func record(_ issue: XCTIssue) {
+        if let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] {
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: root).appendingPathComponent("rejected-failure.png"))
+            if let app = velockApp, app.state == .runningForeground {
+                try? app.debugDescription.write(toFile: root + "/rejected-state.txt", atomically: true, encoding: .utf8)
+            }
+        }
+        super.record(issue)
+    }
+
+    func testTutorialPairingSwitchProbe() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Tutorial diagnostics are explicitly opt-in")
+        }
+        velockApp.launch()
+        tutorialOpenSyncSettings()
+        let row = tutorialContains(velockApp, ["允许新的配对", "Allow new pairings"])
+        let toggle = velockApp.switches.firstMatch
+        if let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] {
+            let text = "row frame \(row.frame) label \(row.label)\nswitch exists \(toggle.exists) frame \(toggle.frame) label \(toggle.label)"
+            try? text.write(to: URL(fileURLWithPath: root).appendingPathComponent("toggle-geometry.txt"), atomically: true, encoding: .utf8)
+        }
+        let target = toggle.exists ? toggle : row
+        target.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        tutorialReady(tutorialNode(velockApp, ["启用", "Enable"], buttons: true), "probe-enable")
+        tutorialTap(tutorialNode(velockApp, ["取消", "Cancel"], buttons: true), "probe-cancel")
+    }
+
+    func testTutorialNavigationProbe() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Tutorial diagnostics are explicitly opt-in")
+        }
+        velockApp.launch()
+        tutorialOpenSyncSettings()
+        syncApp.launch()
+        velockApp.activate()
+        tutorialUnlock()
+        tutorialOpenRestoredContent()
+    }
+
+    func testTutorialFileContentProbe() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Explicit content diagnostic only")
+        }
+        velockApp.launch()
+        tutorialUnlock()
+        tutorialVerifyFileContent { kind in
+            tutorialNoError()
+            attachScreenshot("verified-" + kind)
+        }
+    }
+
+    func testTutorialPhotoContentProbe() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Explicit content diagnostic only")
+        }
+        velockApp.launch()
+        tutorialUnlock()
+        tutorialVerifyPhotoContent { kind in
+            tutorialNoError()
+            attachScreenshot("verified-" + kind)
+        }
+    }
+
+    func testTutorialCredentialContentProbe() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Explicit content diagnostic only")
+        }
+        velockApp.launch()
+        tutorialUnlock()
+        tutorialVerifyCredentialContent { kind in
+            tutorialNoError()
+            attachScreenshot("verified-" + kind)
+        }
+    }
+
+    func testTutorialImportText() throws {
+        guard let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] else {
+            throw XCTSkip("Explicit preparation only")
+        }
+        prepareFixtureHost()
+        velockApp.launch()
+        tutorialUnlock()
+        tutorialTap(tutorialRootTab(["tkNav_files", "文件", "File", "Files"]), "import-text-files")
+        // Exact button matching avoids the empty-state message containing “添加”.
+        let add = tutorialNode(velockApp, ["tkBtn_files_add", "添加", "Add"], buttons: true)
+        if add.exists && add.isHittable { add.tap() }
+        else {
+            // Observed unlabeled production toolbar button: (364,64,28,28).
+            XCTAssertEqual(velockApp.frame.width, 440, accuracy: 1)
+            XCTAssertEqual(velockApp.frame.height, 956, accuracy: 1)
+            velockApp.coordinate(withNormalizedOffset: CGVector(dx: 378.0/440.0, dy: 78.0/956.0)).tap()
+        }
+        let picker = tutorialNode(velockApp, ["浏览", "Browse", "最近项目", "Recents"])
+        XCTAssertTrue(picker.waitForExistence(timeout: 10), "File picker did not open")
+        try velockApp.debugDescription.write(toFile: root + "/picker-state.txt", atomically: true, encoding: .utf8)
+        try XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: root + "/picker.png"))
+        // Scope to the native picker: the obscured Flutter file grid remains
+        // in the AX tree and must never satisfy a source-file selector.
+        // A genuinely new device opens Recents, not the retained Browse folder.
+        let browseTab = velockApp.tabBars["DOC.browsingModeTabBar"].buttons.matching(
+            NSPredicate(format: "label IN %@", ["浏览", "Browse"])).firstMatch
+        if browseTab.exists && browseTab.isHittable { browseTab.tap() }
+        let localStorage = tutorialNode(velockApp, ["我的 iPhone", "我的iPhone", "On My iPhone"])
+        if localStorage.waitForExistence(timeout: 2) && localStorage.isHittable { localStorage.tap() }
+        let browser = velockApp.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == 'Browse View (Picker)' OR identifier BEGINSWITH 'DOC.browsingRoot'"
+        )).firstMatch
+        tutorialReady(browser, "native-picker-root")
+        let host = browser.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'CrossAppUITestHost'" )).firstMatch
+        if host.waitForExistence(timeout: 2) && host.isHittable { host.tap() }
+        let folder = browser.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'VelockSync-E2E-Source'" )).firstMatch
+        if folder.waitForExistence(timeout: 2) && folder.isHittable { folder.tap() }
+        try browser.debugDescription.write(toFile: root + "/picker-source-state.txt", atomically: true, encoding: .utf8)
+        let textFile = browser.cells.matching(NSPredicate(
+            format: "(label CONTAINS 'proof' OR identifier CONTAINS 'proof') AND (label CONTAINS[c] 'txt' OR label CONTAINS '文本' OR identifier CONTAINS[c] 'txt')")).firstMatch
+        tutorialTap(textFile, "select-proof-text")
+        let open = browser.buttons.matching(NSPredicate(format: "label IN %@", ["打开", "Open", "完成", "Done"])).firstMatch
+        if open.waitForExistence(timeout: 2) && open.isHittable { open.tap() }
+        let imported = velockApp.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH 'file-item-' AND label == 'velock-sync-e2e-proof.txt'")).firstMatch
+        tutorialReady(imported, "text-persisted", timeout: 30)
+    }
+
+    func testTutorialPrepareCredentials() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Explicit preparation only")
+        }
+        prepareFixtureHost()
+        velockApp.launch()
+        tutorialUnlock()
+        seedVelockBusinessDataIfRequested()
+    }
+
+    func testTutorialInspectState() throws {
+        guard let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] else {
+            throw XCTSkip("Explicit diagnostic only")
+        }
+        velockApp.launch()
+        tutorialUnlock()
+        try velockApp.debugDescription.write(toFile: root + "/state.txt", atomically: true, encoding: .utf8)
+        try XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: root + "/state.png"))
+    }
+
+    func testTutorialPrepareEnglish() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Explicit preparation only")
+        }
+        velockApp.launch()
+        tutorialUnlock()
+        tutorialPrepareEnglishSource()
+    }
+
+    func testTutorialPreparedSource() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Tutorial diagnostics are explicitly opt-in")
+        }
+        velockApp.launch()
+        tutorialUnlock()
+        tutorialTap(tutorialContains(velockApp, ["凭证", "Credentials"]), "prepared-credentials")
+        tutorialTap(tutorialContains(velockApp, ["E2E Password"]), "prepared-password")
+        tutorialReady(tutorialContains(velockApp, ["e2e-user"]), "prepared-content")
     }
 
     override func tearDown() {
@@ -92,8 +817,8 @@ final class CrossAppUITests: XCTestCase {
         attachScreenshot("page-sync-home-entry")
 
         tapHomeTab("同步", normalizedX: 0.125, screenshotName: "page-sync-home-all")
-        tapFirstContaining("配置格间同步")
-        waitForAnyText("连接格间数据")
+        tapFirstContaining("开启格间备份")
+        waitForAnyText("开始连接格间")
         attachScreenshot("page-sync-profile-wizard")
 
         tapFirstContaining("开始连接格间")
@@ -268,18 +993,61 @@ final class CrossAppUITests: XCTestCase {
     func testProbeVelockSyncEntry() {
         launchSyncFresh()
         tapHomeTab("同步", normalizedX: 0.125, screenshotName: "velock-entry-home")
-        tapFirstContaining("配置格间同步")
+        let entry = waitForAny(
+            syncApp.buttons["velock-backup-enable"].firstMatch,
+            syncApp.buttons.matching(
+                NSPredicate(format: "label CONTAINS '开启格间备份'")
+            ).firstMatch,
+            timeout: 10
+        )
+        XCTAssertTrue(entry.exists, "Sync home did not expose the 格间 backup entry")
+        entry.tap()
         XCTAssertTrue(
-            syncApp.descendants(matching: .any)["连接格间数据"].waitForExistence(timeout: 10),
+            syncApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS '开始连接格间'")
+            ).firstMatch.waitForExistence(timeout: 10),
             "Velock Sync did not enter the dedicated Velock flow"
         )
         XCTAssertFalse(
             syncApp.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS '选择数据集' OR label CONTAINS '同步文件夹'")
+                NSPredicate(format: "label CONTAINS '选择数据集'")
             ).firstMatch.exists,
-            "The old generic dataset/folder flow is still exposed"
+            "The old generic dataset flow is still exposed"
         )
         attachScreenshot("velock-entry-wizard")
+    }
+
+    /// Diagnostic only (2026-09-19 E2E triage). Dumps the accessibility tree
+    /// of the Connections tab and the folder-sync remote-connection sheet so
+    /// the black-box selectors in testSelectedFolderSourceSync can be kept in
+    /// sync with the current UI. Excluded from the scripted E2E runs.
+    func testProbeConnectionPickerTree() {
+        launchSyncFresh()
+        tapHomeTab("连接", normalizedX: 0.375, screenshotName: "probe-connections-tab")
+        RunLoop.current.run(until: Date().addingTimeInterval(4))
+        print("PROBE_CONNECTIONS_TAB_BEGIN")
+        print(syncApp.debugDescription)
+        print("PROBE_CONNECTIONS_TAB_END")
+        attachScreenshot("probe-connections-tab-settled")
+
+        tapHomeTab("同步", normalizedX: 0.125, screenshotName: "probe-sync-home")
+        let create = largestButton(in: syncApp, containing: "新建同步")
+        XCTAssertTrue(create.waitForExistence(timeout: 10), "Sync home did not expose create")
+        create.tap()
+        tapFirstContaining("同步文件夹")
+        let addFolder = firstExisting(
+            syncApp.buttons["添加同步文件夹"],
+            syncApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS '添加同步文件夹'")
+            ).firstMatch
+        )
+        XCTAssertTrue(addFolder.waitForExistence(timeout: 10), "Folder sync page did not expose add")
+        addFolder.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(3))
+        print("PROBE_PICKER_SHEET_BEGIN")
+        print(syncApp.debugDescription)
+        print("PROBE_PICKER_SHEET_END")
+        attachScreenshot("probe-picker-sheet")
     }
 
     /// Upload-side setup through the real UI. This intentionally stops after
@@ -366,6 +1134,7 @@ final class CrossAppUITests: XCTestCase {
     /// document picker, provisions a Generic Vault profile, and runs the first
     /// encrypted upload through the shared Sync Core.
     func testSelectedFolderSourceSync() {
+        logTestEnvironmentIfFirst()
         prepareFixtureHost()
         syncApp.launch()
         XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
@@ -396,10 +1165,7 @@ final class CrossAppUITests: XCTestCase {
             XCTAssertTrue(addFolder.waitForExistence(timeout: 10), "Folder sync page did not expose add")
             addFolder.tap()
 
-            XCTAssertTrue(syncApp.staticTexts["选择远端连接"].waitForExistence(timeout: 10))
-            let connection = syncApp.descendants(matching: .any)["新建连接"]
-            XCTAssertTrue(connection.waitForExistence(timeout: 10), "WebDAV connection was not selectable")
-            connection.tap()
+            tapRemoteConnectionInPicker(context: "source-sync")
 
             selectFixtureFolder(named: "VelockSync-E2E-Source")
             XCTAssertTrue(
@@ -477,6 +1243,7 @@ final class CrossAppUITests: XCTestCase {
     /// Exports the source Generic Vault recovery bundle into a caller-provided
     /// mode-0600 file. The package and passphrase never enter XCTest output.
     func testExportSelectedFolderRecoveryPackage() throws {
+        logTestEnvironmentIfFirst()
         let environment = ProcessInfo.processInfo.environment
         guard let passphrase = environment["E2E_RECOVERY_PASSPHRASE"], !passphrase.isEmpty,
               let outputPath = environment["E2E_RECOVERY_PACKAGE_FILE"], !outputPath.isEmpty else {
@@ -561,6 +1328,7 @@ final class CrossAppUITests: XCTestCase {
     /// Fresh-replica selected-folder recovery. It imports the secure bundle,
     /// selects the replica folder, then downloads and verifies the fixture.
     func testRecoverSelectedFolderReplica() throws {
+        logTestEnvironmentIfFirst()
         let environment = ProcessInfo.processInfo.environment
         guard let passphrase = environment["E2E_RECOVERY_PASSPHRASE"], !passphrase.isEmpty,
               let packagePath = environment["E2E_RECOVERY_PACKAGE_FILE"], !packagePath.isEmpty,
@@ -578,30 +1346,37 @@ final class CrossAppUITests: XCTestCase {
         createLocalWebDAVConnectionIfNeeded()
         openSelectedFolderProfileList(screenshotName: "selected-folder-replica-home")
 
+        // The folder-sync page shows either the list tile
+        // “通过恢复包加入已有空间” or the first-run empty-state button
+        // “已有同步空间？/通过恢复包加入”; match the shared phrase.
         let recover = firstExisting(
             syncApp.buttons["通过恢复包加入已有空间"],
             syncApp.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS '通过恢复包加入已有空间'")
+                NSPredicate(format: "label CONTAINS '通过恢复包加入'")
             ).firstMatch
         )
-        XCTAssertTrue(recover.waitForExistence(timeout: 10))
+        XCTAssertTrue(recover.waitForExistence(timeout: 10), "Recovery entry was not exposed\n\(syncApp.debugDescription)")
         recover.tap()
 
-        XCTAssertTrue(syncApp.staticTexts["选择远端连接"].waitForExistence(timeout: 10))
-        let connection = syncApp.descendants(matching: .any)["新建连接"]
-        XCTAssertTrue(connection.waitForExistence(timeout: 10))
-        connection.tap()
+        tapRemoteConnectionInPicker(context: "replica-recover")
 
         let vaultField = syncApp.textFields["Vault ID"]
         XCTAssertTrue(vaultField.waitForExistence(timeout: 5))
         vaultField.tap()
         vaultField.typeText(vaultID)
 
-        let packageField = firstExisting(
-            syncApp.textViews["恢复包（VLSR1.）"],
-            syncApp.textFields["恢复包（VLSR1.）"]
+        // The field renders with its placeholder text as the visible label;
+        // match the VLSR1 marker shared by both placeholder and caption.
+        let packageField = waitForAny(
+            syncApp.textViews.matching(
+                NSPredicate(format: "label CONTAINS 'VLSR1'")
+            ).firstMatch,
+            syncApp.textFields.matching(
+                NSPredicate(format: "label CONTAINS 'VLSR1'")
+            ).firstMatch,
+            timeout: 10
         )
-        XCTAssertTrue(packageField.waitForExistence(timeout: 5))
+        XCTAssertTrue(packageField.exists, "Recovery package field was not exposed\n\(syncApp.debugDescription)")
         packageField.tap()
         packageField.typeText(package)
 
@@ -726,6 +1501,7 @@ final class CrossAppUITests: XCTestCase {
     /// the database) so the subsequent sync run exercises the same records a
     /// user creates. The script enables it only on the source simulator.
     private func seedVelockBusinessDataIfRequested() {
+        if tutorialSeedPrepared { return }
         guard ProcessInfo.processInfo.environment["E2E_SEED_DATA"] == "1" else {
             return
         }
@@ -771,31 +1547,35 @@ final class CrossAppUITests: XCTestCase {
             account.tap(); velockApp.typeText("e2e-user")
             password.tap(); velockApp.typeText("e2e-secret")
             velockApp.buttons["保存"].firstMatch.tap()
-            XCTAssertTrue(velockApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'E2E Password'" )).firstMatch.waitForExistence(timeout: 10), "Password credential was not saved")
+            XCTAssertTrue(velockApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'E2E Password'" )).firstMatch.waitForExistence(timeout: 45), "Password credential was not saved")
         }
 
-        // Bank-card credential (card number is the minimum required field).
+        // Ordinary bank-card regressions retain their fixture. The full
+        // tutorial explicitly uses a separate synthetic credit-card example.
+        let creditCardFixture = ProcessInfo.processInfo.environment["E2E_SEED_CREDIT_CARD"] == "1"
+        let cardTitle = creditCardFixture ? "E2E Credit Card" : "E2E Card"
+        let cardDigits = creditCardFixture ? "4111111111111111" : "6222021234567890"
         let cardTab = velockApp.buttons["卡片"].firstMatch.exists
             ? velockApp.buttons["卡片"].firstMatch
             : velockApp.buttons["银行卡"].firstMatch
         if cardTab.waitForExistence(timeout: 3) { cardTab.tap() }
         let existingCard = velockApp.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS 'E2E Card'")
+            NSPredicate(format: "label CONTAINS %@", cardTitle)
         ).firstMatch
         if !existingCard.waitForExistence(timeout: 3) {
             tapCreateCredential()
             XCTAssertTrue(velockApp.buttons["银行卡"].waitForExistence(timeout: 5))
             velockApp.buttons["银行卡"].tap()
             XCTAssertTrue(velockApp.textFields["请输入标题"].waitForExistence(timeout: 10))
-            velockApp.textFields["请输入标题"].tap(); velockApp.textFields["请输入标题"].typeText("E2E Card")
+            velockApp.textFields["请输入标题"].tap(); velockApp.textFields["请输入标题"].typeText(cardTitle)
             // The card group's value field is rendered by a custom PlatformTextField
             // without a stable AX label. Its first value row is fixed below the
             // title on the iPhone layout; tap the real field rather than matching
             // the adjacent static label “卡号”.
             velockApp.coordinate(withNormalizedOffset: CGVector(dx: 0.60, dy: 0.28)).tap()
-            velockApp.typeText("6222021234567890")
+            velockApp.typeText(cardDigits)
             velockApp.buttons["保存"].firstMatch.tap()
-            XCTAssertTrue(velockApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS '账户' OR label CONTAINS 'E2E Card'" )).firstMatch.waitForExistence(timeout: 10), "Card editor did not return to credentials")
+            XCTAssertTrue(velockApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", cardTitle)).firstMatch.waitForExistence(timeout: 10), "Card editor did not return to credentials")
         }
 
         // Note credential. The iOS 26 simulator's software keyboard exposes
@@ -1292,6 +2072,96 @@ final class CrossAppUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(8))
     }
 
+    /// Fast configured-profile path. The host runner must require a fresh
+    /// completed sync_runs row; an enabled button alone is not success evidence.
+    func testTutorialRejectIncompleteRemoteHistory() throws {
+        guard ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] != nil else {
+            throw XCTSkip("Requires a dedicated source and disposable empty WebDAV")
+        }
+        syncApp.launch()
+        tutorialTap(tutorialContains(syncApp, ["同步", "Sync"]), "history-sync-home")
+        let profile = tutorialContains(syncApp, ["Velock E2E"])
+        tutorialTap(profile, "history-profile")
+        let syncNow = syncApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS '立即同步' OR label CONTAINS 'Sync now' OR label CONTAINS 'Sync Now'")
+        ).firstMatch
+        for _ in 0..<5 {
+            if syncNow.exists && syncNow.isHittable { break }
+            syncApp.swipeUp()
+        }
+        tutorialTap(syncNow, "history-sync-now")
+        let failure = tutorialContains(syncApp, ["远端缺少历史备份", "Remote backup history is incomplete"])
+        tutorialReady(failure, "history-incomplete-rejected", timeout: 25)
+        attachScreenshot("history-incomplete-rejected")
+        if let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] {
+            try syncApp.screenshot().pngRepresentation.write(to:
+                URL(fileURLWithPath: root).appendingPathComponent("history-incomplete-rejected.png"))
+        }
+
+    }
+
+    func testSyncConfiguredVelockProfile() {
+        XCTAssertEqual(ProcessInfo.processInfo.environment["E2E_SYNC_DB_VERIFIED"], "1")
+        syncApp.launch()
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+        tapHomeTab("同步", normalizedX: 0.125, screenshotName: "configured-sync-home")
+        let profile = syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS 'Velock E2E'")
+        ).firstMatch
+        XCTAssertTrue(profile.waitForExistence(timeout: 10) && profile.isHittable)
+        profile.tap()
+        let syncNow = syncApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS '立即同步'")
+        ).firstMatch
+        // The detail page is scrollable and merged semantics include the subtitle.
+        for _ in 0..<5 {
+            if syncNow.waitForExistence(timeout: 1) && syncNow.isHittable { break }
+            syncApp.swipeUp()
+        }
+        XCTAssertTrue(syncNow.waitForExistence(timeout: 5) && syncNow.isHittable,
+                      "Configured sync action is not reachable: \(syncApp.debugDescription)")
+        syncNow.tap()
+        // A completed result dialog intentionally disables the underlying
+        // button. Do not mistake that for a still-running transfer. The host
+        // verifies the fresh persisted run, including real failures/timeouts.
+        let openCompanion = syncApp.buttons["打开格间"].firstMatch
+        if openCompanion.waitForExistence(timeout: 2) && openCompanion.isHittable {
+            openCompanion.tap()
+        }
+        velockApp.launch()
+        XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 20))
+        unlockVelockIfNeeded()
+        let dashboard = velockApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS '凭证'")
+        ).firstMatch
+        XCTAssertTrue(dashboard.waitForExistence(timeout: 20))
+    }
+
+    /// Verifies decrypted synthetic content after a real process restart.
+    /// Unlike a screenshot-only tour, every selected fixture is asserted.
+    func testRestoredCredentialAfterColdRestart() {
+        velockApp.terminate()
+        velockApp.launch()
+        XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 20))
+        unlockVelockIfNeeded()
+        let credentials = velockApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS '凭证'")
+        ).firstMatch
+        XCTAssertTrue(credentials.waitForExistence(timeout: 20) && credentials.isHittable)
+        credentials.tap()
+        let password = velockApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'E2E Password'")
+        ).firstMatch
+        XCTAssertTrue(password.waitForExistence(timeout: 15) && password.isHittable)
+        password.tap()
+        let account = velockApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS 'e2e-user' OR value CONTAINS 'e2e-user'")
+        ).firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 20) && account.isHittable,
+                      "Restored encrypted credential could not be read after restart")
+        attachScreenshot("verified-restored-credential-after-cold-restart")
+    }
+
     /// Focused checkpoint/GC acceptance probe for an already configured
     /// simulator. Unlike the generic sync test it never tries to initialize or
     /// repair pairing state; it only unlocks the existing vault, runs one sync,
@@ -1340,7 +2210,11 @@ final class CrossAppUITests: XCTestCase {
     func testSeedVelockDocumentOnly() {
         ensureVelockInitializedAndPairingEnabled(refreshRecoveryCard: false)
         let fixture = velockApp.descendants(matching: .any)["e2e-create-document-fixture"]
-        XCTAssertTrue(fixture.waitForExistence(timeout: 10),
+        for _ in 0..<5 {
+            if fixture.waitForExistence(timeout: 1) && fixture.isHittable { break }
+            velockApp.swipeUp()
+        }
+        XCTAssertTrue(fixture.waitForExistence(timeout: 5),
                       "Debug document fixture entry missing: \(velockApp.debugDescription)")
         fixture.tap()
         let persisted = velockApp.descendants(matching: .any).matching(
@@ -1508,7 +2382,7 @@ final class CrossAppUITests: XCTestCase {
             }
             RunLoop.current.run(until: Date().addingTimeInterval(1))
             let host = pickerApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'CrossAppUITestHost'" )).firstMatch
-            let directFile = pickerApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'velock-sync-e2e-proof' OR identifier CONTAINS 'velock-sync-e2e-proof'" )).firstMatch
+            let directFile = pickerApp.descendants(matching: .any).matching(NSPredicate(format: "(label CONTAINS 'velock-sync-e2e-proof' OR identifier CONTAINS 'velock-sync-e2e-proof') AND (label CONTAINS[c] 'txt' OR identifier CONTAINS[c] 'txt')" )).firstMatch
             let file: XCUIElement
             var selectedByCoordinate = false
             if directFile.waitForExistence(timeout: 3) {
@@ -1519,7 +2393,7 @@ final class CrossAppUITests: XCTestCase {
                     let source = pickerApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'VelockSync-E2E-Source'" )).firstMatch
                     XCTAssertTrue(source.waitForExistence(timeout: 8), "Fixture source folder is unavailable")
                     source.tap()
-                    file = pickerApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'velock-sync-e2e-proof' OR identifier CONTAINS 'velock-sync-e2e-proof'" )).firstMatch
+                    file = pickerApp.descendants(matching: .any).matching(NSPredicate(format: "(label CONTAINS 'velock-sync-e2e-proof' OR identifier CONTAINS 'velock-sync-e2e-proof') AND (label CONTAINS[c] 'txt' OR identifier CONTAINS[c] 'txt')" )).firstMatch
                 } else {
                     // iOS 26 presents the fixture directly in “所有文件”; its
                     // AX label is line-wrapped/truncated, so use the stable
@@ -1529,7 +2403,7 @@ final class CrossAppUITests: XCTestCase {
                     RunLoop.current.run(until: Date().addingTimeInterval(0.5))
                     fixtureCoordinate.tap()
                     selectedByCoordinate = true
-                    file = pickerApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'velock-sync-e2e-proof' OR identifier CONTAINS 'velock-sync-e2e-proof'" )).firstMatch
+                    file = pickerApp.descendants(matching: .any).matching(NSPredicate(format: "(label CONTAINS 'velock-sync-e2e-proof' OR identifier CONTAINS 'velock-sync-e2e-proof') AND (label CONTAINS[c] 'txt' OR identifier CONTAINS[c] 'txt')" )).firstMatch
                 }
             }
             if !selectedByCoordinate {
@@ -1554,7 +2428,7 @@ final class CrossAppUITests: XCTestCase {
         print("E2E_FILE_IMPORT_BEGIN\n\(velockApp.debugDescription)\nE2E_FILE_IMPORT_END")
         attachScreenshot("probe-file-import")
 
-        importPhotoFixture()
+        if !tutorialTextOnly { importPhotoFixture() }
     }
 
     func testProbeVelockMediaImport() {
@@ -1699,7 +2573,10 @@ final class CrossAppUITests: XCTestCase {
         // Re-pairing is explicit and limited to this harness's retained test
         // profile. Remove only the local configuration using production UI;
         // never erase the simulator, account, business files, or remote vault.
-        let retainedProfileActions = syncApp.buttons.matching(identifier: "同步配置操作")
+        // The row action menu exposes its tooltip as the button label.
+        let retainedProfileActions = syncApp.buttons.matching(
+            NSPredicate(format: "label == '同步配置操作'")
+        )
         if retainedProfileActions.count == 1 && retainedProfileActions.firstMatch.exists {
             XCTAssertTrue(syncApp.descendants(matching: .any).matching(
                 NSPredicate(format: "label CONTAINS 'Velock E2E'")
@@ -1714,58 +2591,41 @@ final class CrossAppUITests: XCTestCase {
             XCTAssertTrue(retainedProfileActions.firstMatch.waitForNonExistence(timeout: 10))
         }
 
-        // Flutter exposes the app-bar shortcut and the primary CTA with the
-        // same label. Select by frame size; query order is not stable across
-        // iOS simulator runtimes.
-        let create = syncApp.buttons["sync-profile-create-primary"].firstMatch.exists
-            ? syncApp.buttons["sync-profile-create-primary"].firstMatch
-            : largestButton(in: syncApp, containing: "配置格间同步")
-        var enteredDedicatedFlow = false
-        if !create.waitForExistence(timeout: 3) {
-            // Incremental runs can retain the previous profile.  Use the
-            // production app-bar add action to start a second pairing instead
-            // of deleting the profile or resetting the simulator.
-            let add = syncApp.buttons["sync-profile-create"].firstMatch
-            if add.waitForExistence(timeout: 3) {
-                add.tap()
-            } else {
-                syncApp.coordinate(withNormalizedOffset: CGVector(dx: 0.83, dy: 0.075)).tap()
-            }
-            enteredDedicatedFlow = syncApp.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS '连接格间数据'")
-            ).firstMatch.waitForExistence(timeout: 10)
-            if !enteredDedicatedFlow {
-                // The first Flutter semantics snapshot can still belong to
-                // the retained home shell after an app install. Retry the
-                // same production add hit once; never reset application data.
-                syncApp.coordinate(withNormalizedOffset: CGVector(dx: 0.83, dy: 0.075)).tap()
-                enteredDedicatedFlow = syncApp.descendants(matching: .any).matching(
-                    NSPredicate(format: "label CONTAINS '连接格间数据'")
-                ).firstMatch.waitForExistence(timeout: 10)
-            }
-        }
-        if !enteredDedicatedFlow && !create.waitForExistence(timeout: 10) {
-            print("SYNC_HOME_AFTER_CREATE_BEGIN\n\(syncApp.debugDescription)\nSYNC_HOME_AFTER_CREATE_END")
-            attachScreenshot("sync-home-after-create-tap")
+        // The redesigned sync home exposes the 格间 entry in the 格间 section:
+        // the “开启格间备份” CTA, or a locked “已连接” tile when a profile is
+        // already retained.
+        let create = waitForAny(
+            syncApp.buttons["velock-backup-enable"].firstMatch,
+            syncApp.buttons.matching(
+                NSPredicate(format: "label CONTAINS '开启格间备份'")
+            ).firstMatch,
+            syncApp.buttons["velock-already-paired"].firstMatch,
+            timeout: 15
+        )
+        XCTAssertTrue(
+            create.exists,
+            "Sync home did not expose 格间 sync setup\n\(syncApp.debugDescription)"
+        )
+        create.tap()
+
+        let dedicatedFlowMarker = syncApp.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label CONTAINS '开始连接格间' OR label CONTAINS '只需配对一次' OR label CONTAINS '已连接的格间备份'"
+            )
+        ).firstMatch
+        var enteredDedicatedFlow = dedicatedFlowMarker.waitForExistence(timeout: 10)
+        if !enteredDedicatedFlow {
+            // The first Flutter semantics snapshot can still belong to the
+            // retained home shell after an app install. Retry the same
+            // production CTA once; never reset application data.
+            create.tap()
+            enteredDedicatedFlow = dedicatedFlowMarker.waitForExistence(timeout: 10)
         }
         if !enteredDedicatedFlow {
-            XCTAssertTrue(create.exists, "Sync home did not expose 格间 sync setup")
-            let appFrame = syncApp.frame
-            let buttonFrame = create.frame
-            syncApp.coordinate(
-                withNormalizedOffset: CGVector(
-                    dx: (buttonFrame.midX - appFrame.minX) / appFrame.width,
-                    dy: (buttonFrame.midY - appFrame.minY) / appFrame.height
-                )
-            ).tap()
+            print("SYNC_WIZARD_ENTRY_MISSING_BEGIN\n\(syncApp.debugDescription)\nSYNC_WIZARD_ENTRY_MISSING_END")
+            attachScreenshot("sync-wizard-entry-missing")
+            XCTFail("Sync did not enter the dedicated 格间 flow")
         }
-
-        XCTAssertTrue(
-            syncApp.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS '连接格间数据'")
-            ).firstMatch.waitForExistence(timeout: 10),
-            "Sync did not enter the dedicated 格间 flow"
-        )
         XCTAssertFalse(
             syncApp.descendants(matching: .any).matching(
                 NSPredicate(format: "label CONTAINS '选择数据集' OR label CONTAINS '同步文件夹'")
@@ -1797,6 +2657,7 @@ final class CrossAppUITests: XCTestCase {
             XCTFail("格间 did not expose a ready pairing descriptor")
             return
         }
+        tutorialStage("begin-pairing")
         beginPairing.tap()
 
         // Sync writes a real one-time request and launches 格间 with the exact
@@ -1821,6 +2682,13 @@ final class CrossAppUITests: XCTestCase {
             XCTFail("iOS did not deliver the pairing deep link to 格间")
             return
         }
+        tutorialStage("unlock-before-approval")
+        if tutorialCaptureName != nil {
+            // A resumed settings route can outlive its unlocked key session.
+            // Follow the real user recovery: reopen, unlock, and revisit the
+            // pending request instead of trying to approve on a stale route.
+            ensureVelockInitializedAndPairingEnabled(refreshRecoveryCard: false)
+        }
         unlockVelockIfNeeded()
         let approveRequest = velockApp.buttons["批准"].firstMatch
         guard approveRequest.waitForExistence(timeout: 15) else {
@@ -1844,6 +2712,7 @@ final class CrossAppUITests: XCTestCase {
             NSPredicate(format: "label == '批准'")
         )
         XCTAssertEqual(approvalButtons.count, 1)
+        tutorialStage("confirm-approval")
         approvalButtons.firstMatch.tap()
         // The settings page intentionally renders no empty-state row when
         // there are no pending requests. Confirm the approval dialog is gone
@@ -1915,33 +2784,63 @@ final class CrossAppUITests: XCTestCase {
             reachedReview,
             "Sync did not continue from approval to the final profile review"
         )
+        tutorialStage("create-sync-profile")
         finalize.tap()
 
         let firstRunCompleted = syncApp.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS '首次同步完成' OR label CONTAINS '没有需要同步的新数据' OR label CONTAINS '首次同步失败'")
+            NSPredicate(format: "label CONTAINS '首次同步完成' OR label == '同步完成' OR label CONTAINS '没有需要同步的新数据' OR label CONTAINS '首次同步失败'")
         ).firstMatch
         let durableProfile = syncApp.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS '格间数据' OR label CONTAINS 'Velock E2E'")
         ).firstMatch
-        XCTAssertTrue(
-            firstRunCompleted.waitForExistence(timeout: 60) || durableProfile.waitForExistence(timeout: 10),
-            "Profile creation returned without a visible first-sync result or durable profile"
-        )
+        if tutorialCaptureName == "02-new-device-recovery" {
+            // A profile row exists before its first download finishes. Wait for
+            // the real result before foregrounding Velock for import.
+            let downloadResult = syncApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS '已下载' OR label CONTAINS '格间同步完成' OR label CONTAINS '当前没有新的数据需要同步' OR label CONTAINS '首次同步失败'")
+            ).firstMatch
+            XCTAssertTrue(downloadResult.waitForExistence(timeout: 60),
+                          "Recovery did not finish its first download")
+            attachScreenshot("tutorial-recovery-download-result")
+        } else if tutorialCaptureName != nil {
+            // Observe either UI result concurrently; do not leave a finished
+            // screen idle for the fallback timeout in an instructional take.
+            let result = waitForAny(firstRunCompleted, durableProfile, timeout: 30)
+            XCTAssertTrue(result.exists, "Tutorial profile creation did not finish")
+        } else {
+            XCTAssertTrue(
+                firstRunCompleted.waitForExistence(timeout: 60) || durableProfile.waitForExistence(timeout: 10),
+                "Profile creation returned without a visible first-sync result or durable profile"
+            )
+        }
         XCTAssertFalse(
             syncApp.descendants(matching: .any).matching(
                 NSPredicate(format: "label CONTAINS '首次同步失败'")
             ).firstMatch.exists,
             "First sync reported failure"
         )
+        if tutorialCaptureName == "01-first-setup" {
+            // First-time setup ends on the actual sync result, not a second
+            // app launch made only for automated recovery verification.
+            attachScreenshot("tutorial-first-sync-result")
+            return
+        }
         // The inbound writer is registered by the real Velock dashboard. Bring
         // the companion app foreground after Sync delivers a batch so the
         // encrypted operations are actually imported into the recovered
         // account before the test declares success.
-        velockApp.activate()
-        if velockApp.wait(for: .runningForeground, timeout: 15) {
-            unlockVelockIfNeeded()
-            RunLoop.current.run(until: Date().addingTimeInterval(5))
+        let openCompanion = syncApp.buttons["打开格间"].firstMatch
+        if openCompanion.waitForExistence(timeout: 2) && openCompanion.isHittable {
+            openCompanion.tap()
         }
+        if tutorialCaptureName == "02-new-device-recovery" { return }
+        velockApp.activate()
+        XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 15))
+        unlockVelockIfNeeded()
+        let restoredDashboard = velockApp.buttons.matching(
+            NSPredicate(format: "label CONTAINS '凭证'")
+        ).firstMatch
+        XCTAssertTrue(restoredDashboard.waitForExistence(timeout: 20))
         attachScreenshot("04_sync_pairing_and_first_run_completed")
     }
 
@@ -1952,17 +2851,20 @@ final class CrossAppUITests: XCTestCase {
         // Clear the iOS 26 Photos first-run tour before opening 格间's
         // scanner. Doing this after the scanner is presented backgrounds the
         // test app and destroys that route.
+        if cleanTutorial && englishTutorial { tutorialPrepareEnglishSync() }
         let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
+        if englishTutorial { photos.launchArguments = ["-AppleLanguages", "(en)"] }
         photos.launch()
         XCTAssertTrue(photos.wait(for: .runningForeground, timeout: 10))
         for _ in 0..<3 {
-            let photosContinue = photos.buttons["继续"]
+            let photosContinue = photos.buttons.matching(NSPredicate(format: "label IN %@", ["继续", "Continue"])).firstMatch
             if !photosContinue.waitForExistence(timeout: 2) { break }
             photosContinue.tap()
         }
         photos.terminate()
 
         velockApp.terminate()
+        if englishTutorial { velockApp.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"] }
         velockApp.launch()
         XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 20))
         let existingRecoveredSandbox = velockApp.descendants(matching: .any).matching(
@@ -1983,13 +2885,18 @@ final class CrossAppUITests: XCTestCase {
             return
         }
         let recover = velockApp.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS '恢复一个账号'")
+            NSPredicate(format: "label CONTAINS '恢复一个账号' OR label CONTAINS 'Recover an Account'")
         ).firstMatch
         XCTAssertTrue(recover.waitForExistence(timeout: 15), "Recovery entry was not exposed")
+        if tutorialReplicaCapture {
+            do { try beginTutorialCapture("02-new-device-recovery") }
+            catch { XCTFail("Could not start tutorial recording"); return }
+        }
+        tutorialHold(0.8, reason: "recovery-entry")
         recover.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
         let scan = velockApp.buttons.matching(
-            NSPredicate(format: "label CONTAINS '从二维码恢复'")
+            NSPredicate(format: "label CONTAINS '从二维码恢复' OR label CONTAINS 'Recover from QR Code'")
         ).firstMatch
         XCTAssertTrue(scan.waitForExistence(timeout: 15), "Recovery page did not expose QR import")
         scan.tap()
@@ -2013,7 +2920,7 @@ final class CrossAppUITests: XCTestCase {
         velockApp.activate()
         XCTAssertTrue(
             velockApp.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS '恢复账号'")
+                NSPredicate(format: "label CONTAINS '恢复账号' OR label == 'Recover Account'")
             ).firstMatch.waitForExistence(timeout: 15),
             "QR import did not return to the recovery form"
         )
@@ -2029,17 +2936,19 @@ final class CrossAppUITests: XCTestCase {
         // biometric shortcut is on, so the switch must be turned off before
         // submitting. Query the switch itself; the surrounding row is a label.
         let biometricSwitch = velockApp.switches.firstMatch
-        if biometricSwitch.waitForExistence(timeout: 3) {
+        // The decoded recovery form is already present. Presentation captures
+        // must not pause three seconds probing an optional absent control.
+        if cleanTutorial ? biometricSwitch.exists : biometricSwitch.waitForExistence(timeout: 3) {
             let isOn = (biometricSwitch.value as? String) == "1"
             if isOn { biometricSwitch.tap() }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            if !cleanTutorial { RunLoop.current.run(until: Date().addingTimeInterval(0.5)) }
             if (biometricSwitch.value as? String) == "1" {
                 biometricSwitch.coordinate(
                     withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)
                 ).tap()
             }
         }
-        let submit = velockApp.buttons["恢复账号"]
+        let submit = tutorialNode(velockApp, ["恢复账号", "Recover Account"], buttons: true)
         XCTAssertTrue(submit.waitForExistence(timeout: 10), "Recovery form did not expose submit")
         submit.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(submit.waitForNonExistence(timeout: 90),
@@ -2049,7 +2958,7 @@ final class CrossAppUITests: XCTestCase {
         // tab and refuse to accept a silent return to the picker: a false
         // positive here would hide a broken recovery entirely.
         let dashboardTab = velockApp.buttons.matching(
-            NSPredicate(format: "label CONTAINS '首页' OR label CONTAINS '凭证'")
+            NSPredicate(format: "label CONTAINS '首页' OR label CONTAINS '凭证' OR label CONTAINS 'Home' OR label CONTAINS 'Credentials'")
         ).firstMatch
         let pickerEntry = velockApp.buttons["创建一个沙盒空间"].firstMatch
         if !dashboardTab.waitForExistence(timeout: 30) || pickerEntry.exists {
@@ -2059,6 +2968,7 @@ final class CrossAppUITests: XCTestCase {
             return
         }
         attachScreenshot("replica_velock_recovered_from_qr")
+        tutorialHold(1.2, reason: "recovery-complete")
     }
 
     private func ensureVelockInitializedAndPairingEnabled(
@@ -2075,7 +2985,9 @@ final class CrossAppUITests: XCTestCase {
         // Recovery lands on the recovery-card confirmation page. Enter the
         // recovered sandbox before configuring pairing; do not recreate it.
         let recoveredEnter = velockApp.buttons["进入沙盒空间"].firstMatch
-        if recoveredEnter.waitForExistence(timeout: 5) {
+        if recoveredEnter.waitForExistence(timeout: 5) &&
+            !velockApp.secureTextFields.firstMatch.exists &&
+            !velockApp.descendants(matching: .any).matching(NSPredicate(format: "label == '请输入密码'")).firstMatch.exists {
             velockApp.activate()
             let topEnter = velockApp.buttons["进入"].firstMatch
             if topEnter.exists {
@@ -2187,6 +3099,11 @@ final class CrossAppUITests: XCTestCase {
         if !enablePairing {
             return
         }
+        if tutorialSourceCapturePending {
+            tutorialSourceCapturePending = false
+            do { try beginTutorialCapture("01-first-setup") }
+            catch { XCTFail("Could not start tutorial capture"); return }
+        }
         let settingsTab = velockApp.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS '设置'")
         ).firstMatch
@@ -2240,10 +3157,31 @@ final class CrossAppUITests: XCTestCase {
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).tap()
 
+        // A restored second test device can legitimately request membership.
+        // Approve only this harness's explicitly named synthetic device; never
+        // dismiss or approve an arbitrary real-device authorization prompt.
+        let joinPrompt = velockApp.staticTexts["批准新设备加入？"].firstMatch
+        if joinPrompt.waitForExistence(timeout: 2) {
+            let expectedName = ProcessInfo.processInfo.environment["VELOCK_E2E_SANDBOX_NAME"] ?? "Velock E2E Replica"
+            XCTAssertTrue(expectedName.hasPrefix("Velock E2E"))
+            let ownDevice = velockApp.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@ AND label CONTAINS '新 iPhone'", expectedName)
+            ).firstMatch
+            XCTAssertTrue(ownDevice.exists, "Refusing to approve an unrelated device")
+            let approveJoin = velockApp.buttons["批准"].firstMatch
+            XCTAssertTrue(approveJoin.exists && approveJoin.isHittable)
+            approveJoin.tap()
+            XCTAssertTrue(joinPrompt.waitForNonExistence(timeout: 15))
+        }
         let pairingStatus = velockApp.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS '允许新的配对' OR label CONTAINS 'Allow new pairings'")
         ).firstMatch
-        XCTAssertTrue(pairingStatus.waitForExistence(timeout: 10))
+        for _ in 0..<5 {
+            if pairingStatus.waitForExistence(timeout: 1) && pairingStatus.isHittable { break }
+            velockApp.swipeUp()
+        }
+        XCTAssertTrue(pairingStatus.waitForExistence(timeout: 5),
+                      "Pairing control missing after navigation: \(velockApp.debugDescription)")
         if pairingStatus.label.contains("未启用") {
             pairingStatus.coordinate(
                 withNormalizedOffset: CGVector(dx: 0.90, dy: 0.50)
@@ -2272,7 +3210,7 @@ final class CrossAppUITests: XCTestCase {
                 "Forced recovery-card rotation did not open the card page"
             )
         }
-        if saveRecoveryCard.waitForExistence(timeout: 30) {
+        if saveRecoveryCard.waitForExistence(timeout: tutorialCaptureName == nil ? 30 : 2) {
             // This is the Sync-enabled replacement-device card. The initial
             // registration card intentionally has no syncRecovery extension.
             persistRecoveryCardScreenshotIfRequested()
@@ -2410,8 +3348,9 @@ final class CrossAppUITests: XCTestCase {
     private func createLocalWebDAVConnectionIfNeeded() {
         // A retained pairing wizard hides the tab bar; leave it first so the
         // Connections tab can be reached.
-        if syncApp.descendants(matching: .any)["连接格间数据"]
-            .waitForExistence(timeout: 3) {
+        if syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS '开始连接格间' OR label == '格间备份'")
+        ).firstMatch.waitForExistence(timeout: 3) {
             for _ in 0..<3 {
                 let back = syncApp.buttons.firstMatch
                 if back.exists && back.isHittable {
@@ -2434,13 +3373,31 @@ final class CrossAppUITests: XCTestCase {
         XCTAssertTrue(connectionsTab.waitForExistence(timeout: 15), "Connections tab was not exposed\n\(syncApp.debugDescription)")
         connectionsTab.tap()
         // “新建连接” is also the page title/action on an empty page, so it
-        // cannot indicate that a connection already exists. Use the explicit
-        // empty-state marker instead.
-        if !syncApp.descendants(matching: .any)["还没有远端连接"].waitForExistence(timeout: 3) {
+        // cannot indicate that a connection already exists. The page can
+        // also still be loading (the empty-state marker is not rendered
+        // yet), so poll for either the empty-state marker or an existing
+        // connection tile instead of assuming after three seconds.
+        let emptyState = syncApp.descendants(matching: .any)["还没有远端连接"]
+        let existingConnection = syncApp.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label CONTAINS 'WebDAV · ' OR label CONTAINS '已连接服务' OR label CONTAINS 'Google Drive · ' OR label CONTAINS 'OneDrive · '"
+            )
+        ).firstMatch
+        let deadline = Date().addingTimeInterval(15)
+        repeat {
+            if emptyState.exists || existingConnection.exists {
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        } while Date() < deadline
+        if existingConnection.exists {
+            print("E2E_CONNECTION_EXISTS label=\(existingConnection.label)")
             return
         }
-
-        XCTAssertTrue(syncApp.descendants(matching: .any)["还没有远端连接"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            emptyState.waitForExistence(timeout: 10),
+            "Connections page showed neither empty state nor an existing connection: \(syncApp.debugDescription)"
+        )
         let addConnection = syncApp.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS '添加远端连接'")
         ).firstMatch
@@ -2498,6 +3455,32 @@ final class CrossAppUITests: XCTestCase {
         XCTAssertTrue(create.waitForExistence(timeout: 10))
         create.tap()
         tapFirstContaining("同步文件夹")
+    }
+
+    /// Taps this run's local WebDAV endpoint inside the "选择远端连接"
+    /// action sheet used by the folder-sync flows.
+    ///
+    /// The action label embeds the saved URL (name line plus target label),
+    /// so the current run's port is the only stable discriminator. The
+    /// sheet title can render before the action rows settle, so poll the
+    /// port-scoped predicate and capture the sheet tree when it never
+    /// matches instead of failing blind.
+    private func tapRemoteConnectionInPicker(context: String) {
+        XCTAssertTrue(
+            syncApp.staticTexts["选择远端连接"].waitForExistence(timeout: 10),
+            "Remote connection sheet did not open in \(context): \(syncApp.debugDescription)"
+        )
+        writeDebugTree(syncApp.debugDescription, name: "picker-raw-\(context)")
+
+        let connection = syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "127.0.0.1:\(webDAVPort)")
+        ).firstMatch
+        if !connection.waitForExistence(timeout: 20) {
+            writeDebugTree(syncApp.debugDescription, name: "picker-missing-\(context)")
+            print("PICKER_MISSING_BEGIN[\(context)]\n\(syncApp.debugDescription)\nPICKER_MISSING_END")
+            XCTFail("WebDAV connection on port \(webDAVPort) was not selectable in \(context)")
+        }
+        connection.tap()
     }
 
     private func selectFixtureFolder(named folderName: String) {

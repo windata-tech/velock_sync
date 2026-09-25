@@ -9,6 +9,8 @@ import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_sto
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
+import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_remote_history_guard.dart';
 import 'package:velock_sync/sync_core/engine/logical_keys.dart';
 import 'package:velock_sync/sync_core/engine/sync_checkpoint_publisher.dart';
 import 'package:velock_sync/sync_core/engine/sync_garbage_collector.dart';
@@ -24,7 +26,8 @@ class VelockExchangeDatasetAdapter
         StreamingIncomingBatchAdapter,
         GarbageCollectionCandidateProvider,
         CheckpointPreparingDatasetAdapter,
-        CheckpointRecoveringDatasetAdapter {
+        CheckpointRecoveringDatasetAdapter,
+        RemoteHistoryValidatingDatasetAdapter {
   VelockExchangeDatasetAdapter({
     required this.datasetId,
     required this.vaultId,
@@ -49,6 +52,7 @@ class VelockExchangeDatasetAdapter
   Directory get exchangeRoot => _exchange.root;
   final Uuid _uuid;
   VelockClaimedOutbox? _claimed;
+  int _publishedThroughSequence = 0;
 
   @override
   Future<DatasetDescriptor> describe() async => DatasetDescriptor(
@@ -200,6 +204,9 @@ class VelockExchangeDatasetAdapter
         ),
       ),
     );
+    if (sequence > _publishedThroughSequence) {
+      _publishedThroughSequence = sequence;
+    }
     await _exchange.removeClaimedOutbox(batchId);
     _claimed = null;
   }
@@ -245,28 +252,44 @@ class VelockExchangeDatasetAdapter
   Future<ImportResult?> reconcileIncomingBatch(
     IncomingBatchReference batch,
   ) async {
+    if (batch.vaultId != vaultId) {
+      throw const FormatException('Vault mismatch.');
+    }
     final bytes = await _exchange.readInboxReceipt(batch.batchId);
     if (bytes == null) return null;
     final receipt = jsonDecode(utf8.decode(bytes));
     if (receipt is! Map<String, dynamic> ||
+        receipt['protocolVersion'] is! int ||
         receipt['protocolVersion'] != 1 ||
         receipt['batchId'] != batch.batchId ||
+        // Older peers omit vaultId; when present it must bind this receipt to
+        // the same vault as the request and adapter.
+        (receipt.containsKey('vaultId') && receipt['vaultId'] != vaultId) ||
         receipt['sourceDeviceId'] != batch.sourceDeviceId ||
+        receipt['sequence'] is! int ||
         receipt['sequence'] != batch.sequence ||
         receipt['status'] != 'imported') {
       throw const FormatException('Inbox receipt is invalid.');
     }
     final ackPath = receipt['ackArtifactRelativePath'];
-    if (ackPath is! String || !ackPath.startsWith('ack/')) {
-      throw const FormatException('Inbox receipt has no ACK artifact.');
+    if (ackPath is! String ||
+        !ackPath.startsWith('ack/') ||
+        ackPath.contains('\\') ||
+        ackPath.contains('\u0000') ||
+        ackPath
+            .split('/')
+            .any((part) => part.isEmpty || part == '.' || part == '..')) {
+      throw const FormatException('Inbox receipt has no valid ACK path.');
+    }
+    final ack = await _exchange.readInboxArtifact(
+      batchId: batch.batchId,
+      relativePath: ackPath,
+    );
+    if (ack.isEmpty) {
+      throw const FormatException('Inbox ACK artifact is empty.');
     }
     return ImportResult(
-      acknowledgementArtifact: ImmutableArtifact.fromBytes(
-        await _exchange.readInboxArtifact(
-          batchId: batch.batchId,
-          relativePath: ackPath,
-        ),
-      ),
+      acknowledgementArtifact: ImmutableArtifact.fromBytes(ack),
     );
   }
 
@@ -296,6 +319,28 @@ class VelockExchangeDatasetAdapter
 
   Future<String> _sha256(ImmutableArtifact artifact) async =>
       sha256.convert(await _read(artifact)).toString();
+
+  @override
+  Future<void> verifyRemoteHistory(RemoteObjectStore remote) async {
+    // prepareCheckpoint verifies the local signature/binding first. Remote
+    // checkpoints are never accepted as proof of missing business records.
+    final checkpoint = await prepareCheckpoint();
+    var through = _publishedThroughSequence;
+    if (checkpoint != null) {
+      final envelope =
+          jsonDecode(utf8.decode(await _read(checkpoint.envelope)))
+              as Map<String, dynamic>;
+      final covered =
+          (envelope['coveredSequences'] as Map)[producerDeviceId] as int;
+      if (covered > through) through = covered;
+    }
+    await verifyVelockRemoteHistory(
+      remote: remote,
+      vaultId: vaultId,
+      producerDeviceId: producerDeviceId,
+      requiredThroughSequence: through,
+    );
+  }
 
   @override
   Future<PreparedCheckpoint?> prepareCheckpoint() async {

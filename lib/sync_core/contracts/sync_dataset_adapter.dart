@@ -1,6 +1,8 @@
 import 'package:cryptography/cryptography.dart';
 import 'dart:typed_data';
 
+import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
+
 import 'package:velock_sync/sync_core/engine/sync_garbage_collector.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 
@@ -276,3 +278,9 @@ abstract interface class SyncDatasetAdapter {
 /// the core must keep its applied cursor and ACKs behind the confirmed prefix.
 abstract interface class OrderedDeferredIncomingBatchAdapter
     implements DeferredIncomingBatchAdapter {}
+
+/// Optional fail-closed check before a run may report success. A progress-only
+/// checkpoint must not make missing business history look like a full backup.
+abstract interface class RemoteHistoryValidatingDatasetAdapter {
+  Future<void> verifyRemoteHistory(RemoteObjectStore remote);
+}

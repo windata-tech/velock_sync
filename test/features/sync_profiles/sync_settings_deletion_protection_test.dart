@@ -1,3 +1,4 @@
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -39,7 +40,16 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [syncSettingsServiceProvider.overrideWithValue(service)],
-        child: const MaterialApp(home: SyncSettings()),
+        child: const MaterialApp(
+          locale: const Locale('zh', 'CN'),
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: SyncSettings(),
+        ),
       ),
     );
     await tester.pumpAndSettle();

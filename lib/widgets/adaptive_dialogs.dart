@@ -1,3 +1,4 @@
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -100,7 +101,7 @@ Future<T?> showAdaptiveActionSheet<T>({
   String? title,
   String? message,
   required List<AdaptiveAction<T>> actions,
-  String cancelLabel = '取消',
+  String? cancelLabel,
   bool barrierDismissible = true,
 }) {
   if (actions.isEmpty) return Future<T?>.value();
@@ -124,7 +125,7 @@ Future<T?> showAdaptiveActionSheet<T>({
         cancelButton: CupertinoActionSheetAction(
           isDefaultAction: true,
           onPressed: () => Navigator.of(sheetContext).pop(),
-          child: Text(cancelLabel),
+          child: Text(cancelLabel ?? syncText(context, '取消', 'Cancel')),
         ),
       ),
     );
@@ -259,7 +260,7 @@ Future<bool> showAdaptiveConfirmation(
   required String title,
   required String message,
   required String confirmLabel,
-  String cancelLabel = '取消',
+  String? cancelLabel,
   bool isDestructive = false,
   Key? confirmKey,
   Key? cancelKey,
@@ -270,7 +271,7 @@ Future<bool> showAdaptiveConfirmation(
     message: message,
     actions: [
       AdaptiveAlertAction<bool>(
-        label: cancelLabel,
+        label: cancelLabel ?? syncText(context, '取消', 'Cancel'),
         value: false,
         key: cancelKey,
       ),
@@ -293,7 +294,7 @@ Future<void> showAdaptiveNotice({
   required String title,
   required String message,
   Widget? details,
-  String confirmLabel = '好',
+  String? confirmLabel,
   Key? confirmKey,
 }) async {
   await showAdaptiveAlert<Object?>(
@@ -303,7 +304,7 @@ Future<void> showAdaptiveNotice({
     details: details,
     actions: [
       AdaptiveAlertAction<Object?>(
-        label: confirmLabel,
+        label: confirmLabel ?? syncText(context, '好', 'OK'),
         value: null,
         key: confirmKey,
         isDefault: true,
@@ -426,7 +427,7 @@ Future<List<String>?> showAdaptiveTextInputs({
   String? message,
   required List<AdaptiveTextInput> inputs,
   required String confirmLabel,
-  String cancelLabel = '取消',
+  String? cancelLabel,
   bool Function(List<String> values)? isValid,
   Key? confirmKey,
 }) {
@@ -435,7 +436,7 @@ Future<List<String>?> showAdaptiveTextInputs({
     message: message,
     inputs: inputs,
     confirmLabel: confirmLabel,
-    cancelLabel: cancelLabel,
+    cancelLabel: cancelLabel ?? syncText(context, '取消', 'Cancel'),
     isValid: isValid,
     confirmKey: confirmKey,
   );

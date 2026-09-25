@@ -1,3 +1,4 @@
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
@@ -181,7 +182,13 @@ final goRouter = GoRouter(
       builder: (context, state) {
         final profileId = state.pathParameters['profileId'];
         if (profileId == null || profileId.isEmpty) {
-          return const Scaffold(body: Center(child: Text('找不到该同步配置。')));
+          return Scaffold(
+            body: Center(
+              child: Text(
+                syncText(context, '找不到该同步配置。', "Sync profile not found."),
+              ),
+            ),
+          );
         }
         return SyncProfileDetail(profileId: profileId);
       },
@@ -276,19 +283,22 @@ class WDShellPage extends StatelessWidget {
           : null,
       bottomNavBar: PlatformNavBar(
         backgroundColor: context.appGroupedSurface,
-        items: const [
+        items: [
           BottomNavigationBarItem(
             icon: Icon(CupertinoIcons.arrow_2_circlepath),
-            label: '同步',
+            label: syncText(context, '同步', "Sync"),
           ),
-          BottomNavigationBarItem(icon: Icon(CupertinoIcons.link), label: '连接'),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.link),
+            label: syncText(context, '连接', "Connections"),
+          ),
           BottomNavigationBarItem(
             icon: Icon(CupertinoIcons.clock),
-            label: '活动',
+            label: syncText(context, '活动', "Activity"),
           ),
           BottomNavigationBarItem(
             icon: Icon(CupertinoIcons.gear_alt),
-            label: '设置',
+            label: syncText(context, '设置', "Settings"),
           ),
         ],
         currentIndex: navigationShell.currentIndex,

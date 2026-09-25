@@ -1,0 +1,30 @@
+{
+  "language": "zh",
+  "artifact_root": "/absolute/external-artifacts/tutorial",
+  "devices": {
+    "source": "DISPOSABLE-SOURCE-UDID",
+    "replica": "DISPOSABLE-REPLICA-UDID"
+  },
+  "disposable_devices": [
+    "DISPOSABLE-SOURCE-UDID",
+    "DISPOSABLE-REPLICA-UDID"
+  ],
+  "sync_app": "/absolute/build-cache/sync/Runner.app",
+  "velock_app": "/absolute/build-cache/companion/Runner.app",
+  "velock_root": "/absolute/velock_codex",
+  "secrets_file": "/absolute/private/demo-secrets.local.json",
+  "port": 18994,
+  "keep_source": true,
+  "keep_replica": false,
+  "prepared": true,
+  "replica_only": false,
+  "use_installed": false,
+  "required_kinds": [
+    "file",
+    "media",
+    "password",
+    "card",
+    "note",
+    "document"
+  ]
+}

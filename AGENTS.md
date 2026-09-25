@@ -15,3 +15,52 @@
 
 - `tool/local_webdav/start_local_webdav.sh [start|stop|restart|status]`，默认端口 8888、账号 `velock` / `velock123`，数据根目录 `ui_test_results/persistent-webdav-root`。
 - 这是模拟器/本机自测用的假服务，与上面的 NAS 无关，勿混用凭据。
+
+## 教程录制与验收（跨会话入口）
+
+- 用户要求录制/重录“首次配置格间同步 + 新设备恢复”时，**先读 `docs/testing/tutorial-recording.md`**，不要重新探索旧失败流程。
+- 可复用入口：`tool/ios_ui_test/tutorial/record.py`；先 `--check`。配置 `*.local.json` 忽略 Git，秘密仅来自私有 0600 文件；默认会擦除显式白名单中的专用模拟器，必须先核对。
+- UI 路径固化在 `ui_test_harness/CrossAppUITests/CrossAppUITests.swift` 的 `testTutorialSourceFlow` / `testTutorialReplicaFlow`。录前准备与录制分离，模拟器操作串行，只读 QA/逻辑测试可并行。
+- 密码按输入框角色定位、聚焦后不用旧节点、只提交一次；返回导航一次点击一次等待；批准弹窗匹配完整标题。详见上述手册，不再盲试坐标或整段重复重录。
+- 录像用原生 simctl + start/recording/stop/stopped 握手；不剪辑、不变速。`run_qc.sh` 对每段以 0.2 秒扫描，错误拒绝、停留人工复核，再验恢复身份/真实业务内容。XCTest 通过不代表录像合格。
+- 已接受历史交付：`ui_test_results/tutorial-20260919/delivery-v2/`；根目录旧片已撤回。详细证据 `docs/verification/2026-09-19-tutorial-retakes.md`，以“最终交付”为准。
+
+### 同步覆盖范围：用户明确优先级（2026-09-19）
+
+- **文件、相册是重点**；普通账号、信用卡、日记/备注必须分别准备和恢复验收，不得仅一条 password 就宣称同步通过。
+- 教程固定 host 六类 file/media/password/card/note/document；UI 打开文件正文、照片原图、账号详情、信用卡详情、备注正文。document 额外 host 验证，不冒称手机已有文档展示。
+- 新入口录前检查真实六类数据，旧仅密码的 zh/en 源设备应被拒绝。不能降低 REQUIRED_KINDS、把目录/缩略图/列表摘要当完整内容来绕过。
+- `delivery-v2` 仍是历史基础配置演示，不是全内容验收；后续须准备完整样例、实跑新版路径，再重新录制和 QA。
+- 2026-09-19 实测陷阱：准备源已有 published 批次时，新的空 WebDAV 不会自动得到全部旧数据；进度checkpoint没有业务快照。录制器已前置拒绝这种组合，禁止降低远端完整性门禁。`zh-full-01` 未通过、未交付；产品远端迁移/完整重传仍待修复。
+- 2026-09-19 后续已修复 Apple Sync 的缺历史误报：runner 完成前校验本地验签进度对应的远端commit连续性，缺失记 `remote.velock_history_incomplete`；160项回归及实际模拟器拒绝测试通过。**仅误报/安全阻断修复，不是自动全量迁移完成**。历史原包已删时需完整旧备份或可信完整快照；详见 `docs/verification/2026-09-19-empty-remote-history-fix.md`。
+- 2026-09-19 继续全量快照时发现并修复 companion 多文件导入binding：每条file只传自己的blob，批次文件缺附件先拒绝；DELETE历史blob refs不得要求新上传。隔离还原旧行可稳定重现，相关35项测试通过。快照依赖排序7项测试完成，但完整快照协议/传输/UI尚未接通，不能称自动补传完成；详见 `docs/verification/2026-09-19-current-snapshot-progress.md`。
+
+- 当前快照新增组件：companion `sync_current_state_source.dart` 从真实业务表读取（含无change_log的导入记录）；`sync_current_snapshot.dart` 独立签名、加密分part与流式blob校验。174项合并回归通过，但Native回调/稳定heads/持久暂存/传输/恢复游标/UI尚未接通。禁止把VerifiedCurrentSnapshot当完成回执或重用旧checkpoint放行；同snapshotID必须复用原始暂存字节，不能重新prepare覆盖。详见上述设计与验证报告。
+- 后续 Native读取binding + 原始密文暂存已实现：companion `sync_current_state_native_binding.dart` / `sync_current_snapshot_store.dart`。228项合并回归通过，六类真实SQLite→加密→磁盘→重新读取验收通过；Native通道为mock，未上设备。必须绑定解锁session、保留源hash/fence、缓存复用原字节并外部验签；每进程一个writer isolate。仍未接runtime/稳定heads/跨App及WebDAV/恢复完成状态机，不能宣称完整自动迁移。详见同一快照设计与验证报告。
+- 快照已有 `SyncPasswordExchangeRuntime.stageCurrentSnapshot` 显式本地生成入口，frontier+producer连通，297项合并回归通过（实际runtime方法调用但Native为测试替身）。仍无UI/上传/恢复调用。必须由应用提供覆盖所有写入者的排他scope；只允许连续已发布本地链作为heads。后续V2已携带删除因果元数据，生成端不再一概拒绝墓碑；旧V1快照拒绝，恢复完成/历史完整性门禁保持。
+
+- 最新进展：独立快照V2/domain2支持九类紧凑墓碑（无历史正文/blob）；真实source→加密→磁盘与runtime生成都包含删除状态。新空空间原子墓碑installer验证旧账号/文件upsert不复活、并发进入冲突；401条跨批失败全回滚。400项合并回归通过。旧增量V1不变；完整恢复状态机/游标安装、传输/UI/设备验收仍未完成，installer不写ACK或cursor，不能称完整同步已修好。
+
+## 全内容教程录制（2026-09-20）
+
+- 操作与脚本说明：`docs/testing/tutorial-recording.md`；真实回归证据：`docs/verification/2026-09-20-full-tutorial-recovery.md`。新鲜、从未发布的源使用 `tool/ios_ui_test/tutorial/prepare_source.py`，画外造数后覆盖安装 production，再五类 UI/六类 host 校验；禁止仅账号录制冒充全内容。
+- 录制自动保存通过校验的 `pristine-remote` 和对应私有恢复卡。恢复段重录从完整 pristine 远端克隆新测试目录，保留源历史；失败替换设备的旧 join request 会触发真实审批弹窗，不能误批准或靠剪辑掩盖。
+- 首次系统文件选择器从 Recents 进入 Browse；添加按钮不能模糊命中空状态文案；英文底部实际为 `File` / `Photo` 单数，必须匹配按钮而不是 Settings 的 `Photos Preference`。
+- 录像不裁切/加速；失败 take 不交付。QC 的同标签停留告警需看实际帧，不能把自动无错误等同于无卡顿或完整业务验收。恢复卡仅可在完全隔离、永不存真实数据的演示空间中公开。
+
+- 间歇性凭证回读失败已定位外部native库 `crypto_new` 的header hash偏移多12字节；iOS双slice修复已集成，432合成roundtrip及17padding边界通过。保留失败关闭与回读门禁；旧损坏密文不能自动修复，其他平台尚未重建。详见上述2026-09-20验证报告及companion AGENTS。
+
+### 专用模拟器生命周期（2026-09-20 纠正）
+
+- 教程/恢复测试开始前先盘点现有模拟器：优先复用上一轮有效的专用配对；失效或属于旧 take 的 `Velock ...` 模拟器先删除，禁止为每次 take 无限新建。
+- 同一时间最多保留一对专用设备（source + replica），且只能擦除显式配置白名单中的设备。绝不删除真机或用户标准 `iPhone ...` 模拟器。
+- 交付完成、失败终止或用户要求清理时，必须删除全部 `Velock ...` 专用模拟器；交付视频、日志和验证证据保存在项目外 artifacts，不依赖模拟器容器。
+- 清理后以 `xcodebuildmcp simulator-management list` 复核，列表中不应再有 `Velock ...` 测试模拟器。
+
+### 用户教程视频：构建模式与节奏门禁（2026-09-20）
+
+- Flutter 官方不支持 iOS Simulator 的 Release/Profile 构建：`flutter build ios --simulator --release` 与 `--profile` 都会直接返回 “mode is not supported for simulators”。不得把 Debug 模拟器视频标注成 Release；2026-09-20 用户明确接受本轮 Debug 模拟器教程交付。
+- 如果用户重新要求 Release 真机教程，必须在两台物理 iOS 设备上录制；当前物理设备不足时不能把 Debug 冒充 Release。模拟器 Debug 只适用于用户明确接受这一限制的版本。
+- 用户可见节奏固定：关键内容页至少停留 2.3 秒；每次点击后 0.45 秒过渡；表单输入完成后 0.6 秒；同步结果至少 2.4 秒。等待必须由真实状态断言驱动，不能用长固定 sleep 掩盖。
+- `E2E_TUTORIAL_PACE=1` 打开节奏控制，并写入 `tutorial-stage-timeline.tsv`。交付前必须按时间线检查过快/过长间隔；只通过覆盖门禁但没有节奏审查的原始片仍不算可交付。
+- 2026-09-20 已接受 `delivery-pace-20260920`：中文首次配置138.98秒、中文恢复160.07秒、英文首次配置139.05秒、英文恢复157.46秒；内容页2.3秒、点击0.45秒、输入0.6秒、同步结果2.4秒。QC同标签区间均经人工抽帧确认不是冻结。

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
@@ -273,6 +274,11 @@ class SyncUploadEngine {
       );
       return false;
     } on Object catch (error) {
+      // Debug-only, privacy-safe diagnostic: never print keys, URLs, bodies or
+      // credentials. This distinguishes transport failures from local artifacts.
+      if (kDebugMode) {
+        debugPrint('SYNC_DIAG upload_failed=${error.runtimeType}');
+      }
       await _database.failTransferJob(
         transferId: transferId,
         errorCode: SyncFailureClassifier.classify(error).errorCode,

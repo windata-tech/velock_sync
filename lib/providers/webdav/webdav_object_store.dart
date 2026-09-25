@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -9,6 +11,7 @@ import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/sync_core/model/sync_failure.dart';
 import 'package:xml/xml.dart';
 
 /// WebDAV mapping for provider-neutral protocol logical keys.
@@ -41,6 +44,9 @@ class WebDavObjectStore implements RemoteObjectStore {
   final ProviderRateLimitRetry _rateLimitRetry;
   final String? username;
   final String? password;
+
+  // Shared by concurrent writes, scoped to this endpoint/authentication instance.
+  Future<void>? _atomicCreateReady;
 
   @override
   final RemoteCapabilities capabilities;
@@ -180,14 +186,22 @@ class WebDavObjectStore implements RemoteObjectStore {
   }) async {
     cancellation?.throwIfCancelled();
     final objectUri = _objectUri(logicalKey);
+    if (contentLength < 0) {
+      throw ArgumentError.value(contentLength, 'contentLength');
+    }
+    if (ifAbsent) {
+      return _putIfAbsent(
+        logicalKey,
+        content,
+        contentLength: contentLength,
+        cancellation: cancellation,
+      );
+    }
     await _ensureParentCollections(logicalKey, cancellation: cancellation);
     final headers = <String, String>{
       'Content-Type': 'application/octet-stream',
       'Content-Length': '$contentLength',
     };
-    if (ifAbsent) {
-      headers['If-None-Match'] = '*';
-    }
     late final Response<void> response;
     try {
       response = await _request(
@@ -230,6 +244,245 @@ class WebDavObjectStore implements RemoteObjectStore {
       etag: response.headers.value('etag'),
     );
   }
+
+  /// PUT If-None-Match is ignored by some NAS servers. Never send an immutable
+  /// payload to its final URI: publish a private upload with atomic MOVE instead.
+  /// A HEAD-then-PUT check is deliberately NOT used (it races other writers).
+  Future<RemoteObjectMetadata> _putIfAbsent(
+    String key,
+    Stream<List<int>> content, {
+    required int contentLength,
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    if (!capabilities.supportsConditionalCreate) {
+      throw _atomicCreateUnsupported();
+    }
+    final ready = _atomicCreateReady ??= _probeAtomicMove().catchError((
+      Object error,
+    ) {
+      // A transient outage must not permanently poison this store instance.
+      // Unsupported semantics stay fail-closed until a new connection is made.
+      if (error is! UnsupportedError) _atomicCreateReady = null;
+      Error.throwWithStackTrace(error, StackTrace.current);
+    });
+    await Future.any<void>([
+      ready,
+      if (cancellation != null)
+        cancellation.whenCancelled.then<void>(
+          (_) => throw const RemoteOperationCancelledException(),
+        ),
+    ]);
+    cancellation?.throwIfCancelled();
+    await _ensureParentCollections(key, cancellation: cancellation);
+    final temporary = await _createPrivateCollection(
+      'upload',
+      cancellation: cancellation,
+    );
+    try {
+      cancellation?.throwIfCancelled();
+      await _request(
+        () => _dio.putUri<void>(
+          _objectUri('$temporary/payload'),
+          data: content,
+          cancelToken: dioCancelTokenFor(cancellation),
+          options: _options(
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'Content-Length': '$contentLength',
+            },
+            // A caller stream is not replayable: do not retry a consumed upload
+            // on 429. Retrying the whole operation creates a new private source.
+            validateStatus: (status) =>
+                status == 201 || status == 200 || status == 204,
+          ),
+        ),
+        cancellation: cancellation,
+      );
+      cancellation?.throwIfCancelled();
+      final response = await _moveAbsent(
+        '$temporary/payload',
+        key,
+        cancellation: cancellation,
+      );
+      if (response.statusCode == 412) {
+        throw RemoteObjectAlreadyExistsException(key);
+      }
+      // Only 201 means creation. Never interpret an overwrite/unsupported result
+      // as successful immutable publication, and never fall back to direct PUT.
+      if (response.statusCode != 201) throw _atomicCreateUnsupported();
+      return RemoteObjectMetadata(
+        logicalKey: key,
+        size: contentLength,
+        updatedAt: DateTime.now().toUtc(),
+        etag: response.headers.value('etag'),
+      );
+    } finally {
+      await _removePrivateCollection(temporary);
+    }
+  }
+
+  Future<Response<void>> _moveAbsent(
+    String source,
+    String destination, {
+    RemoteOperationCancellation? cancellation,
+  }) => _request(
+    () => _dio.requestUri<void>(
+      _objectUri(source),
+      cancelToken: dioCancelTokenFor(cancellation),
+      options: _options(
+        method: 'MOVE',
+        headers: {
+          'Destination': _objectUri(destination).toString(),
+          'Overwrite': 'F',
+        },
+        validateStatus: (status) =>
+            status == 201 ||
+            status == 204 ||
+            status == 412 ||
+            status == 405 ||
+            status == 501 ||
+            status == 429,
+      ),
+    ),
+    cancellation: cancellation,
+  );
+
+  Future<String> _createPrivateCollection(
+    String kind, {
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    final random = Random.secure();
+    final token = List.generate(
+      16,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+    final key = '.velock-$kind-$token';
+    final response = await _request(
+      () => _dio.requestUri<void>(
+        _objectUri(key),
+        cancelToken: dioCancelTokenFor(cancellation),
+        options: _options(
+          method: 'MKCOL',
+          validateStatus: (status) =>
+              status == 201 || status == 405 || status == 409 || status == 429,
+        ),
+      ),
+      cancellation: cancellation,
+    );
+    // No ownership on conflict: never reuse, write into, or delete that path.
+    if (response.statusCode != 201) throw _atomicCreateUnsupported();
+    return key;
+  }
+
+  Future<void> _probeAtomicMove() async {
+    // Shared across concurrent writers, so caller cancellation must not cancel
+    // another writer's probe. The probe still has its own bounded lifetime.
+    final cancellation = RemoteOperationCancellation();
+    final deadline = Timer(const Duration(seconds: 20), cancellation.cancel);
+    String? temporary;
+    try {
+      temporary = await _createPrivateCollection(
+        'probe',
+        cancellation: cancellation,
+      );
+      final source = '$temporary/source';
+      final target = '$temporary/target';
+      const sourceBytes = [17, 31, 53];
+      const targetBytes = [71, 89, 107];
+      for (final entry in {source: sourceBytes, target: targetBytes}.entries) {
+        await _request(
+          () => _dio.putUri<void>(
+            _objectUri(entry.key),
+            cancelToken: dioCancelTokenFor(cancellation),
+            data: Stream.value(entry.value),
+            options: _options(
+              headers: {
+                'Content-Length': '${entry.value.length}',
+                'Content-Type': 'application/octet-stream',
+              },
+              validateStatus: (status) => status == 201,
+            ),
+          ),
+          cancellation: cancellation,
+        );
+      }
+      final collision = await _moveAbsent(
+        source,
+        target,
+        cancellation: cancellation,
+      );
+      // Verify bytes even on 412: a broken server can report a precondition
+      // failure after overwriting. All destructive probing stays in our directory.
+      final sourceAfter = await read(
+        source,
+        cancellation: cancellation,
+      ).expand((bytes) => bytes).toList();
+      final targetAfter = await read(
+        target,
+        cancellation: cancellation,
+      ).expand((bytes) => bytes).toList();
+      if (collision.statusCode != 412 ||
+          !listEquals(sourceAfter, sourceBytes) ||
+          !listEquals(targetAfter, targetBytes)) {
+        throw _atomicCreateUnsupported();
+      }
+      final created = await _moveAbsent(
+        source,
+        '$temporary/published',
+        cancellation: cancellation,
+      );
+      if (created.statusCode != 201 ||
+          !listEquals(
+            await read(
+              '$temporary/published',
+              cancellation: cancellation,
+            ).expand((bytes) => bytes).toList(),
+            sourceBytes,
+          ) ||
+          await stat(source, cancellation: cancellation) != null) {
+        throw _atomicCreateUnsupported();
+      }
+    } on RemoteObjectNotFoundException {
+      throw _atomicCreateUnsupported();
+    } on RemoteOperationCancelledException {
+      throw const _AtomicCreateProbeTimeout();
+    } finally {
+      deadline.cancel();
+      if (temporary != null) await _removePrivateCollection(temporary);
+    }
+  }
+
+  Future<void> _removePrivateCollection(String key) async {
+    final cancellation = RemoteOperationCancellation();
+    final deadline = Timer(const Duration(seconds: 5), cancellation.cancel);
+    try {
+      // Independent of caller cancellation: remove only our successfully MKCOL'd
+      // random collection, never the immutable destination or an existing folder.
+      await _request(
+        () => _dio.deleteUri<void>(
+          _objectUri(key),
+          cancelToken: dioCancelTokenFor(cancellation),
+          options: _options(
+            validateStatus: (status) =>
+                status == 200 ||
+                status == 204 ||
+                status == 404 ||
+                status == 429,
+          ),
+        ),
+        cancellation: cancellation,
+      );
+    } on Object {
+      // Preserve the original operation outcome. An orphan is safer than deleting
+      // anything outside this scope; do not log URLs, credentials or response bodies.
+      if (kDebugMode) debugPrint('WEBDAV private upload cleanup incomplete.');
+    } finally {
+      deadline.cancel();
+    }
+  }
+
+  static UnsupportedError _atomicCreateUnsupported() =>
+      _AtomicCreateUnsupported();
 
   Future<void> _ensureParentCollections(
     String logicalKey, {
@@ -418,4 +671,36 @@ class WebDavObjectStore implements RemoteObjectStore {
       return null;
     }
   }
+}
+
+/// Sanitized and actionable; never contains endpoint or probe content.
+class _AtomicCreateUnsupported extends UnsupportedError
+    implements SyncFailureException {
+  _AtomicCreateUnsupported()
+    : super(
+        'WebDAV atomic create could not be verified; direct PUT is disabled.',
+      );
+
+  @override
+  SyncFailure get syncFailure => const SyncFailure(
+    errorCode: 'provider.webdav.atomic_create_unsupported',
+    category: SyncErrorCategory.unsupportedProtocol,
+    retryable: false,
+    suggestedAction: '服务器未通过防覆盖校验。请启用 WebDAV MOVE 支持或更换同步目录/服务。',
+  );
+}
+
+class _AtomicCreateProbeTimeout implements SyncFailureException {
+  const _AtomicCreateProbeTimeout();
+
+  @override
+  SyncFailure get syncFailure => const SyncFailure(
+    errorCode: 'provider.webdav.atomic_probe_timeout',
+    category: SyncErrorCategory.transientNetwork,
+    retryable: true,
+    suggestedAction: '服务器响应超时，请检查网络后重试。',
+  );
+
+  @override
+  String toString() => 'WebDAV atomic-create probe timed out.';
 }

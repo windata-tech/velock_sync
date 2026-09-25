@@ -22,6 +22,18 @@ void main() {
       );
     });
 
+    test(
+      'missing history tells users to keep and reconnect the old backup',
+      () {
+        final message = AppFormat.errorSummary(
+          'remote.velock_history_incomplete',
+        );
+        expect(message, contains('同步未完成'));
+        expect(message, contains('不要删除旧备份'));
+        expect(message, isNot(contains('remote.velock_history_incomplete')));
+      },
+    );
+
     test('never echoes raw codes for unknown values', () {
       expect(
         AppFormat.errorSummary('velock.some-future-code'),

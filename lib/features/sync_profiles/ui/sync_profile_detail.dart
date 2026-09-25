@@ -2,6 +2,7 @@
 /// per-profile settings tabs.
 library;
 
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -95,23 +96,40 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
     future: _data,
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done) {
-        return const AdaptiveScaffold(
-          title: '同步配置',
-          body: AdaptiveLoadingState(label: '正在加载同步配置详情'),
+        return AdaptiveScaffold(
+          title: syncText(context, '同步配置', "Sync profile"),
+          body: AdaptiveLoadingState(
+            label: syncText(
+              context,
+              '正在加载同步配置详情',
+              "Loading sync profile details",
+            ),
+          ),
         );
       }
       if (snapshot.hasError) {
         return AdaptiveScaffold(
-          title: '同步配置',
-          body: RetryState(onRetry: _refresh, message: '无法读取同步配置详情。'),
+          title: syncText(context, '同步配置', "Sync profile"),
+          body: RetryState(
+            onRetry: _refresh,
+            message: syncText(
+              context,
+              '无法读取同步配置详情。',
+              "Could not load sync profile details.",
+            ),
+          ),
         );
       }
       final data = snapshot.requireData;
       final profile = data.profile;
       if (profile == null) {
-        return const AdaptiveScaffold(
-          title: '同步配置',
-          body: Center(child: Text('找不到该同步配置。')),
+        return AdaptiveScaffold(
+          title: syncText(context, '同步配置', "Sync profile"),
+          body: Center(
+            child: Text(
+              syncText(context, '找不到该同步配置。', "Sync profile not found."),
+            ),
+          ),
         );
       }
       final children = [
@@ -134,7 +152,13 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
           child: _ProfileSettingsTab(profile: profile, onChanged: _refresh),
         ),
       ];
-      const labels = ['概览', '待处理', '历史', '冲突', '设置'];
+      final labels = [
+        syncText(context, '概览', "Overview"),
+        syncText(context, '待处理', "Pending"),
+        syncText(context, '历史', "History"),
+        syncText(context, '冲突', "Conflicts"),
+        syncText(context, '设置', "Settings"),
+      ];
       if (isApplePlatform(context)) {
         return AdaptiveScaffold(
           title: profile.displayName,
@@ -165,14 +189,14 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
         child: Scaffold(
           appBar: AppBar(
             title: Text(profile.displayName),
-            bottom: const TabBar(
+            bottom: TabBar(
               isScrollable: true,
               tabs: [
-                Tab(text: '概览'),
-                Tab(text: '待处理'),
-                Tab(text: '历史'),
-                Tab(text: '冲突'),
-                Tab(text: '设置'),
+                Tab(text: syncText(context, '概览', "Overview")),
+                Tab(text: syncText(context, '待处理', "Pending")),
+                Tab(text: syncText(context, '历史', "History")),
+                Tab(text: syncText(context, '冲突', "Conflicts")),
+                Tab(text: syncText(context, '设置', "Settings")),
               ],
             ),
           ),
@@ -230,7 +254,14 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
           : error.runtimeType.toString();
       logw('Sync profile action failed: $code', stackTrace: stackTrace);
       if (!mounted) return;
-      showMessage(context, '同步失败：${AppFormat.errorSummary(code)}');
+      showMessage(
+        context,
+        syncText(
+          context,
+          '同步失败：${AppFormat.errorSummary(code, context: context)}',
+          "Sync failed: ${AppFormat.errorSummary(code, context: context)}",
+        ),
+      );
     } finally {
       if (mounted) setState(() => _running = false);
     }
@@ -240,9 +271,13 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
   Future<void> _updateConnection() async {
     final confirmed = await showAdaptiveConfirmation(
       context,
-      title: '连接已失效',
-      message: '格间已重置或授权已失效，当前连接无法继续使用。是否更新连接（重新配对）？远端已有数据不会丢失。',
-      confirmLabel: '更新连接',
+      title: syncText(context, '连接已失效', "Connection expired"),
+      message: syncText(
+        context,
+        '格间已重置或授权已失效，当前连接无法继续使用。是否更新连接（重新配对）？远端已有数据不会丢失。',
+        "Velock was reset or authorization expired. Update the connection and pair again? Existing remote data will be kept.",
+      ),
+      confirmLabel: syncText(context, '更新连接', "Update connection"),
       isDestructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -279,9 +314,9 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
         !velockUnavailable;
     final latestRun = widget.latestRun;
     final runSummary = latestRun == null
-        ? '还没有运行记录'
-        : '${runStateLabel(latestRun.state)} · '
-              '${AppFormat.relativeTime(latestRun.completedAt ?? latestRun.startedAt)}';
+        ? syncText(context, '还没有运行记录', "No runs yet")
+        : '${runStateLabel(latestRun.state, context: context)} · '
+              '${AppFormat.relativeTime(latestRun.completedAt ?? latestRun.startedAt, context: context)}';
     Future<void> toggleState() async {
       await ref
           .read(syncProfileRepositoryProvider)
@@ -303,15 +338,23 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
         _ProfileSummaryCard(
           title: widget.profile.displayName,
           subtitle: widget.profile.kind == SyncDatasetKind.velockManaged
-              ? '格间已加密数据的零知识远程备份'
-              : '用户选择文件夹的加密双向同步',
+              ? syncText(
+                  context,
+                  '格间已加密数据的零知识远程备份',
+                  "Zero-knowledge remote backup of encrypted Velock data",
+                )
+              : syncText(
+                  context,
+                  '用户选择文件夹的加密双向同步',
+                  "Encrypted two-way sync of a user-selected folder",
+                ),
           icon: adaptiveKindIcon(context, widget.profile.kind),
           presentation: presentation,
-          datasetLabel: kindLabel(widget.profile.kind),
+          datasetLabel: kindLabel(widget.profile.kind, context: context),
           lastRunLabel: runSummary,
           backgroundLabel: widget.profile.backgroundPolicy.enabled
-              ? '已开启'
-              : '已关闭',
+              ? syncText(context, '已开启', "On")
+              : syncText(context, '已关闭', "Off"),
         ),
         if (widget.profile.state == SyncProfileState.accessRequired)
           Padding(
@@ -323,10 +366,14 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
             ),
             child: AppNotice(
               tone: AppTone.danger,
-              title: '连接已失效',
-              message: '格间已重置或授权已失效。远端数据不会丢失；更新连接会移除当前配置并重新配对。',
+              title: syncText(context, '连接已失效', "Connection expired"),
+              message: syncText(
+                context,
+                '格间已重置或授权已失效。远端数据不会丢失；更新连接会移除当前配置并重新配对。',
+                "Velock was reset or authorization expired. Remote data will be kept. Updating removes the current profile and starts pairing again.",
+              ),
               action: AppSecondaryButton(
-                label: '更新连接',
+                label: syncText(context, '更新连接', "Update connection"),
                 onPressed: _updateConnection,
               ),
             ),
@@ -341,8 +388,8 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
             ),
             child: AppNotice(
               tone: AppTone.danger,
-              title: '上次同步未完成',
-              message: latestRunFailureSubtitle(latestRun),
+              title: syncText(context, '上次同步未完成', "Last sync did not complete"),
+              message: latestRunFailureSubtitle(latestRun, context: context),
             ),
           ),
         SyncedDataSection(
@@ -351,11 +398,11 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
           history: widget.history,
         ),
         AdaptiveListSection(
-          header: '配置操作',
+          header: syncText(context, '配置操作', "Profile actions"),
           children: [
             Semantics(
               button: true,
-              label: '立即同步',
+              label: syncText(context, '立即同步', "Sync now"),
               onTap: needsConnectionUpdate
                   ? _updateConnection
                   : (canSync ? _runNow : null),
@@ -370,15 +417,23 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
                 ),
                 title: Text(
                   needsConnectionUpdate
-                      ? '立即同步'
+                      ? syncText(context, '立即同步', "Sync now")
                       : _running
-                      ? '正在同步…'
-                      : '立即同步',
+                      ? syncText(context, '正在同步…', "Syncing…")
+                      : syncText(context, '立即同步', "Sync now"),
                 ),
                 subtitle: Text(
                   needsConnectionUpdate
-                      ? '连接已失效，点按可更新连接（重新配对）。'
-                      : '立即检查远端并执行待处理同步。',
+                      ? syncText(
+                          context,
+                          '连接已失效，点按可更新连接（重新配对）。',
+                          "Connection expired. Tap to update and pair again.",
+                        )
+                      : syncText(
+                          context,
+                          '立即检查远端并执行待处理同步。',
+                          "Check remote storage and run pending sync now.",
+                        ),
                 ),
                 enabled: canSync || needsConnectionUpdate,
                 onTap: needsConnectionUpdate ? _updateConnection : _runNow,
@@ -397,8 +452,24 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
                 ),
                 color: context.appSecondaryLabel,
               ),
-              title: Text(isPaused ? '恢复同步' : '暂停同步'),
-              subtitle: Text(isPaused ? '恢复后允许该配置再次运行。' : '暂停后不会删除远端数据。'),
+              title: Text(
+                isPaused
+                    ? syncText(context, '恢复同步', "Resume sync")
+                    : syncText(context, '暂停同步', "Pause sync"),
+              ),
+              subtitle: Text(
+                isPaused
+                    ? syncText(
+                        context,
+                        '恢复后允许该配置再次运行。',
+                        "Resuming allows this profile to run again.",
+                      )
+                    : syncText(
+                        context,
+                        '暂停后不会删除远端数据。',
+                        "Pausing does not delete remote data.",
+                      ),
+              ),
               enabled: !_running,
               onTap: toggleState,
             ),
@@ -506,9 +577,12 @@ class _ProfileSummaryCard extends StatelessWidget {
               alpha: AppOpacity.groupedDivider,
             ),
           ),
-          AppFormRow(label: '数据集', value: datasetLabel),
           AppFormRow(
-            label: '最近同步',
+            label: syncText(context, '数据集', "Dataset"),
+            value: datasetLabel,
+          ),
+          AppFormRow(
+            label: syncText(context, '最近同步', "Last sync"),
             child: Text(
               lastRunLabel,
               style: AppType.rowTitle.copyWith(
@@ -519,7 +593,10 @@ class _ProfileSummaryCard extends StatelessWidget {
               ),
             ),
           ),
-          AppFormRow(label: '后台同步', value: backgroundLabel),
+          AppFormRow(
+            label: syncText(context, '后台同步', "Background sync"),
+            value: backgroundLabel,
+          ),
         ],
       ),
     ),
@@ -535,8 +612,12 @@ class _PendingTab extends StatelessWidget {
       ? AdaptiveEmptyState(
           icon: CupertinoIcons.tray_arrow_down,
           tone: AppTone.ok,
-          title: '没有待处理传输',
-          message: '所有传输都已完成。新的上传和下载任务启动时会显示在这里。',
+          title: syncText(context, '没有待处理传输', "No pending transfers"),
+          message: syncText(
+            context,
+            '所有传输都已完成。新的上传和下载任务启动时会显示在这里。',
+            "All transfers are complete. New uploads and downloads will appear here when they start.",
+          ),
         )
       : ListView(
           padding: const EdgeInsets.only(
@@ -545,7 +626,7 @@ class _PendingTab extends StatelessWidget {
           ),
           children: [
             AdaptiveListSection(
-              header: '待恢复传输',
+              header: syncText(context, '待恢复传输', "Recoverable transfers"),
               children: [
                 for (final transfer in transfers)
                   AdaptiveListTile(
@@ -556,7 +637,11 @@ class _PendingTab extends StatelessWidget {
                       color: context.appPrimary,
                     ),
                     title: Text(
-                      '${transfer.direction == TransferJobDirection.upload ? '上传' : '下载'} · ${transferStateLabel(transfer.state)}',
+                      syncText(
+                        context,
+                        '${transfer.direction == TransferJobDirection.upload ? '上传' : '下载'} · ${transferStateLabel(transfer.state, context: context)}',
+                        "${transfer.direction == TransferJobDirection.upload ? 'Upload' : 'Download'} · ${transferStateLabel(transfer.state, context: context)}",
+                      ),
                     ),
                     subtitle: Text(
                       transfer.expectedSize == null
@@ -579,10 +664,14 @@ class _HistoryTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => runs.isEmpty
-      ? const AdaptiveEmptyState(
+      ? AdaptiveEmptyState(
           icon: CupertinoIcons.clock,
-          title: '尚无同步历史',
-          message: '完成第一次同步后，运行记录会显示在这里。',
+          title: syncText(context, '尚无同步历史', "No sync history"),
+          message: syncText(
+            context,
+            '完成第一次同步后，运行记录会显示在这里。',
+            "Run records will appear here after the first sync.",
+          ),
         )
       : ListView(
           padding: const EdgeInsets.only(
@@ -591,7 +680,7 @@ class _HistoryTab extends StatelessWidget {
           ),
           children: [
             AdaptiveListSection(
-              header: '同步历史',
+              header: syncText(context, '同步历史', "Sync history"),
               children: [
                 for (final run in runs)
                   Builder(
@@ -611,10 +700,11 @@ class _HistoryTab extends StatelessWidget {
                               : CupertinoIcons.check_mark,
                           color: color,
                         ),
-                        title: Text(runStateLabel(run.state)),
+                        title: Text(runStateLabel(run.state, context: context)),
                         subtitle: Text(
                           AppFormat.relativeTime(
                             run.completedAt ?? run.startedAt,
+                            context: context,
                           ),
                           maxLines: 2,
                         ),
@@ -639,10 +729,14 @@ class _ConflictsTab extends StatelessWidget {
       ? AdaptiveEmptyState(
           icon: CupertinoIcons.shield_lefthalf_fill,
           tone: AppTone.ok,
-          title: '没有待处理冲突',
-          message: '同一对象在两台设备上被同时修改时，冲突会出现在这里，并可在活动页选择处理方式。',
+          title: syncText(context, '没有待处理冲突', "No pending conflicts"),
+          message: syncText(
+            context,
+            '同一对象在两台设备上被同时修改时，冲突会出现在这里，并可在活动页选择处理方式。',
+            "Conflicts appear when the same object is edited on two devices. Resolve them on the Activity page.",
+          ),
           secondaryAction: AppSecondaryButton(
-            label: '前往活动页',
+            label: syncText(context, '前往活动页', "Go to Activity"),
             onPressed: () => context.go('/activity'),
           ),
         )
@@ -653,7 +747,7 @@ class _ConflictsTab extends StatelessWidget {
           ),
           children: [
             AdaptiveListSection(
-              header: '待处理冲突',
+              header: syncText(context, '待处理冲突', "Pending conflicts"),
               children: [
                 for (final conflict in conflicts)
                   AdaptiveListTile(
@@ -661,19 +755,23 @@ class _ConflictsTab extends StatelessWidget {
                       icon: CupertinoIcons.exclamationmark_triangle,
                       color: AppColors.warning,
                     ),
-                    title: Text(conflictLabel(conflict.type)),
+                    title: Text(conflictLabel(conflict.type, context: context)),
                     subtitle: Text(
-                      '对象 ${shortId(conflict.entityId)} · ${formatTime(conflict.createdAt)}',
+                      syncText(
+                        context,
+                        '对象 ${shortId(conflict.entityId)} · ${formatTime(conflict.createdAt)}',
+                        "Object ${shortId(conflict.entityId)} · ${formatTime(conflict.createdAt)}",
+                      ),
                     ),
                     trailing: isApplePlatform(context)
                         ? CupertinoButton(
                             padding: EdgeInsets.zero,
                             onPressed: () => context.go('/activity'),
-                            child: const Text('处理'),
+                            child: Text(syncText(context, '处理', "Resolve")),
                           )
                         : TextButton(
                             onPressed: () => context.go('/activity'),
-                            child: const Text('处理'),
+                            child: Text(syncText(context, '处理', "Resolve")),
                           ),
                   ),
               ],
@@ -693,12 +791,18 @@ class _ProfileSettingsTab extends ConsumerWidget {
     children: [
       if (profile.kind == SyncDatasetKind.selectedFolder)
         AdaptiveListSection(
-          header: '恢复与安全',
-          footer: const Text('恢复包用于在另一台设备重新加入这个同步空间。恢复包和口令应通过不同渠道保存。'),
+          header: syncText(context, '恢复与安全', "Recovery & Security"),
+          footer: Text(
+            syncText(
+              context,
+              '恢复包用于在另一台设备重新加入这个同步空间。恢复包和口令应通过不同渠道保存。',
+              "A recovery package lets another device rejoin this sync space. Keep the package and passphrase in separate secure locations.",
+            ),
+          ),
           children: [
             Semantics(
               button: true,
-              label: '生成恢复包',
+              label: syncText(context, '生成恢复包', "Create recovery package"),
               onTap: () => exportSelectedFolderRecovery(context, ref, profile),
               child: AdaptiveListTile(
                 widgetKey: const Key('selected-folder-export-recovery'),
@@ -710,8 +814,16 @@ class _ProfileSettingsTab extends ConsumerWidget {
                   ),
                   color: context.appPrimary,
                 ),
-                title: const Text('生成恢复包'),
-                subtitle: const Text('创建带恢复口令的一次性凭据。'),
+                title: Text(
+                  syncText(context, '生成恢复包', "Create recovery package"),
+                ),
+                subtitle: Text(
+                  syncText(
+                    context,
+                    '创建带恢复口令的一次性凭据。',
+                    "Create a one-time credential protected by a recovery passphrase.",
+                  ),
+                ),
                 showChevron: true,
                 onTap: () =>
                     exportSelectedFolderRecovery(context, ref, profile),
@@ -720,17 +832,23 @@ class _ProfileSettingsTab extends ConsumerWidget {
           ],
         ),
       AdaptiveListSection(
-        header: '后台策略',
+        header: syncText(context, '后台策略', "Background policy"),
         children: [
           AdaptiveSwitchListTile(
-            title: const Text('后台同步'),
-            subtitle: const Text('仅在系统允许且配置处于活动状态时运行。'),
+            title: Text(syncText(context, '后台同步', "Background sync")),
+            subtitle: Text(
+              syncText(
+                context,
+                '仅在系统允许且配置处于活动状态时运行。',
+                "Runs only when the system allows it and the profile is active.",
+              ),
+            ),
             value: profile.backgroundPolicy.enabled,
             onChanged: (value) =>
                 _save(ref, profile.backgroundPolicy.copyWith(enabled: value)),
           ),
           AdaptiveSwitchListTile(
-            title: const Text('允许蜂窝网络'),
+            title: Text(syncText(context, '允许蜂窝网络', "Allow cellular data")),
             value: profile.backgroundPolicy.allowCellular,
             onChanged: profile.backgroundPolicy.enabled
                 ? (value) => _save(
@@ -740,7 +858,7 @@ class _ProfileSettingsTab extends ConsumerWidget {
                 : null,
           ),
           AdaptiveSwitchListTile(
-            title: const Text('仅充电时运行'),
+            title: Text(syncText(context, '仅充电时运行', "Only while charging")),
             value: profile.backgroundPolicy.requiresCharging,
             onChanged: profile.backgroundPolicy.enabled
                 ? (value) => _save(
@@ -752,7 +870,7 @@ class _ProfileSettingsTab extends ConsumerWidget {
         ],
       ),
       AdaptiveListSection(
-        header: '危险操作',
+        header: syncText(context, '危险操作', "Danger zone"),
         children: [
           AdaptiveListTile(
             leading: AdaptiveIconBadge(
@@ -764,16 +882,26 @@ class _ProfileSettingsTab extends ConsumerWidget {
               color: Theme.of(context).colorScheme.error,
             ),
             title: Text(
-              '移除同步配置',
+              syncText(context, '移除同步配置', "Remove sync profile"),
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-            subtitle: const Text('不会删除远端数据或安全存储中的凭据。'),
+            subtitle: Text(
+              syncText(
+                context,
+                '不会删除远端数据或安全存储中的凭据。',
+                "Remote data and credentials in secure storage will not be deleted.",
+              ),
+            ),
             onTap: () async {
               final confirmed = await showAdaptiveConfirmation(
                 context,
-                title: '移除同步配置？',
-                message: '此操作只移除本地配置。',
-                confirmLabel: '移除',
+                title: syncText(context, '移除同步配置？', "Remove sync profile?"),
+                message: syncText(
+                  context,
+                  '此操作只移除本地配置。',
+                  "This only removes the local profile.",
+                ),
+                confirmLabel: syncText(context, '移除', "Remove"),
                 isDestructive: true,
               );
               if (confirmed != true) return;
@@ -807,9 +935,25 @@ class _ProfileSettingsTab extends ConsumerWidget {
                   context.go('/dashboard');
                 }
               } on SyncProfileRemovalWhileRunningException {
-                if (context.mounted) showMessage(context, '同步正在运行，暂时无法移除。');
+                if (context.mounted)
+                  showMessage(
+                    context,
+                    syncText(
+                      context,
+                      '同步正在运行，暂时无法移除。',
+                      "Sync is running. The profile cannot be removed yet.",
+                    ),
+                  );
               } on Object {
-                if (context.mounted) showMessage(context, '移除失败，请稍后重试。');
+                if (context.mounted)
+                  showMessage(
+                    context,
+                    syncText(
+                      context,
+                      '移除失败，请稍后重试。',
+                      "Could not remove the profile. Try again later.",
+                    ),
+                  );
               }
             },
           ),

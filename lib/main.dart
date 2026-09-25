@@ -21,6 +21,8 @@ import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart'
 import 'package:velock_sync/providers/oauth/oauth_callback_link_receiver.dart';
 
 import 'core/app_router.dart';
+import 'package:velock_sync/core/app_repository.dart';
+import 'package:velock_sync/l10n/sync_language.dart';
 
 /// Starts at bootstrap so a custom-scheme OAuth callback is retained even if
 /// the system launches the app from the browser.
@@ -36,6 +38,13 @@ void main() async {
   await initializeBackgroundSync();
   runApp(
     ProviderScope(
+      overrides: [
+        syncLanguageBootstrapProvider.overrideWithValue(
+          SyncLanguage.fromStored(
+            LocalDataManager.instance.getString(AppKeys.languageCode),
+          ),
+        ),
+      ],
       retry: (int retryCount, Object error) {
         debugPrint('retryCount=$retryCount');
         if (retryCount >= 2) return null;
@@ -136,9 +145,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         themeMode: themeMode,
         builder: (context) => PlatformApp.router(
           builder: FToastBuilder(),
-          // The product UI is Chinese-first: system-provided widget strings
-          // (license page, action sheets, pickers) must not fall back to English.
-          locale: const Locale('zh', 'CN'),
+          // Unset preferences keep Chinese; an explicit system choice uses
+          // Flutter locale resolution and updates with the device language.
+          locale: ref.watch(syncLanguageProvider).locale,
           supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
           localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
             GlobalMaterialLocalizations.delegate,

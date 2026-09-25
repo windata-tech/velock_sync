@@ -4,6 +4,9 @@ import 'dart:typed_data';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 
 final RegExp _opaqueId = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$');
+// Binding hashes are unpadded SHA-256 base64url, including leading - or _.
+// Keep the stricter opaque-ID grammar for filenames and other identifiers.
+final RegExp _bindingHash = RegExp(r'^[A-Za-z0-9_-]{43}$');
 
 /// Content-free request written by Velock Sync for one Velock-owned conflict.
 ///
@@ -228,7 +231,9 @@ Map<String, dynamic> _object(Uint8List bytes, Set<String> fields) {
 
 String _id(Map<String, dynamic> json, String key) {
   final value = json[key];
-  if (value is! String || !_opaqueId.hasMatch(value)) {
+  if (value is! String ||
+      !(_opaqueId.hasMatch(value) ||
+          (key == 'exchangeBindingId' && _bindingHash.hasMatch(value)))) {
     throw FormatException('Invalid Velock conflict $key.');
   }
   return value;

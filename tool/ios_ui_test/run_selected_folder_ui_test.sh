@@ -46,7 +46,9 @@ xcrun simctl bootstatus "$REPLICA_SIMULATOR_ID" -b
 
 run_stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 RESULTS_DIR="$ROOT_DIR/ui_test_results/selected-folder-$run_stamp"
-WEBDAV_ROOT="$RESULTS_DIR/webdav-root"
+# Each run gets a private WebDAV root so the "exactly one vault" assertion
+# stays deterministic; the shared persistent root is opt-in via E2E_WEBDAV_ROOT.
+WEBDAV_ROOT="${E2E_WEBDAV_ROOT:-$RESULTS_DIR/webdav-root}"
 SYNC_DERIVED_DATA="$RESULTS_DIR/sync-derived-data"
 HARNESS_DERIVED_DATA="$RESULTS_DIR/harness-derived-data"
 SERVER_LOG="$RESULTS_DIR/webdav.log"
