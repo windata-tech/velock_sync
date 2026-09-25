@@ -299,36 +299,57 @@ void main() {
     },
   );
 
-  test(
-    'failed upload collection reservation never writes or deletes unowned data',
-    () async {
-      String? unowned;
-      adapter.beforeRequest = (options, _, _) async {
-        if (options.method == 'MKCOL' &&
-            options.uri.path.contains('.velock-upload-')) {
-          unowned = options.uri.path;
-          adapter.collections.add(unowned!);
-          adapter.files['$unowned/foreign'] = [7, 8];
-          return ResponseBody.fromBytes([], 405);
-        }
-        return null;
-      };
-      await expectLater(create('object', [0]), throwsUnsupportedError);
-      expect(unowned, isNotNull);
-      expect(adapter.files, {
-        '$unowned/foreign': [7, 8],
-      });
-      expect(adapter.collections, {unowned});
-      expect(
-        adapter.requests.where(
+  for (final statusCode in [405, 409]) {
+    test(
+      'MKCOL $statusCode for upload collection is classified as not writable '
+      'without touching unowned data',
+      () async {
+        String? unowned;
+        adapter.beforeRequest = (options, _, _) async {
+          if (options.method == 'MKCOL' &&
+              options.uri.path.contains('.velock-upload-')) {
+            unowned = options.uri.path;
+            adapter.collections.add(unowned!);
+            adapter.files['$unowned/foreign'] = [7, 8];
+            return ResponseBody.fromBytes([], statusCode);
+          }
+          return null;
+        };
+        final errorMatcher = allOf(
+          isNot(isA<UnsupportedError>()),
+          isA<SyncFailureException>()
+              .having(
+                (e) => e.syncFailure.errorCode,
+                'code',
+                'provider.webdav.collection_not_writable',
+              )
+              .having(
+                (e) => e.syncFailure.category,
+                'category',
+                SyncErrorCategory.userActionRequired,
+              )
+              .having((e) => e.syncFailure.retryable, 'retryable', isTrue)
+              .having(
+                (e) => e.syncFailure.providerStatusCode,
+                'providerStatus',
+                statusCode,
+              ),
+        );
+        await expectLater(create('object', [0]), throwsA(errorMatcher));
+        expect(unowned, isNotNull);
+        expect(adapter.files, {
+          '$unowned/foreign': [7, 8],
+        });
+        expect(adapter.collections, {unowned});
+        final requestsInUnownedCollection = adapter.requests.where(
           (r) =>
               (r.uri.path == unowned || r.uri.path.startsWith('$unowned/')) &&
               r.method != 'MKCOL',
-        ),
-        isEmpty,
-      );
-    },
-  );
+        );
+        expect(requestsInUnownedCollection, isEmpty);
+      },
+    );
+  }
 
   test(
     'transient probe failure is cleaned and same instance can probe again',

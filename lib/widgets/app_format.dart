@@ -112,6 +112,13 @@ abstract final class AppFormat {
         'This cloud location cannot safely save backups. Transfers stopped to protect existing data. Check storage settings or contact the provider.',
       );
     }
+    if (normalized == 'provider.webdav.collection_not_writable') {
+      return _optionalSyncText(
+        context,
+        '当前选中的位置不能新建备份文件夹。请打开共享文件夹，选择一个有写入权限的实际文件夹，不要只选 NAS 入口。',
+        'The selected location cannot create a backup folder. Open the shared folder and choose an actual folder with write access; do not select only the NAS entry point.',
+      );
+    }
     if (normalized == 'remote.velock_history_incomplete') {
       return _optionalSyncText(
         context,

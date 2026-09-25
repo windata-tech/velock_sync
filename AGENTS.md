@@ -73,3 +73,9 @@
 - OAuth 普通用户默认不看 Client ID/Token/root ID；公开注册未配置时明确本版本暂不可用并提供其他位置。开发者配置默认折叠，输入仅在保存后生效。预检仅 `ifAbsent` 写随机无敏感 probe、读回校验、只删自己成功创建的 probe；恢复探测不写远端。
 - 未完成项：current-state 完整快照传输/恢复状态机、可验证六类业务内容摘要、版本选择、自动完整云端迁移、单向仅上传文件夹模式。现有 runner 仍双向，本轮不是 upload-only 改造或完整架构重写；原签名/历史连续性/blob/完成回执门禁不放宽。
 - 最终 Sync 425 项、格间 29 项相关回归全部通过，两仓库改动范围 analyze 均为 No issues found；Sync 含 14 项真实路由、11 项预检及 13 项界面测试，后者另用真实字体渲染四张图验收（不重复累计）。日志在项目外 work/simple-cloud-backup-20260925，以 `sync-regression-final-accepted.txt`、`companion-regression-final-accepted.txt` 和 `visual-qa-final-accepted.txt` 为准。截图是真实 widget + 内存 fixture，不是模拟器/真机截图；本轮没有真机、模拟器、新 NAS 写入、真实 OAuth 授权或跨 App 恢复 E2E。
+
+## 云备份后续：NAS 入口与 FN Connect
+
+- 真实 FN Connect 根入口可 PROPFIND207 列共享目录，但 MKCOL405；必须选择实际可写文件夹。MKCOL405/409 现在分类 `provider.webdav.collection_not_writable`，不再误报原子防覆盖不支持，也不得取得/删除非自有探针目录。
+- 同服务 MOVE 的 Destination 使用 RFC4918 允许的编码绝对路径，避免 FN Connect 转发下外部 absolute-URI 返回502；保留 Unicode/空格/转义/base 子路径/query。Overwrite:F、碰撞412与字节校验、发布201/源消失不放宽，禁止普通PUT回退。
+- Sync432、格间32项相关回归通过，改动范围分析无问题。但真实FN Connect生产适配器仅1MiB不可变创建/内容校验通过，四并发阶段401，整组live test未通过；401后停止重试，已请用户解锁Mac并确认账号，不能宣称NAS或完整跨App同步已验收。详细证据 `docs/verification/cloud-backup-follow-up.md`。

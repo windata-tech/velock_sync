@@ -325,27 +325,35 @@ class WebDavObjectStore implements RemoteObjectStore {
     String source,
     String destination, {
     RemoteOperationCancellation? cancellation,
-  }) => _request(
-    () => _dio.requestUri<void>(
-      _objectUri(source),
-      cancelToken: dioCancelTokenFor(cancellation),
-      options: _options(
-        method: 'MOVE',
-        headers: {
-          'Destination': _objectUri(destination).toString(),
-          'Overwrite': 'F',
-        },
-        validateStatus: (status) =>
-            status == 201 ||
-            status == 204 ||
-            status == 412 ||
-            status == 405 ||
-            status == 501 ||
-            status == 429,
+  }) {
+    final destinationUri = _objectUri(destination);
+    return _request(
+      () => _dio.requestUri<void>(
+        _objectUri(source),
+        cancelToken: dioCancelTokenFor(cancellation),
+        options: _options(
+          method: 'MOVE',
+          headers: {
+            // RFC 4918 allows a path-absolute Destination. Keeping the encoded
+            // path avoids reverse proxies comparing an external authority with
+            // the origin host, while retaining the configured base path.
+            'Destination': destinationUri.hasQuery
+                ? '${destinationUri.path}?${destinationUri.query}'
+                : destinationUri.path,
+            'Overwrite': 'F',
+          },
+          validateStatus: (status) =>
+              status == 201 ||
+              status == 204 ||
+              status == 412 ||
+              status == 405 ||
+              status == 501 ||
+              status == 429,
+        ),
       ),
-    ),
-    cancellation: cancellation,
-  );
+      cancellation: cancellation,
+    );
+  }
 
   Future<String> _createPrivateCollection(
     String kind, {
@@ -370,6 +378,9 @@ class WebDavObjectStore implements RemoteObjectStore {
       cancellation: cancellation,
     );
     // No ownership on conflict: never reuse, write into, or delete that path.
+    if (response.statusCode == 405 || response.statusCode == 409) {
+      throw _CollectionNotWritable(response.statusCode!);
+    }
     if (response.statusCode != 201) throw _atomicCreateUnsupported();
     return key;
   }
@@ -688,6 +699,30 @@ class _AtomicCreateUnsupported extends UnsupportedError
     retryable: false,
     suggestedAction: '服务器未通过防覆盖校验。请启用 WebDAV MOVE 支持或更换同步目录/服务。',
   );
+}
+
+/// The selected WebDAV location could not create a disposable collection.
+///
+/// MKCOL 405/409 are not proof that atomic MOVE or conditional creation is
+/// unsupported. Keep the location diagnostic precise, retryable, and do not
+/// claim that the server cannot safely store backups.
+class _CollectionNotWritable implements SyncFailureException {
+  const _CollectionNotWritable(this.statusCode);
+
+  final int statusCode;
+
+  @override
+  SyncFailure get syncFailure => SyncFailure(
+    errorCode: 'provider.webdav.collection_not_writable',
+    category: SyncErrorCategory.userActionRequired,
+    retryable: true,
+    providerStatusCode: statusCode,
+    suggestedAction: '请选择有写入权限的实际共享文件夹后重试。',
+  );
+
+  @override
+  String toString() =>
+      'WebDAV could not create a private collection at the selected location.';
 }
 
 class _AtomicCreateProbeTimeout implements SyncFailureException {

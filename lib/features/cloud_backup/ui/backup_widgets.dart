@@ -358,6 +358,13 @@ class BackupStatusCard extends StatelessWidget {
 }
 
 String backupFailureMessage(BuildContext context, String? code) {
+  if (code == 'provider.webdav.collection_not_writable') {
+    return syncText(
+      context,
+      '当前选中的位置不能新建备份文件夹。请打开共享文件夹，选择一个有写入权限的实际文件夹，不要只选 NAS 入口。',
+      'The selected location cannot create a backup folder. Open the shared folder and choose an actual folder with write access; do not select only the NAS entry point.',
+    );
+  }
   if (code == 'provider.webdav.atomic_create_unsupported') {
     return syncText(
       context,
