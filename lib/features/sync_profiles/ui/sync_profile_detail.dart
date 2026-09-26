@@ -427,7 +427,7 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
                   syncText(context, '在格间中安全管理', 'Manage securely in Velock'),
                 ),
                 showChevron: true,
-                onTap: () => openVelockForBackup(context, ref),
+                onTap: () => openVelockBackupSettings(context, ref),
               ),
             ],
           ),
