@@ -1,4 +1,9 @@
 import 'dart:convert';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
+import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
+import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
+import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
+import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'dart:typed_data';
 
@@ -76,6 +81,7 @@ void main() {
   Future<GoRouter> mount(
     WidgetTester tester, {
     String location = '/',
+    ProviderContainer? scope,
     TargetPlatform platform = TargetPlatform.iOS,
   }) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -86,7 +92,7 @@ void main() {
     addTearDown(router.dispose);
     await tester.pumpWidget(
       UncontrolledProviderScope(
-        container: container,
+        container: scope ?? container,
         child: PlatformProvider(
           initialPlatform: platform,
           builder: (_) => MaterialApp.router(
@@ -102,6 +108,129 @@ void main() {
     await tester.pumpAndSettle();
     return router;
   }
+
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    testWidgets('$platform direct missing detail can return to tabbed home', (
+      tester,
+    ) async {
+      final router = await mount(
+        tester,
+        location: '/sync-profiles/missing',
+        platform: platform,
+      );
+      expect(find.text('这个连接已不存在。'), findsOneWidget);
+      expect(find.byType(AppBackButton), findsOneWidget);
+      expect(router.canPop(), isFalse);
+      await tester.tap(find.byType(AppBackButton));
+      await tester.pumpAndSettle();
+      expect(router.routeInformationProvider.value.uri.path, '/dashboard');
+      expect(
+        find.byType(
+          platform == TargetPlatform.iOS ? CupertinoTabBar : NavigationBar,
+        ),
+        findsOneWidget,
+      );
+    });
+
+    for (final kind in [
+      SyncDatasetKind.velockManaged,
+      SyncDatasetKind.selectedFolder,
+    ]) {
+      testWidgets(
+        '$platform standalone $kind detail returns to its product tab',
+        (tester) async {
+          final velock = VelockSyncProfile(
+            profileId: 'nav-profile',
+            datasetId: 'dataset',
+            vaultId: 'vault',
+            deviceId: 'device',
+            displayName: 'Navigation backup',
+            connectionId: 'cloud',
+            pairedProducerId: 'producer',
+            pairedProducerPublicKeyId: 'key-ref',
+            exchangeBindingId: 'binding',
+            backgroundPolicy: const SyncProfileBackgroundPolicy(),
+            state: SyncProfileState.active,
+            createdAt: DateTime.utc(2026, 9, 26),
+          ).toEnvelope();
+          final profile = kind == SyncDatasetKind.velockManaged
+              ? velock
+              : SyncProfileEnvelope(
+                  kind: kind,
+                  profileId: velock.profileId,
+                  datasetId: velock.datasetId,
+                  vaultId: velock.vaultId,
+                  deviceId: velock.deviceId,
+                  displayName: velock.displayName,
+                  connectionId: velock.connectionId,
+                  state: velock.state,
+                  backgroundPolicy: velock.backgroundPolicy,
+                  dataset: const {},
+                  createdAt: velock.createdAt,
+                );
+          await container.read(syncProfileRepositoryProvider).save(profile);
+          final scope = ProviderContainer(
+            parent: container,
+            overrides: [
+              velockWizardReadinessServiceProvider.overrideWithValue(
+                _NavigationReady(),
+              ),
+            ],
+          );
+          addTearDown(scope.dispose);
+          final router = await mount(
+            tester,
+            location: '/sync-profiles/nav-profile',
+            platform: platform,
+            scope: scope,
+          );
+          expect(find.byType(SyncProfileDetail), findsOneWidget);
+          expect(find.byType(AppBackButton), findsOneWidget);
+          expect(router.canPop(), isFalse);
+          await tester.tap(find.byType(AppBackButton));
+          await tester.pumpAndSettle();
+          expect(
+            router.routeInformationProvider.value.uri.path,
+            kind == SyncDatasetKind.velockManaged ? '/dashboard' : '/files',
+          );
+          expect(
+            find.byType(
+              platform == TargetPlatform.iOS ? CupertinoTabBar : NavigationBar,
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+    }
+  }
+
+  testWidgets('pushed detail returns without leaving another detail behind', (
+    tester,
+  ) async {
+    final router = await mount(tester);
+    router.push('/sync-profiles/missing');
+    await tester.pumpAndSettle();
+    expect(router.canPop(), isTrue);
+    await tester.tap(find.byType(AppBackButton));
+    await tester.pumpAndSettle();
+    expect(router.routeInformationProvider.value.uri.path, '/dashboard');
+    expect(find.byType(SyncProfileDetail), findsNothing);
+    expect(find.byType(CupertinoTabBar), findsOneWidget);
+  });
+
+  testWidgets('system back from detached detail reaches tabbed home', (
+    tester,
+  ) async {
+    final router = await mount(
+      tester,
+      location: '/sync-profiles/missing',
+      platform: TargetPlatform.android,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(router.routeInformationProvider.value.uri.path, '/dashboard');
+    expect(find.byType(NavigationBar), findsOneWidget);
+  });
 
   for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
     testWidgets(
@@ -529,4 +658,10 @@ Future<VelockPairingControlResponse> _rememberApproval(
   controller.sessionStarted(session);
   controller.approved(approval);
   return approval;
+}
+
+class _NavigationReady implements VelockWizardReadinessService {
+  @override
+  Future<VelockWizardReadiness> inspect({String? syncAppInstanceId}) async =>
+      const VelockWizardReadiness(VelockWizardAvailability.ready);
 }

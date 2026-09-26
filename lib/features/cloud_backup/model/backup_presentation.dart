@@ -16,7 +16,14 @@ enum BackupStage {
   lastTransferCompleted,
 }
 
-enum BackupAction { transfer, openVelock, resume, manage, resolve }
+enum BackupAction {
+  transfer,
+  openVelock,
+  resume,
+  manage,
+  resolve,
+  reviewHistory,
+}
 
 class BackupPresentation {
   const BackupPresentation(
@@ -80,7 +87,9 @@ class BackupPresentation {
         state == SyncProfileState.error) {
       return BackupPresentation(
         BackupStage.needsAttention,
-        BackupAction.manage,
+        run?.errorCode == 'remote.velock_history_incomplete'
+            ? BackupAction.reviewHistory
+            : BackupAction.manage,
         errorCode: run?.errorCode,
       );
     }
@@ -98,7 +107,11 @@ class BackupPresentation {
           code.contains('404');
       return BackupPresentation(
         BackupStage.needsAttention,
-        needsStorage ? BackupAction.manage : BackupAction.transfer,
+        code == 'remote.velock_history_incomplete'
+            ? BackupAction.reviewHistory
+            : needsStorage
+            ? BackupAction.manage
+            : BackupAction.transfer,
         errorCode: code,
       );
     }

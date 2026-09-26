@@ -5,6 +5,7 @@ library;
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_history_help.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'dart:async';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
@@ -23,6 +24,7 @@ import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dar
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/app_components.dart';
+import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:velock_sync/widgets/app_format.dart';
 import 'sync_profile_workspace_shared.dart';
 import 'sync_profile_providers.dart';
@@ -38,6 +40,7 @@ class SyncProfileDetail extends ConsumerStatefulWidget {
 
 class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
   late Future<DetailData> _data;
+  SyncDatasetKind? _kind;
 
   @override
   void initState() {
@@ -50,6 +53,7 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
     final profile = await ref
         .read(syncProfileRepositoryProvider)
         .read(widget.profileId);
+    _kind = profile?.kind;
     final values = await Future.wait<Object?>([
       database.latestSyncRun(widget.profileId),
       database.listRecentSyncRuns(profileId: widget.profileId),
@@ -92,12 +96,44 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
     _data = _load();
   });
 
+  void _leaveDetail() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).maybePop();
+    } else {
+      // A wizard/deep link may have replaced the entire stack. A detail page
+      // must still lead back to the correct product's tabbed home.
+      GoRouter.of(
+        context,
+      ).go(_kind == SyncDatasetKind.selectedFolder ? '/files' : '/');
+    }
+  }
+
+  Widget _detailScaffold({
+    required String title,
+    required Widget body,
+    List<Widget> actions = const [],
+  }) {
+    final canPop = ModalRoute.of(context)?.canPop == true;
+    return PopScope(
+      canPop: canPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !canPop) _leaveDetail();
+      },
+      child: AdaptiveScaffold(
+        title: title,
+        leading: AppBackButton(onPressed: _leaveDetail),
+        actions: actions,
+        body: body,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<DetailData>(
     future: _data,
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done) {
-        return AdaptiveScaffold(
+        return _detailScaffold(
           title: syncText(context, '连接详情', 'Connection details'),
           body: AdaptiveLoadingState(
             label: syncText(context, '正在读取状态', 'Loading status'),
@@ -105,7 +141,7 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
         );
       }
       if (snapshot.hasError) {
-        return AdaptiveScaffold(
+        return _detailScaffold(
           title: syncText(context, '连接详情', 'Connection details'),
           body: RetryState(
             onRetry: _refresh,
@@ -120,7 +156,7 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
       final data = snapshot.requireData;
       final profile = data.profile;
       if (profile == null) {
-        return AdaptiveScaffold(
+        return _detailScaffold(
           title: syncText(context, '连接详情', 'Connection details'),
           body: Center(
             child: Text(
@@ -150,7 +186,7 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
         if (mounted) _refresh();
       }
 
-      return AdaptiveScaffold(
+      return _detailScaffold(
         title: profile.kind == SyncDatasetKind.velockManaged
             ? syncText(context, '格间备份', 'Velock backup')
             : profile.displayName,
@@ -333,6 +369,9 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
         widget.onConflicts();
       case BackupAction.manage:
         widget.onSettings();
+      case BackupAction.reviewHistory:
+        await showBackupHistoryHelp(context, widget.profile);
+        if (mounted) widget.onChanged();
     }
   }
 

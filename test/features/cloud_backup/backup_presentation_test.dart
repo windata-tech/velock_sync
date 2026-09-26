@@ -85,7 +85,76 @@ void main() {
       incoming: 1,
     );
     expect(result.stage, BackupStage.needsAttention);
-    expect(result.action, BackupAction.manage);
+    expect(result.action, BackupAction.reviewHistory);
+    expect(result.errorCode, 'remote.velock_history_incomplete');
+  });
+  test('error and blocked profiles take the same history entry point', () {
+    for (final profileState in [
+      SyncProfileState.error,
+      SyncProfileState.blockedByConfiguration,
+    ]) {
+      final result = state(
+        state: profileState,
+        run: 'failed',
+        error: 'remote.velock_history_incomplete',
+      );
+      expect(
+        result.stage,
+        BackupStage.needsAttention,
+        reason: profileState.name,
+      );
+      expect(
+        result.action,
+        BackupAction.reviewHistory,
+        reason: profileState.name,
+      );
+      expect(
+        result.errorCode,
+        'remote.velock_history_incomplete',
+        reason: profileState.name,
+      );
+    }
+  });
+  test(
+    'unknown, network and atomic failures are not misread as history gaps',
+    () {
+      for (final code in [
+        'network.timeout',
+        'provider.unknown',
+        'provider.webdav.atomic_create_unsupported',
+      ]) {
+        expect(
+          state(run: 'failed', error: code).action,
+          isNot(BackupAction.reviewHistory),
+          reason: code,
+        );
+      }
+    },
+  );
+  test('completed run with a stale history error is not a history gap', () {
+    final result = state(
+      run: 'completed',
+      error: 'remote.velock_history_incomplete',
+    );
+    expect(result.stage, BackupStage.lastTransferCompleted);
+    expect(result.action, isNot(BackupAction.reviewHistory));
+  });
+  test('running and conflicts keep priority over the history entry point', () {
+    final runningResult = state(
+      running: true,
+      run: 'failed',
+      error: 'remote.velock_history_incomplete',
+    );
+    expect(runningResult.stage, BackupStage.transferring);
+    expect(runningResult.action, BackupAction.transfer);
+    expect(
+      state(
+        run: 'failed',
+        error: 'remote.velock_history_incomplete',
+        conflicts: 1,
+      ).action,
+      BackupAction.resolve,
+    );
   });
   test('unsafe cloud storage asks for repair, not endless retries', () {
     expect(

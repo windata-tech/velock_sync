@@ -165,8 +165,12 @@ class BackupStatusCard extends StatelessWidget {
       ),
       BackupStage.needsAttention => syncText(
         context,
-        '有一件事需要你处理',
-        'Your attention is needed',
+        presentation.action == BackupAction.reviewHistory
+            ? '云端备份不完整'
+            : '有一件事需要你处理',
+        presentation.action == BackupAction.reviewHistory
+            ? 'Cloud backup is incomplete'
+            : 'Your attention is needed',
       ),
       BackupStage.needsVelock => syncText(
         context,
@@ -206,7 +210,13 @@ class BackupStatusCard extends StatelessWidget {
         'Keep Sync open until it finishes. The system may pause transfers in the background.',
       ),
       BackupStage.needsAttention =>
-        presentation.action == BackupAction.resolve
+        presentation.action == BackupAction.reviewHistory
+            ? syncText(
+                context,
+                '当前保存位置缺少以前的备份记录，这次备份未完成。先了解原因，再核对保存位置。',
+                'Earlier backup records are missing from this location. This backup did not finish. Review the next steps and check the location.',
+              )
+            : presentation.action == BackupAction.resolve
             ? syncText(
                 context,
                 '两台设备修改了同一份内容，请选择要保留的版本。',
@@ -273,6 +283,11 @@ class BackupStatusCard extends StatelessWidget {
         switch (presentation.action) {
           BackupAction.openVelock => syncText(context, '打开格间', 'Open Velock'),
           BackupAction.resume => syncText(context, '继续', 'Resume'),
+          BackupAction.reviewHistory => syncText(
+            context,
+            '查看原因和下一步',
+            'See why and what to do',
+          ),
           BackupAction.manage => syncText(context, '查看并处理', 'Review and fix'),
           BackupAction.resolve => syncText(
             context,

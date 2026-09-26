@@ -682,7 +682,9 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
         await presentFirstSyncResult(context, firstRun);
       }
       if (!mounted) return;
-      context.go('/sync-profiles/${result.profile.profileId}');
+      // Setup is finished: return to the tabbed home, not a detached detail
+      // route with no navigation history.
+      context.go('/');
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _checkingVelock = false);

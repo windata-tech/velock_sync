@@ -126,3 +126,10 @@
 - Sync「恢复卡与已授权设备」必须使用 `openVelockBackupSettings` / `velock://sync-settings`；禁止复用只唤醒旧页面的 `velock://open`，也不要为管理操作创建 pairing request。
 - 格间配套修复：单次消费最新原生导航 inbox，锁定时保留最新意图；外部路由 go + 新 page key 清除旧批准页和附着的手动详情；直接进入页返回设置。保持全部授权/过期/验签门禁。
 - 证据与回归：`docs/verification/2026-09-26-management-link-navigation.md`（Sync 434、格间94项；现有模拟器两 App Debug 构建及跨 App UI）。不等于完整同步/恢复验收。
+
+## 历史缺失说明与详情返回兜底（2026-09-26）
+
+- `remote.velock_history_incomplete` 的消费者主操作为 `BackupAction.reviewHistory`，进入 `BackupHistoryHelp`，不能再丢进普通「管理」。首页/详情同义，运行/权限/冲突安全优先级不变。
+- 说明显示实际选定目录（含profile子目录），只读查看不运行同步、不清错误、不改授权/目录。当前不能自动重建完整新备份的限制必须明说，不能用重试/重新连接或新建空目录冒充修复。
+- 配置完成回有底部导航的首页；`SyncProfileDetail` 所有状态始终提供统一返回。有历史pop，无历史回对应产品首页，系统返回一致。禁止在wizard结束时只go到无底栏又无返回兜底的独立详情。
+- 本轮452项相关回归通过；iOS/Android真实路由测试覆盖无历史返回，现有模拟器GUI覆盖详情/说明/首页三入口。见 `docs/verification/2026-09-26-history-help-and-detail-navigation.md`。仅入口/导航修复，历史缺失的完整重传能力仍未接通。

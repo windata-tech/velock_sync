@@ -11,6 +11,7 @@ import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_history_help.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
@@ -117,6 +118,14 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
     switch (state.action) {
       case BackupAction.openVelock:
         await openVelockForBackup(context, ref);
+        return;
+      case BackupAction.reviewHistory:
+        final saved = await ref
+            .read(syncProfileRepositoryProvider)
+            .read(profile.profileId);
+        if (!mounted) return;
+        if (saved != null) await showBackupHistoryHelp(context, saved);
+        if (mounted) _refresh();
         return;
       case BackupAction.manage:
       case BackupAction.resolve:
