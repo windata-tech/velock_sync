@@ -18,6 +18,10 @@ part '../../../generated/features/connection/state/files_provider.g.dart';
 class RemoteFileBrowser extends _$RemoteFileBrowser {
   String _currentPath = '/';
   int _generation = 0;
+  FileBrowserState? _lastVisibleState;
+
+  FileBrowserState? get visibleState =>
+      state.isLoading ? _lastVisibleState : state.value;
 
   String get currentPath => _currentPath;
 
@@ -55,6 +59,7 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     }
     _currentPath = _normalisePath(protocol.path ?? '/');
     _unstableStack.clear();
+    _lastVisibleState = null;
     ref.onDispose(() => _generation++);
     final initial = await _fetchState(_currentPath);
     _remember(initial);
@@ -92,7 +97,10 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     }
     final generation = ++_generation;
     _currentPath = target;
-    state = const AsyncValue.loading();
+    // Keep the last visible directory until its replacement is ready. This
+    // avoids tearing down the entire browser body for every network request.
+    _lastVisibleState = visibleState;
+    state = const AsyncLoading<FileBrowserState>();
     final result = await AsyncValue.guard(() => _fetchState(target));
     if (!ref.mounted || generation != _generation) return;
     if (result.value case final value?) _remember(value);
@@ -148,6 +156,7 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     WebdavFile file,
     void Function(int count, int total)? onProgress,
   ) async {
+    if (state.isLoading) return;
     cancelToken?.cancel();
     final path = _normalisePath(file.path);
     try {

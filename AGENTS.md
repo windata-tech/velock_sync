@@ -108,3 +108,9 @@
 - 连接远端文件浏览和备份目录选择器：子目录返回父目录，配置根目录才退出路由；系统返回保持同样语义，目录创建进行中禁止离开。明确“使用这个文件夹”仍返回选择结果，不应拦成上一级。
 - RemoteFileBrowser同步维护currentPath，刷新/重试不得重置根目录；失败/加载时仍可回父目录，generation拒绝晚到响应覆盖新状态，不能浏览超出配置根目录。不要只修按钮却遗留canGoBack一直为false。
 - 417项相关回归通过，改动范围静态分析无问题；详情与现场验证边界见 `docs/verification/2026-09-26-unified-back-navigation.md`。导航修复不代表NAS完整备份/恢复验收。
+
+## 目录加载不闪屏（2026-09-26）
+
+- Connection浏览页不能用loading替换整块正文（路径/能力卡/网格）；保持CustomScrollView与固定区挂载，加载仅显示路径旁轻量进度，等待时保留旧列表但禁用旧项点击，完成后再切换。
+- RemoteFileBrowser.visibleState提供加载期间最后可见目录，错误后不能继续把旧列表当新目录；保留当前请求路径和generation用于返回/晚到保护。不要调用Riverpod标记internal的copyWithPrevious绕过公开API。
+- 回归必须用Completer在请求完成前断言Element与位置稳定，不可只pumpAndSettle看最终截图宣称无闪烁。首次loading不显示空目录；失败仍能返回重试。详见 `docs/verification/2026-09-26-folder-loading-stability.md`。

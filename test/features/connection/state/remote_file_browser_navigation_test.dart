@@ -122,6 +122,12 @@ void main() {
     final pending = browser.go('/backup/slow');
     await received.future;
     expect(browser.canGoBack, isTrue);
+    expect(container.read(provider).isLoading, isTrue);
+    expect(
+      browser.visibleState?.path,
+      '/backup',
+      reason: 'Keep the last listing visible until navigation completes',
+    );
     await browser.goBack();
     expect(container.read(provider).requireValue.path, '/backup');
     release.complete();

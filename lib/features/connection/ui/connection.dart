@@ -86,6 +86,11 @@ class Connection extends HookConsumerWidget {
           await testConnection();
         }
 
+        final isLoading = asyncFileBrowserState.isLoading;
+        final fileBrowserState = notifier.visibleState;
+        final browserError = asyncFileBrowserState.hasError && !isLoading
+            ? _RemoteBrowserErrorPresentation.from(asyncFileBrowserState.error!)
+            : null;
         final canGoUp = notifier.canGoBack;
         void goBack() {
           if (notifier.canGoBack) {
@@ -155,115 +160,141 @@ class Connection extends HookConsumerWidget {
                       icon: Icon(Icons.refresh, size: 24),
                     );
                   },
-                  onPressed: refreshBrowser,
+                  onPressed: isLoading ? null : refreshBrowser,
                 ),
               ],
             ),
-            body: asyncFileBrowserState.when(
-              data: (fileBrowserState) {
-                return CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                        child: Text(
-                          fileBrowserState.path,
-                          key: const Key('remote-browser-current-path'),
-                          style: TextStyle(color: context.appSecondaryLabel),
+            body: CustomScrollView(
+              key: const Key('remote-browser-scroll'),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            fileBrowserState?.path ?? notifier.currentPath,
+                            key: const Key('remote-browser-current-path'),
+                            style: TextStyle(color: context.appSecondaryLabel),
+                          ),
                         ),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: _ProviderCapabilityDetails(
-                        protocol: connectionModel.protocol,
-                      ),
-                    ),
-                    if (fileBrowserState.files.isEmpty)
-                      const SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: AdaptiveEmptyState(
-                          icon: CupertinoIcons.folder,
-                          title: '这个目录还是空的',
-                          message: '远端文件和文件夹会显示在这里。',
-                        ),
-                      )
-                    else
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.page,
-                          AppSpacing.sm,
-                          AppSpacing.page,
-                          AppSpacing.xl,
-                        ),
-                        sliver: SliverGrid(
-                          delegate: SliverChildBuilderDelegate((
-                            BuildContext context,
-                            int index,
-                          ) {
-                            final file = fileBrowserState.files[index];
-                            double? progress;
-                            return StatefulBuilder(
-                              builder:
-                                  (BuildContext context, StateSetter setState) {
-                                    return SizedBox.expand(
-                                      child: CupertinoButton(
-                                        minimumSize: Size.zero,
-                                        padding: EdgeInsets.zero,
-                                        child: SizedBox.expand(
-                                          child: RemoteFileItem(
-                                            file: file,
-                                            progress: progress,
-                                          ),
-                                        ),
-                                        onPressed: () async {
-                                          notifier.onRemoteFileItemTapped(
-                                            file,
-                                            (a, b) {
-                                              setState(() {
-                                                progress =
-                                                    a.toDouble() / b.toDouble();
-                                              });
-                                            },
-                                          );
-                                        },
+                        const SizedBox(width: 12),
+                        // Reserve the same space, including when idle, so the
+                        // path and capability section never jump on loading.
+                        SizedBox.square(
+                          dimension: 20,
+                          child: isLoading
+                              ? Semantics(
+                                  key: const Key('remote-browser-loading'),
+                                  liveRegion: true,
+                                  label: syncText(
+                                    context,
+                                    '正在读取文件夹',
+                                    'Loading folder',
+                                  ),
+                                  child:
+                                      const CircularProgressIndicator.adaptive(
+                                        strokeWidth: 2,
                                       ),
-                                    );
-                                  },
-                            );
-                          }, childCount: fileBrowserState.files.length),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 4,
-                                childAspectRatio: 1,
-                                mainAxisSpacing: AppSpacing.sm,
-                                crossAxisSpacing: AppSpacing.sm,
-                              ),
+                                )
+                              : null,
                         ),
-                      ),
-                  ],
-                );
-              },
-              error: (error, stackTrace) {
-                final presentation = _RemoteBrowserErrorPresentation.from(
-                  error,
-                );
-                return AdaptiveErrorState(
-                  title: presentation.title,
-                  message: presentation.message,
-                  details: kDebugMode
-                      ? '$error\n\n${stackTrace.toString().trim()}'
-                      : null,
-                  onRetry: notifier.refresh,
-                  secondaryAction: AppSecondaryButton(
-                    label: '编辑连接',
-                    onPressed: () => context.pushNamed(
-                      AppRoutes.newWebDav.name,
-                      queryParameters: {'replace': connectionModel.id},
+                      ],
                     ),
                   ),
-                );
-              },
-              loading: () => Center(child: PlatformCircularProgressIndicator()),
+                ),
+                SliverToBoxAdapter(
+                  child: _ProviderCapabilityDetails(
+                    protocol: connectionModel.protocol,
+                  ),
+                ),
+                if (browserError != null)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: AdaptiveErrorState(
+                      title: browserError.title,
+                      message: browserError.message,
+                      details: kDebugMode
+                          ? '${asyncFileBrowserState.error}\n\n${asyncFileBrowserState.stackTrace}'
+                          : null,
+                      onRetry: notifier.refresh,
+                      secondaryAction: AppSecondaryButton(
+                        label: '编辑连接',
+                        onPressed: () => context.pushNamed(
+                          AppRoutes.newWebDav.name,
+                          queryParameters: {'replace': connectionModel.id},
+                        ),
+                      ),
+                    ),
+                  )
+                else if (fileBrowserState != null &&
+                    fileBrowserState.files.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.page,
+                      AppSpacing.sm,
+                      AppSpacing.page,
+                      AppSpacing.xl,
+                    ),
+                    sliver: SliverGrid(
+                      delegate: SliverChildBuilderDelegate((
+                        BuildContext context,
+                        int index,
+                      ) {
+                        final file = fileBrowserState.files[index];
+                        double? progress;
+                        return StatefulBuilder(
+                          builder:
+                              (BuildContext context, StateSetter setState) {
+                                return SizedBox.expand(
+                                  child: CupertinoButton(
+                                    minimumSize: Size.zero,
+                                    padding: EdgeInsets.zero,
+                                    onPressed: isLoading
+                                        ? null
+                                        : () async {
+                                            notifier.onRemoteFileItemTapped(
+                                              file,
+                                              (a, b) {
+                                                setState(() {
+                                                  progress =
+                                                      a.toDouble() /
+                                                      b.toDouble();
+                                                });
+                                              },
+                                            );
+                                          },
+                                    child: SizedBox.expand(
+                                      child: RemoteFileItem(
+                                        file: file,
+                                        progress: progress,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                        );
+                      }, childCount: fileBrowserState.files.length),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            childAspectRatio: 1,
+                            mainAxisSpacing: AppSpacing.sm,
+                            crossAxisSpacing: AppSpacing.sm,
+                          ),
+                    ),
+                  )
+                else if (!isLoading && fileBrowserState != null)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: AdaptiveEmptyState(
+                      icon: CupertinoIcons.folder,
+                      title: '这个目录还是空的',
+                      message: '远端文件和文件夹会显示在这里。',
+                    ),
+                  ),
+              ],
             ),
           ),
         );
