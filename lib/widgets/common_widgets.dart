@@ -5,6 +5,7 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
+import 'package:velock_sync/l10n/sync_locale.dart';
 
 /// Shows transient operation feedback without assuming a Material widget tree.
 ///
@@ -20,6 +21,63 @@ void showPlatformMessage(BuildContext context, String message) {
   unawaited(Fluttertoast.showToast(msg: message));
 }
 
+/// Shared back affordance used by Sync page headers.
+///
+/// The button deliberately renders only a chevron: it does not include a
+/// previous-page title, an arrow stem, or a circular background. Callers can
+/// pass `null` to render the same affordance in a disabled state.
+class AppBackButton extends StatelessWidget {
+  const AppBackButton({super.key, required this.onPressed, this.semanticLabel});
+
+  static const double touchTargetSize = 44;
+  static const double iconSize = 20;
+
+  final VoidCallback? onPressed;
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = semanticLabel ?? syncText(context, '返回', 'Back');
+    final enabled = onPressed != null;
+    final iconColor = context.appPrimary.withValues(alpha: enabled ? 1 : 0.35);
+    final icon = Icon(
+      Icons.chevron_left_rounded,
+      color: iconColor,
+      size: iconSize,
+    );
+
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        button: true,
+        enabled: enabled,
+        onTap: onPressed,
+        excludeSemantics: true,
+        child: SizedBox.square(
+          dimension: touchTargetSize,
+          child: PlatformIconButton(
+            padding: EdgeInsets.zero,
+            icon: icon,
+            onPressed: onPressed,
+            material: (context, platform) => MaterialIconButtonData(
+              constraints: const BoxConstraints.tightFor(
+                width: touchTargetSize,
+                height: touchTargetSize,
+              ),
+              iconSize: iconSize,
+            ),
+            cupertino: (context, platform) => CupertinoIconButtonData(
+              minimumSize: const Size.square(touchTargetSize),
+              foregroundColor: iconColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class WDAppBar extends PlatformAppBar {
   WDAppBar({
     super.key,
@@ -28,8 +86,11 @@ class WDAppBar extends PlatformAppBar {
     super.leading,
     bool showTitle = true,
   }) : super(
+         automaticallyImplyLeading: false,
          title: showTitle ? title : null,
          material: (context, _) => MaterialAppBarData(
+           leading: _leadingFor(context, leading),
+           automaticallyImplyLeading: false,
            centerTitle: false,
            elevation: 0,
            scrolledUnderElevation: 0,
@@ -37,6 +98,8 @@ class WDAppBar extends PlatformAppBar {
            backgroundColor: context.appNavigationBarBackground,
          ),
          cupertino: (context, _) => CupertinoNavigationBarData(
+           leading: _leadingFor(context, leading),
+           automaticallyImplyLeading: false,
            backgroundColor: context.appNavigationBarBackground,
            border: Border(
              bottom: BorderSide(
@@ -46,6 +109,16 @@ class WDAppBar extends PlatformAppBar {
            ),
          ),
        );
+
+  static Widget? _leadingFor(BuildContext context, Widget? leading) {
+    if (leading != null) {
+      return leading;
+    }
+    if (ModalRoute.of(context)?.canPop != true) {
+      return null;
+    }
+    return AppBackButton(onPressed: () => Navigator.of(context).maybePop());
+  }
 }
 
 /// 连接状态指示器

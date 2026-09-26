@@ -438,8 +438,12 @@ class _OAuthFolderPickerSheetState extends State<_OAuthFolderPickerSheet> {
               ),
               leading: _history.isEmpty
                   ? const Icon(Icons.folder_outlined)
-                  : IconButton(
-                      icon: const Icon(Icons.arrow_back),
+                  : AppBackButton(
+                      semanticLabel: syncText(
+                        context,
+                        '返回上一级文件夹',
+                        'Parent folder',
+                      ),
                       onPressed: () => _goTo(_history.removeLast()),
                     ),
               trailing: TextButton(

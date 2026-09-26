@@ -562,7 +562,7 @@ void main() {
         await _pumpWizard(tester, harness);
         await tester.tap(find.byKey(const Key('continue-velock-setup')));
         await tester.pumpAndSettle();
-        await tester.pageBack();
+        await tester.tap(find.byKey(const Key('backup-folder-back')));
         await tester.pumpAndSettle();
         expect(harness.destination.checkCount, 0);
         expect(harness.finalizer.finalizeCount, 0);

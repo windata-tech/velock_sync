@@ -1,6 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -8,6 +6,7 @@ import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
+import 'package:velock_sync/widgets/common_widgets.dart';
 
 class Protocols extends HookConsumerWidget {
   const Protocols({super.key, this.returnTo});
@@ -17,12 +16,8 @@ class Protocols extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return AdaptiveScaffold(
       title: syncText(context, '选择云端位置', 'Choose cloud storage'),
-      leading: PlatformIconButton(
-        padding: EdgeInsets.zero,
-        cupertino: (context, platform) =>
-            CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
-        material: (context, platform) =>
-            MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
+      leading: AppBackButton(
+        semanticLabel: syncText(context, '返回', 'Back'),
         onPressed: () => context.pop(),
       ),
       body: ListView(

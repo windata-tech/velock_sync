@@ -42,6 +42,9 @@ class AdaptiveSliverScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final backButton = ModalRoute.of(context)?.canPop == true
+        ? AppBackButton(onPressed: () => Navigator.of(context).maybePop())
+        : null;
     if (isApplePlatform(context)) {
       final trailing = actions.isEmpty
           ? null
@@ -58,6 +61,8 @@ class AdaptiveSliverScaffold extends StatelessWidget {
             slivers: [
               useExpandedTitle
                   ? CupertinoSliverNavigationBar(
+                      automaticallyImplyLeading: false,
+                      leading: backButton,
                       largeTitle: Text(title),
                       trailing: trailing,
                       backgroundColor: CupertinoColors.systemGroupedBackground,
@@ -66,6 +71,7 @@ class AdaptiveSliverScaffold extends StatelessWidget {
                   : SliverPersistentHeader(
                       pinned: true,
                       delegate: _CompactCupertinoTopBarDelegate(
+                        leading: backButton,
                         title: showTitle ? title : null,
                         actions: actions,
                         topPadding: MediaQuery.paddingOf(context).top,
@@ -88,6 +94,8 @@ class AdaptiveSliverScaffold extends StatelessWidget {
       slivers: [
         showTitle && useLargeTitle
             ? SliverAppBar.large(
+                automaticallyImplyLeading: false,
+                leading: backButton,
                 title: Text(title),
                 pinned: true,
                 actions: actions,
@@ -95,6 +103,8 @@ class AdaptiveSliverScaffold extends StatelessWidget {
                 surfaceTintColor: Colors.transparent,
               )
             : SliverAppBar(
+                automaticallyImplyLeading: false,
+                leading: backButton,
                 title: showTitle ? Text(title) : null,
                 pinned: true,
                 actions: actions,
@@ -125,11 +135,13 @@ class AdaptiveSliverScaffold extends StatelessWidget {
 /// list, which made scrolled headers collide with the clock).
 class _CompactCupertinoTopBarDelegate extends SliverPersistentHeaderDelegate {
   _CompactCupertinoTopBarDelegate({
+    this.leading,
     required this.title,
     required this.actions,
     required this.topPadding,
   });
 
+  final Widget? leading;
   final String? title;
   final List<Widget> actions;
   final double topPadding;
@@ -176,6 +188,7 @@ class _CompactCupertinoTopBarDelegate extends SliverPersistentHeaderDelegate {
                 height: 44,
                 child: Row(
                   children: [
+                    ?leading,
                     if (title != null)
                       Expanded(
                         child: Text(
@@ -203,6 +216,7 @@ class _CompactCupertinoTopBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(covariant _CompactCupertinoTopBarDelegate oldDelegate) =>
+      oldDelegate.leading != leading ||
       oldDelegate.title != title ||
       oldDelegate.actions != actions ||
       oldDelegate.topPadding != topPadding;

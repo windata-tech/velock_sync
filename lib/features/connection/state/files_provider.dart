@@ -17,6 +17,9 @@ part '../../../generated/features/connection/state/files_provider.g.dart';
 @riverpod
 class RemoteFileBrowser extends _$RemoteFileBrowser {
   String _currentPath = '/';
+  int _generation = 0;
+
+  String get currentPath => _currentPath;
 
   bool get canGoBack => _currentPath != _currentRootPath;
 
@@ -51,7 +54,11 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
       throw UnsupportedError('Remote file browsing is currently WebDAV-only.');
     }
     _currentPath = _normalisePath(protocol.path ?? '/');
-    return _fetchState(_currentPath);
+    _unstableStack.clear();
+    ref.onDispose(() => _generation++);
+    final initial = await _fetchState(_currentPath);
+    _remember(initial);
+    return initial;
   }
 
   /// 获取文件列表
@@ -65,46 +72,51 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
       files: files,
     );
 
-    // 只保留当前路径和父路径之上的
-    _unstableStack.removeWhere(
-      (e) => path == e.path || p.isWithin(path, e.path),
-    );
-    // 缓存到stack里，方便返回
-    _unstableStack.add(fileBrowserState);
-    printCurrentStack();
     return fileBrowserState;
   }
 
-  /// 去到具体的页面
-  Future<void> go(String path) async {
-    state = const AsyncValue.loading();
-
-    state = await AsyncValue.guard(() async {
-      final newState = await _fetchState(path);
-      logger.d('Remote browser navigated.');
-      return newState;
-    });
+  void _remember(FileBrowserState value) {
+    _unstableStack.removeWhere(
+      (e) => value.path == e.path || p.posix.isWithin(value.path, e.path),
+    );
+    _unstableStack.add(value);
   }
 
-  /// 返回上一级目录
-  Future<void> goBack() async {
-    final currentState = state.value;
-    if (currentState == null || currentState.isRoot) return;
+  /// Navigate within the configured root. Keep the attempted path on errors so
+  /// Back can still reach its parent instead of unexpectedly closing the page.
+  Future<void> go(String path) async {
+    final target = _normalisePath(path);
+    if (target != _currentRootPath &&
+        !p.posix.isWithin(_currentRootPath, target)) {
+      throw ArgumentError('Directory is outside the configured root.');
+    }
+    final generation = ++_generation;
+    _currentPath = target;
+    state = const AsyncValue.loading();
+    final result = await AsyncValue.guard(() => _fetchState(target));
+    if (!ref.mounted || generation != _generation) return;
+    if (result.value case final value?) _remember(value);
+    state = result;
+  }
 
-    final parentPath = p.dirname(currentState.path);
-    // 优先从历史里取数据，而不是重新请求
-    final stackState = _unstableStack
-        .where((e) => e.path == parentPath)
+  Future<void> refresh() => go(_currentPath);
+
+  /// Return one directory level, including while a child request is pending or
+  /// failed. A stale child response must not send the user forward again.
+  Future<void> goBack() async {
+    if (!canGoBack) return;
+    final parentPath = p.posix.dirname(_currentPath);
+    final cached = _unstableStack
+        .where((entry) => entry.path == parentPath)
         .singleOrNull;
-    if (stackState != null) {
-      state = AsyncValue.data(stackState);
-      // 从历史栈移除当前这个没用的
-      _unstableStack.removeLast();
+    if (cached != null) {
+      ++_generation;
+      _currentPath = parentPath;
+      _remember(cached);
+      state = AsyncValue.data(cached);
     } else {
-      logger.w('Remote browser history did not contain the parent directory.');
       await go(parentPath);
     }
-    printCurrentStack();
   }
 
   /// 下载文件，因为文件在服务器呢，本地要打开只能先下载
@@ -137,7 +149,7 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     void Function(int count, int total)? onProgress,
   ) async {
     cancelToken?.cancel();
-    final path = p.canonicalize(file.path);
+    final path = _normalisePath(file.path);
     try {
       if (file.isDir) {
         await go(path);
@@ -191,7 +203,7 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
   }
 
   String _normalisePath(String path) {
-    final normalised = p.canonicalize(path.isEmpty ? '/' : path);
+    final normalised = p.posix.normalize(path.isEmpty ? '/' : path);
     return normalised == '.' ? '/' : normalised;
   }
 }

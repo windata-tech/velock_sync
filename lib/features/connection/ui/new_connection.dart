@@ -1,6 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -9,6 +7,7 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
+import 'package:velock_sync/widgets/common_widgets.dart';
 
 class NewConnection extends ConsumerWidget {
   const NewConnection({super.key});
@@ -26,12 +25,8 @@ class NewConnection extends ConsumerWidget {
 
     return AdaptiveScaffold(
       title: syncText(context, '新建连接', 'New Connection'),
-      leading: PlatformIconButton(
-        padding: EdgeInsets.zero,
-        cupertino: (context, platform) =>
-            CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
-        material: (context, platform) =>
-            MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
+      leading: AppBackButton(
+        semanticLabel: syncText(context, '返回', 'Back'),
         onPressed: () => context.pop(),
       ),
       body: ListView(

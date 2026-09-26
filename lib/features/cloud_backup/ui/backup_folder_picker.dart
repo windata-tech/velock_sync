@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/state/common.dart';
@@ -306,10 +307,29 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
           ..._segments,
         ].join('/');
 
+  void _goBack() {
+    if (_creating) return;
+    if (_segments.isNotEmpty) {
+      _load(_segments.sublist(0, _segments.length - 1));
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !_creating,
+    canPop: !_creating && _segments.isEmpty,
+    onPopInvokedWithResult: (didPop, result) {
+      if (!didPop && !_creating && _segments.isNotEmpty) _goBack();
+    },
     child: AdaptiveScaffold(
+      leading: AppBackButton(
+        key: const Key('backup-folder-back'),
+        onPressed: _creating ? null : _goBack,
+        semanticLabel: _segments.isNotEmpty
+            ? syncText(context, '返回上一级文件夹', 'Parent folder')
+            : syncText(context, '返回', 'Back'),
+      ),
       title: syncText(
         context,
         widget.restoring ? '找到原备份文件夹' : '选择备份文件夹',

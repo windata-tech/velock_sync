@@ -62,6 +62,59 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
+  testWidgets('header and system back go up before leaving folder picker', (
+    tester,
+  ) async {
+    var closed = false;
+    await pumpPicker(
+      tester,
+      load: (path) async => path.length < 2
+          ? [WebDavBackupFolder(name: path.isEmpty ? 'one' : 'two')]
+          : [],
+      onSelected: (_) => closed = true,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('backup-folder-one')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('backup-folder-two')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('backup-folder-back')));
+    await tester.pumpAndSettle();
+    expect(find.text('/dav/one'), findsOneWidget);
+    expect(closed, isFalse);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('/dav'), findsOneWidget);
+    expect(closed, isFalse);
+    await tester.tap(find.byKey(const Key('backup-folder-back')));
+    await tester.pumpAndSettle();
+    expect(closed, isTrue);
+  });
+
+  testWidgets(
+    'back can escape failed or loading child without exiting picker',
+    (tester) async {
+      final pending = Completer<List<WebDavBackupFolder>>();
+      await pumpPicker(
+        tester,
+        load: (path) async {
+          if (path.isEmpty) return const [WebDavBackupFolder(name: 'slow')];
+          return pending.future;
+        },
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('backup-folder-slow')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('backup-folder-back')));
+      await tester.pumpAndSettle();
+      expect(find.text('/dav'), findsOneWidget);
+      pending.completeError(StateError('denied'));
+      await tester.pumpAndSettle();
+      expect(find.text('/dav'), findsOneWidget);
+      expect(find.byKey(const Key('backup-folder-error')), findsNothing);
+    },
+  );
+
   testWidgets(
     'browses children, goes up, returns only explicitly selected folder',
     (tester) async {
@@ -124,7 +177,7 @@ void main() {
             .onPressed,
         isNull,
       );
-      await tester.pageBack();
+      await tester.tap(find.byKey(const Key('backup-folder-back')));
       await tester.pumpAndSettle();
       pending.complete(const []);
       await tester.pumpAndSettle();
@@ -298,7 +351,11 @@ void main() {
         isNull,
       );
       expect(
-        tester.widget<PopScope>(find.byType(PopScope).first).canPop,
+        tester
+            .widget<PopScope>(
+              find.byWidgetPredicate((widget) => widget is PopScope).first,
+            )
+            .canPop,
         isFalse,
       );
       pending.complete();

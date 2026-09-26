@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
@@ -146,12 +145,8 @@ class NewWebDav extends HookConsumerWidget {
     return PlatformScaffold(
       iosContentPadding: false,
       appBar: WDAppBar(
-        leading: PlatformIconButton(
-          padding: EdgeInsets.zero,
-          cupertino: (context, platform) =>
-              CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
-          material: (context, platform) =>
-              MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
+        leading: AppBackButton(
+          semanticLabel: syncText(context, '返回', 'Back'),
           onPressed: () => context.pop(),
         ),
         title: Text(

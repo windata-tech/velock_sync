@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
@@ -46,14 +47,8 @@ class Connection extends HookConsumerWidget {
           return PlatformScaffold(
             iosContentPadding: false,
             appBar: WDAppBar(
-              leading: PlatformIconButton(
-                padding: EdgeInsets.zero,
-                cupertino: (context, platform) => CupertinoIconButtonData(
-                  icon: const Icon(CupertinoIcons.back),
-                ),
-                material: (context, platform) =>
-                    MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-                onPressed: () => context.pop(),
+              leading: AppBackButton(
+                onPressed: () => Navigator.of(context).maybePop(),
               ),
               title: const Text('连接详情'),
             ),
@@ -87,182 +82,197 @@ class Connection extends HookConsumerWidget {
         );
 
         Future<void> refreshBrowser() async {
-          ref.invalidate(
-            remoteFileBrowserProvider(connectionModel: connectionModel),
-          );
+          await notifier.refresh();
           await testConnection();
         }
 
-        return PlatformScaffold(
-          iosContentPadding: false,
-          appBar: WDAppBar(
-            leading: PlatformIconButton(
-              padding: EdgeInsets.zero,
-              cupertino: (context, platform) => CupertinoIconButtonData(
-                icon: const Icon(CupertinoIcons.back),
+        final canGoUp = notifier.canGoBack;
+        void goBack() {
+          if (notifier.canGoBack) {
+            notifier.goBack();
+          } else {
+            Navigator.of(context).maybePop();
+          }
+        }
+
+        return PopScope(
+          canPop: !canGoUp,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop && notifier.canGoBack) notifier.goBack();
+          },
+          child: PlatformScaffold(
+            iosContentPadding: false,
+            appBar: WDAppBar(
+              leading: AppBackButton(
+                onPressed: goBack,
+                semanticLabel: canGoUp
+                    ? syncText(context, '返回上一级文件夹', 'Parent folder')
+                    : syncText(context, '返回', 'Back'),
               ),
-              material: (context, platform) =>
-                  MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-              onPressed: () => context.pop(),
-            ),
-            title: Row(
-              children: [
-                ConnectStatusIndicator(
-                  status: connectionModel.status,
-                  pendingProgressSize: 12,
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    connectionModel.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+              title: Row(
+                children: [
+                  ConnectStatusIndicator(
+                    status: connectionModel.status,
+                    pendingProgressSize: 12,
                   ),
-                ),
-              ],
-            ),
-            trailingActions: [
-              PlatformIconButton(
-                padding: EdgeInsets.zero,
-                cupertino: (context, platform) {
-                  return CupertinoIconButtonData(
-                    icon: const Icon(CupertinoIcons.pencil),
-                  );
-                },
-                material: (context, platform) {
-                  return MaterialIconButtonData(
-                    icon: const Icon(Icons.edit_outlined, size: 24),
-                  );
-                },
-                onPressed: () => context.pushNamed(
-                  AppRoutes.newWebDav.name,
-                  queryParameters: {'replace': connectionModel.id},
-                ),
-              ),
-              PlatformIconButton(
-                padding: EdgeInsets.zero,
-                cupertino: (context, platform) {
-                  return CupertinoIconButtonData(
-                    icon: Icon(CupertinoIcons.refresh),
-                  );
-                },
-                material: (context, platform) {
-                  return MaterialIconButtonData(
-                    icon: Icon(Icons.refresh, size: 24),
-                  );
-                },
-                onPressed: refreshBrowser,
-              ),
-            ],
-          ),
-          body: asyncFileBrowserState.when(
-            data: (fileBrowserState) {
-              return CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: _ProviderCapabilityDetails(
-                      protocol: connectionModel.protocol,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      connectionModel.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (fileBrowserState.files.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: AdaptiveEmptyState(
-                        icon: CupertinoIcons.folder,
-                        title: '这个目录还是空的',
-                        message: '远端文件和文件夹会显示在这里。',
-                      ),
-                    )
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.page,
-                        AppSpacing.sm,
-                        AppSpacing.page,
-                        AppSpacing.xl,
-                      ),
-                      sliver: SliverGrid(
-                        delegate: SliverChildBuilderDelegate((
-                          BuildContext context,
-                          int index,
-                        ) {
-                          final file = fileBrowserState.files[index];
-                          double? progress;
-                          return StatefulBuilder(
-                            builder:
-                                (BuildContext context, StateSetter setState) {
-                                  return SizedBox.expand(
-                                    child: CupertinoButton(
-                                      minimumSize: Size.zero,
-                                      padding: EdgeInsets.zero,
-                                      child: SizedBox.expand(
-                                        child: RemoteFileItem(
-                                          file: file,
-                                          progress: progress,
-                                        ),
-                                      ),
-                                      onPressed: () async {
-                                        notifier.onRemoteFileItemTapped(file, (
-                                          a,
-                                          b,
-                                        ) {
-                                          setState(() {
-                                            progress =
-                                                a.toDouble() / b.toDouble();
-                                          });
-                                        });
-                                      },
-                                    ),
-                                  );
-                                },
-                          );
-                        }, childCount: fileBrowserState.files.length),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 4,
-                              childAspectRatio: 1,
-                              mainAxisSpacing: AppSpacing.sm,
-                              crossAxisSpacing: AppSpacing.sm,
-                            ),
-                      ),
-                    ),
                 ],
-              );
-            },
-            error: (error, stackTrace) {
-              final presentation = _RemoteBrowserErrorPresentation.from(error);
-              return AdaptiveErrorState(
-                title: presentation.title,
-                message: presentation.message,
-                details: kDebugMode
-                    ? '$error\n\n${stackTrace.toString().trim()}'
-                    : null,
-                onRetry: () => ref.invalidate(
-                  remoteFileBrowserProvider(connectionModel: connectionModel),
-                ),
-                secondaryAction: AppSecondaryButton(
-                  label: '编辑连接',
+              ),
+              trailingActions: [
+                PlatformIconButton(
+                  padding: EdgeInsets.zero,
+                  cupertino: (context, platform) {
+                    return CupertinoIconButtonData(
+                      icon: const Icon(CupertinoIcons.pencil),
+                    );
+                  },
+                  material: (context, platform) {
+                    return MaterialIconButtonData(
+                      icon: const Icon(Icons.edit_outlined, size: 24),
+                    );
+                  },
                   onPressed: () => context.pushNamed(
                     AppRoutes.newWebDav.name,
                     queryParameters: {'replace': connectionModel.id},
                   ),
                 ),
-              );
-            },
-            loading: () => Center(child: PlatformCircularProgressIndicator()),
+                PlatformIconButton(
+                  padding: EdgeInsets.zero,
+                  cupertino: (context, platform) {
+                    return CupertinoIconButtonData(
+                      icon: Icon(CupertinoIcons.refresh),
+                    );
+                  },
+                  material: (context, platform) {
+                    return MaterialIconButtonData(
+                      icon: Icon(Icons.refresh, size: 24),
+                    );
+                  },
+                  onPressed: refreshBrowser,
+                ),
+              ],
+            ),
+            body: asyncFileBrowserState.when(
+              data: (fileBrowserState) {
+                return CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        child: Text(
+                          fileBrowserState.path,
+                          key: const Key('remote-browser-current-path'),
+                          style: TextStyle(color: context.appSecondaryLabel),
+                        ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: _ProviderCapabilityDetails(
+                        protocol: connectionModel.protocol,
+                      ),
+                    ),
+                    if (fileBrowserState.files.isEmpty)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: AdaptiveEmptyState(
+                          icon: CupertinoIcons.folder,
+                          title: '这个目录还是空的',
+                          message: '远端文件和文件夹会显示在这里。',
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.page,
+                          AppSpacing.sm,
+                          AppSpacing.page,
+                          AppSpacing.xl,
+                        ),
+                        sliver: SliverGrid(
+                          delegate: SliverChildBuilderDelegate((
+                            BuildContext context,
+                            int index,
+                          ) {
+                            final file = fileBrowserState.files[index];
+                            double? progress;
+                            return StatefulBuilder(
+                              builder:
+                                  (BuildContext context, StateSetter setState) {
+                                    return SizedBox.expand(
+                                      child: CupertinoButton(
+                                        minimumSize: Size.zero,
+                                        padding: EdgeInsets.zero,
+                                        child: SizedBox.expand(
+                                          child: RemoteFileItem(
+                                            file: file,
+                                            progress: progress,
+                                          ),
+                                        ),
+                                        onPressed: () async {
+                                          notifier.onRemoteFileItemTapped(
+                                            file,
+                                            (a, b) {
+                                              setState(() {
+                                                progress =
+                                                    a.toDouble() / b.toDouble();
+                                              });
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    );
+                                  },
+                            );
+                          }, childCount: fileBrowserState.files.length),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4,
+                                childAspectRatio: 1,
+                                mainAxisSpacing: AppSpacing.sm,
+                                crossAxisSpacing: AppSpacing.sm,
+                              ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+              error: (error, stackTrace) {
+                final presentation = _RemoteBrowserErrorPresentation.from(
+                  error,
+                );
+                return AdaptiveErrorState(
+                  title: presentation.title,
+                  message: presentation.message,
+                  details: kDebugMode
+                      ? '$error\n\n${stackTrace.toString().trim()}'
+                      : null,
+                  onRetry: notifier.refresh,
+                  secondaryAction: AppSecondaryButton(
+                    label: '编辑连接',
+                    onPressed: () => context.pushNamed(
+                      AppRoutes.newWebDav.name,
+                      queryParameters: {'replace': connectionModel.id},
+                    ),
+                  ),
+                );
+              },
+              loading: () => Center(child: PlatformCircularProgressIndicator()),
+            ),
           ),
         );
       },
       error: (error, stackTrace) => PlatformScaffold(
         iosContentPadding: false,
         appBar: WDAppBar(
-          leading: PlatformIconButton(
-            padding: EdgeInsets.zero,
-            cupertino: (context, platform) =>
-                CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
-            material: (context, platform) =>
-                MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-            onPressed: () => context.pop(),
+          leading: AppBackButton(
+            onPressed: () => Navigator.of(context).maybePop(),
           ),
           title: const Text('连接详情'),
         ),
@@ -314,13 +324,8 @@ class _OAuthConnectionDetails extends StatelessWidget {
     return PlatformScaffold(
       iosContentPadding: false,
       appBar: WDAppBar(
-        leading: PlatformIconButton(
-          padding: EdgeInsets.zero,
-          cupertino: (context, platform) =>
-              CupertinoIconButtonData(icon: const Icon(CupertinoIcons.back)),
-          material: (context, platform) =>
-              MaterialIconButtonData(icon: const Icon(Icons.arrow_back)),
-          onPressed: () => context.pop(),
+        leading: AppBackButton(
+          onPressed: () => Navigator.of(context).maybePop(),
         ),
         title: Text(connection.name),
         trailingActions: [
