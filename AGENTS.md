@@ -111,6 +111,12 @@
 
 ## 目录加载不闪屏（2026-09-26）
 
-- Connection浏览页不能用loading替换整块正文（路径/能力卡/网格）；保持CustomScrollView与固定区挂载，加载仅显示路径旁轻量进度，等待时保留旧列表但禁用旧项点击，完成后再切换。
+- Connection浏览页不能用loading替换整块正文（路径/文件列表）；保持CustomScrollView与固定区挂载，加载仅显示路径旁轻量进度，等待时保留旧列表但禁用旧项点击，完成后再切换。
 - RemoteFileBrowser.visibleState提供加载期间最后可见目录，错误后不能继续把旧列表当新目录；保留当前请求路径和generation用于返回/晚到保护。不要调用Riverpod标记internal的copyWithPrevious绕过公开API。
-- 回归必须用Completer在请求完成前断言Element与位置稳定，不可只pumpAndSettle看最终截图宣称无闪烁。首次loading不显示空目录；失败仍能返回重试。详见 `docs/verification/2026-09-26-folder-loading-stability.md`。
+- 回归必须用Completer在请求完成前断言Element与位置稳定，不可只pumpAndSettle看最终截图宣称无闪烁。首次loading不显示空目录；失败仍能返回重试。技术能力卡后续已移入“连接说明”，不再常驻目录页。详见 `docs/verification/2026-09-26-folder-loading-stability.md`。
+
+## 连接说明按需查看（2026-09-26）
+
+- 目录页不再常驻“支持能力/使用限制”两张只读技术卡，不把静态适配器说明伪装成NAS检测成功。WebDAV与OAuth详情统一提供页头信息按钮“连接说明”（key: connection-info）。
+- 点击打开可滚动只读说明，完整展示功能/限制、不省略截断，明确“不是当前服务器的检测结果”。打开/关闭不探测、不写远端、不改当前目录；日常浏览不需操作这些技术项。
+- 慢请求测试继续断言路径/列表Element与位置稳定，不得因移除能力卡而删除加载禁用、失败返回等回归覆盖。

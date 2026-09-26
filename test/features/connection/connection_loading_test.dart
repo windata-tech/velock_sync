@@ -166,6 +166,42 @@ Future<void> _pumpConnection(
 void main() {
   for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
     group('$platform remote browser loading', () {
+      for (final largeText in [false, true]) {
+        testWidgets(
+          'connection info is optional and closable largeText=$largeText',
+          (tester) async {
+            if (largeText) {
+              await tester.binding.setSurfaceSize(const Size(320, 640));
+              tester.platformDispatcher.textScaleFactorTestValue = 2;
+              addTearDown(() {
+                tester.binding.setSurfaceSize(null);
+                tester.platformDispatcher.clearTextScaleFactorTestValue();
+              });
+            }
+            final browser = _ControlledBrowser(initialState: _parentState());
+            await _pumpConnection(tester, platform: platform, browser: browser);
+            expect(find.text('支持能力'), findsNothing);
+            expect(find.text('使用限制'), findsNothing);
+            expect(find.text('WebDAV 能力与限制'), findsNothing);
+            expect(find.text(_rootPath), findsOneWidget);
+            await tester.tap(find.byKey(const Key('connection-info')));
+            await tester.pumpAndSettle();
+            expect(find.text('连接说明'), findsOneWidget);
+            expect(find.text('这些是连接方式的技术说明，不是当前服务器的检测结果。'), findsOneWidget);
+            expect(find.text('断点续传取决于服务器能力；当前适配器会安全重试不可变对象。'), findsOneWidget);
+            expect(browser.goCalls, isEmpty);
+            await tester.ensureVisible(find.text('关闭'));
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('关闭'));
+            await tester.pumpAndSettle();
+            expect(find.text('连接说明'), findsNothing);
+            expect(find.text(_rootPath), findsOneWidget);
+            expect(find.text('child'), findsOneWidget);
+            expect(browser.goCalls, isEmpty);
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
       testWidgets(
         'keeps the parent listing mounted while a child directory loads',
         (tester) async {
@@ -173,11 +209,11 @@ void main() {
           await _pumpConnection(tester, platform: platform, browser: browser);
 
           final childFinder = find.text('child');
-          final capabilityFinder = find.text('支持能力');
+          final pathFinder = find.byKey(_currentPathKey);
           final childElement = tester.element(childFinder);
           final childPosition = tester.getTopLeft(childFinder);
-          final capabilityElement = tester.element(capabilityFinder);
-          final capabilityPosition = tester.getTopLeft(capabilityFinder);
+          final pathElement = tester.element(pathFinder);
+          final pathPosition = tester.getTopLeft(pathFinder);
           final childCompleter = browser.armGo();
 
           await tester.tap(childFinder);
@@ -187,14 +223,11 @@ void main() {
           expect(find.text(_rootPath), findsOneWidget);
           expect(find.byKey(_loadingKey), findsOneWidget);
           expect(childFinder, findsOneWidget);
-          expect(capabilityFinder, findsOneWidget);
+          expect(pathFinder, findsOneWidget);
           expect(identical(childElement, tester.element(childFinder)), isTrue);
           expect(tester.getTopLeft(childFinder), childPosition);
-          expect(
-            identical(capabilityElement, tester.element(capabilityFinder)),
-            isTrue,
-          );
-          expect(tester.getTopLeft(capabilityFinder), capabilityPosition);
+          expect(identical(pathElement, tester.element(pathFinder)), isTrue);
+          expect(tester.getTopLeft(pathFinder), pathPosition);
 
           await tester.tap(childFinder, warnIfMissed: false);
           await tester.pump();
@@ -231,7 +264,8 @@ void main() {
           expect(find.text('无法加载文件夹'), findsOneWidget);
           expect(find.text('child'), findsNothing);
           expect(find.byKey(_loadingKey), findsNothing);
-          expect(find.text('支持能力'), findsOneWidget);
+          expect(find.text('支持能力'), findsNothing);
+          expect(find.byKey(_currentPathKey), findsOneWidget);
           expect(find.text('重试'), findsOneWidget);
           expect(find.byType(AppBackButton), findsOneWidget);
 
@@ -263,7 +297,8 @@ void main() {
           expect(find.byKey(_loadingKey), findsOneWidget);
           final pathText = tester.widget<Text>(find.byKey(_currentPathKey));
           expect(pathText.data, _rootPath);
-          expect(find.text('支持能力'), findsOneWidget);
+          expect(find.text('支持能力'), findsNothing);
+          expect(find.byKey(_currentPathKey), findsOneWidget);
           expect(find.text('这个目录还是空的'), findsNothing);
           expect(find.text('child'), findsNothing);
 

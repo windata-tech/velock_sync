@@ -131,6 +131,7 @@ class Connection extends HookConsumerWidget {
                 ],
               ),
               trailingActions: [
+                _ConnectionInfoButton(protocol: connectionModel.protocol),
                 PlatformIconButton(
                   padding: EdgeInsets.zero,
                   cupertino: (context, platform) {
@@ -204,11 +205,6 @@ class Connection extends HookConsumerWidget {
                     ),
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: _ProviderCapabilityDetails(
-                    protocol: connectionModel.protocol,
-                  ),
-                ),
                 if (browserError != null)
                   SliverFillRemaining(
                     hasScrollBody: false,
@@ -237,52 +233,62 @@ class Connection extends HookConsumerWidget {
                       AppSpacing.page,
                       AppSpacing.xl,
                     ),
-                    sliver: SliverGrid(
-                      delegate: SliverChildBuilderDelegate((
-                        BuildContext context,
-                        int index,
-                      ) {
-                        final file = fileBrowserState.files[index];
-                        double? progress;
-                        return StatefulBuilder(
-                          builder:
-                              (BuildContext context, StateSetter setState) {
-                                return SizedBox.expand(
-                                  child: CupertinoButton(
-                                    minimumSize: Size.zero,
-                                    padding: EdgeInsets.zero,
-                                    onPressed: isLoading
-                                        ? null
-                                        : () async {
-                                            notifier.onRemoteFileItemTapped(
-                                              file,
-                                              (a, b) {
-                                                setState(() {
-                                                  progress =
-                                                      a.toDouble() /
-                                                      b.toDouble();
-                                                });
-                                              },
-                                            );
-                                          },
-                                    child: SizedBox.expand(
-                                      child: RemoteFileItem(
-                                        file: file,
-                                        progress: progress,
+                    sliver: SliverLayoutBuilder(
+                      builder: (context, constraints) => SliverGrid(
+                        delegate: SliverChildBuilderDelegate((
+                          BuildContext context,
+                          int index,
+                        ) {
+                          final file = fileBrowserState.files[index];
+                          double? progress;
+                          return StatefulBuilder(
+                            builder:
+                                (BuildContext context, StateSetter setState) {
+                                  return SizedBox.expand(
+                                    child: CupertinoButton(
+                                      minimumSize: Size.zero,
+                                      padding: EdgeInsets.zero,
+                                      onPressed: isLoading
+                                          ? null
+                                          : () async {
+                                              notifier.onRemoteFileItemTapped(
+                                                file,
+                                                (a, b) {
+                                                  setState(() {
+                                                    progress =
+                                                        a.toDouble() /
+                                                        b.toDouble();
+                                                  });
+                                                },
+                                              );
+                                            },
+                                      child: SizedBox.expand(
+                                        child: RemoteFileItem(
+                                          file: file,
+                                          progress: progress,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                );
-                              },
-                        );
-                      }, childCount: fileBrowserState.files.length),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 4,
-                            childAspectRatio: 1,
-                            mainAxisSpacing: AppSpacing.sm,
-                            crossAxisSpacing: AppSpacing.sm,
-                          ),
+                                  );
+                                },
+                          );
+                        }, childCount: fileBrowserState.files.length),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount:
+                              ((constraints.crossAxisExtent + AppSpacing.sm) /
+                                      (40 +
+                                          MediaQuery.textScalerOf(
+                                                context,
+                                              ).scale(12) *
+                                              3 +
+                                          AppSpacing.sm))
+                                  .floor()
+                                  .clamp(1, 6),
+                          childAspectRatio: 1,
+                          mainAxisSpacing: AppSpacing.sm,
+                          crossAxisSpacing: AppSpacing.sm,
+                        ),
+                      ),
                     ),
                   )
                 else if (!isLoading && fileBrowserState != null)
@@ -360,6 +366,7 @@ class _OAuthConnectionDetails extends StatelessWidget {
         ),
         title: Text(connection.name),
         trailingActions: [
+          _ConnectionInfoButton(protocol: protocol),
           PlatformIconButton(
             icon: const Icon(Icons.refresh),
             onPressed: onTestConnection,
@@ -396,7 +403,6 @@ class _OAuthConnectionDetails extends StatelessWidget {
               ),
             ],
           ),
-          _ProviderCapabilityDetails(protocol: protocol),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.page,
@@ -415,44 +421,66 @@ class _OAuthConnectionDetails extends StatelessWidget {
   }
 }
 
-class _ProviderCapabilityDetails extends StatelessWidget {
-  const _ProviderCapabilityDetails({required this.protocol});
+/// Connection-level reference information, deliberately kept out of the
+/// directory content. Opening this sheet performs no probe or remote request.
+class _ConnectionInfoButton extends StatelessWidget {
+  const _ConnectionInfoButton({required this.protocol});
 
   final ProtocolModel protocol;
 
   @override
   Widget build(BuildContext context) {
-    final summary = providerCapabilitySummary(protocol);
-    return AdaptiveListSection(
-      header: '${summary.providerName} 能力与限制',
-      children: [
-        if (summary.features.isNotEmpty)
-          AdaptiveListTile(
-            leading: AdaptiveIconBadge(
-              icon: adaptiveIcon(
-                context,
-                material: Icons.check_circle_outline,
-                cupertino: CupertinoIcons.check_mark_circled,
-              ),
-              color: AppColors.success,
-            ),
-            title: const Text('支持能力'),
-            subtitle: Text(summary.features.join(' · ')),
+    final label = syncText(context, '连接说明', 'Connection info');
+    return Tooltip(
+      message: label,
+      child: PlatformIconButton(
+        key: const Key('connection-info'),
+        padding: EdgeInsets.zero,
+        icon: Icon(
+          adaptiveIcon(
+            context,
+            material: Icons.info_outline,
+            cupertino: CupertinoIcons.info_circle,
           ),
-        for (final limitation in summary.limitations)
-          AdaptiveListTile(
-            leading: AdaptiveIconBadge(
-              icon: adaptiveIcon(
-                context,
-                material: Icons.info_outline,
-                cupertino: CupertinoIcons.info,
+          semanticLabel: label,
+        ),
+        onPressed: () {
+          final summary = providerCapabilitySummary(protocol);
+          showAppDetailSheet(
+            context,
+            title: label,
+            rows: [
+              AppDetailSheetRow(
+                label: syncText(context, '说明', 'About'),
+                value: syncText(
+                  context,
+                  '这些是连接方式的技术说明，不是当前服务器的检测结果。',
+                  'These describe the connection implementation, not test results for this server.',
+                ),
               ),
-              color: AppColors.warning,
+              AppDetailSheetRow(
+                label: syncText(context, '连接方式', 'Connection type'),
+                value: summary.providerName,
+              ),
+              if (summary.features.isNotEmpty)
+                AppDetailSheetRow(
+                  label: syncText(context, '功能说明', 'Features'),
+                  value: summary.features.join('\n'),
+                ),
+              if (summary.limitations.isNotEmpty)
+                AppDetailSheetRow(
+                  label: syncText(context, '注意事项', 'Limitations'),
+                  value: summary.limitations.join('\n'),
+                ),
+            ],
+            footnote: syncText(
+              context,
+              '浏览文件夹不需要设置这些项目。能否备份，以实际连接和备份检查为准。',
+              'There is nothing to configure here. Backup availability is determined by actual connection and backup checks.',
             ),
-            title: const Text('使用限制'),
-            subtitle: Text(limitation),
-          ),
-      ],
+          );
+        },
+      ),
     );
   }
 }
