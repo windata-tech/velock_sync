@@ -79,3 +79,10 @@
 - 真实 FN Connect 根入口可 PROPFIND207 列共享目录，但 MKCOL405；必须选择实际可写文件夹。MKCOL405/409 现在分类 `provider.webdav.collection_not_writable`，不再误报原子防覆盖不支持，也不得取得/删除非自有探针目录。
 - 同服务 MOVE 的 Destination 使用 RFC4918 允许的编码绝对路径，避免 FN Connect 转发下外部 absolute-URI 返回502；保留 Unicode/空格/转义/base 子路径/query。Overwrite:F、碰撞412与字节校验、发布201/源消失不放宽，禁止普通PUT回退。
 - Sync432、格间32项相关回归通过，改动范围分析无问题。但真实FN Connect生产适配器仅1MiB不可变创建/内容校验通过，四并发阶段401，整组live test未通过；401后停止重试，已请用户解锁Mac并确认账号，不能宣称NAS或完整跨App同步已验收。详细证据 `docs/verification/cloud-backup-follow-up.md`。
+
+## 临时授权恢复（2026-09-26）
+
+- “格间已允许连接”不能仅判断 approval 非空：配对临时响应有 5 分钟有效期。向导用最早 request/response 截止时间、Timer 和继续/前台检查保持状态一致；过期必须给“重新授权”入口并保留云端位置/恢复 intent，不延长期限或跳过验签。
+- finalizer 保存持久 profile 前重验到期；授权有效时发起的持久保存完成后，ACK 可晚于临时期限。同一 flow 的晚到结果不得覆盖新 session/reset；ACK 未完成不能被 clearCompletedFlow 清除或被已有 profile 卡片遮盖。
+- 回归：`test/features/cloud_backup/velock_pairing_recovery_test.dart`、`backup_navigation_test.dart` 和 pairing/finalizer 单测。widget 持有应用级 Timer，必须在测试体 finally 中 reset/dispose，不能只在 addTearDown 清理。
+- 现场根因与验证边界：`docs/verification/2026-09-26-pairing-recovery.md`。NAS 并发 401 与本轮临时授权过期是不同问题，禁止混称为 NAS 已全流程通过。

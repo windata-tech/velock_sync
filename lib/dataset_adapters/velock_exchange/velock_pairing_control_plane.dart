@@ -225,6 +225,7 @@ class VelockPairingControlResponse {
   }) async {
     final current = (now ?? DateTime.now)().toUtc();
     if (!current.isBefore(expiresAt) ||
+        !current.isBefore(request.expiresAt) ||
         request.requestId != requestId ||
         request.challenge != challenge ||
         request.producerId != producerId ||

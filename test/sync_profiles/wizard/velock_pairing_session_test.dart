@@ -101,6 +101,46 @@ void main() {
         expect(control.queryCount, 1);
       },
     );
+
+    test(
+      'requires a fresh challenge-bound approval for each session',
+      () async {
+        final first = await service.begin(
+          descriptor: descriptor,
+          syncAppInstanceId: 'sync-instance-1',
+        );
+        await control.approve(first);
+        final firstApproval = await service.inspect(first);
+        expect(firstApproval.isApproved, isTrue);
+
+        now = first.request.createdAt.add(const Duration(minutes: 1));
+        final second = await service.begin(
+          descriptor: descriptor,
+          syncAppInstanceId: 'sync-instance-1',
+        );
+
+        expect(second.request.requestId, isNot(first.request.requestId));
+        expect(second.request.challenge, isNot(first.request.challenge));
+
+        await expectLater(
+          service.inspect(second),
+          throwsA(
+            isA<VelockPairingSessionException>().having(
+              (error) => error.code,
+              'code',
+              'invalid_pairing_response',
+            ),
+          ),
+        );
+
+        await control.approve(second);
+        final secondApproval = await service.inspect(second);
+
+        expect(secondApproval.isApproved, isTrue);
+        expect(secondApproval.response?.requestId, second.request.requestId);
+        expect(secondApproval.response?.challenge, second.request.challenge);
+      },
+    );
   });
 }
 

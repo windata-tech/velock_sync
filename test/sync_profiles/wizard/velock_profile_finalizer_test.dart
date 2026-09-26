@@ -23,9 +23,13 @@ void main() {
     late List<SyncProfileSummary> summaries;
     late List<String> events;
     late VelockProfileFinalizationService service;
+    var expireDuringConnectionRead = false;
+    var expireDuringTrustSave = false;
 
     setUp(() async {
       now = DateTime.utc(2026, 7, 18, 8);
+      expireDuringConnectionRead = false;
+      expireDuringTrustSave = false;
       final signingKey = await Ed25519().newKeyPairFromSeed(
         List<int>.filled(32, 8),
       );
@@ -78,13 +82,17 @@ void main() {
               expect(producerId, 'producer-1');
               expect(signingPublicKey, hasLength(32));
               events.add('trust');
+              if (expireDuringTrustSave) now = session.request.expiresAt;
             },
         saveProfile: (profile) async {
           events.add('save');
           saved.add(profile);
         },
         readProfiles: () async => summaries,
-        readConnection: (_) async => connection,
+        readConnection: (_) async {
+          if (expireDuringConnectionRead) now = session.request.expiresAt;
+          return connection;
+        },
         pairing: pairing..events = events,
         nextId: () => 'profile-1',
         now: () => now,
@@ -188,8 +196,91 @@ void main() {
       },
     );
 
+    test('rechecks expiry after asynchronous connection reads', () async {
+      expireDuringConnectionRead = true;
+      await _expectCode(
+        service.finalize(
+          session: session,
+          approval: approval,
+          connectionId: 'connection-1',
+          displayName: 'Personal vault',
+          backgroundPolicy: const SyncProfileBackgroundPolicy(),
+          userConfirmed: true,
+        ),
+        'invalid_pairing_response',
+      );
+      expect(saved, isEmpty);
+      expect(events, isEmpty); // No trusted key, profile, or ACK is persisted.
+    });
+
     test(
-      'requires final confirmation and a still-valid signed approval',
+      'expiry during trust storage never saves or acknowledges a profile',
+      () async {
+        expireDuringTrustSave = true;
+        await _expectCode(
+          service.finalize(
+            session: session,
+            approval: approval,
+            connectionId: 'connection-1',
+            displayName: 'Personal vault',
+            backgroundPolicy: const SyncProfileBackgroundPolicy(),
+            userConfirmed: true,
+          ),
+          'invalid_pairing_response',
+        );
+        expect(saved, isEmpty);
+        expect(events, [
+          'trust',
+        ]); // An orphan public key grants no dataset access.
+      },
+    );
+
+    test(
+      'a later response deadline cannot extend the original request',
+      () async {
+        final signingKey = await Ed25519().newKeyPairFromSeed(
+          List<int>.filled(32, 8),
+        );
+        final unsigned = approval.unsignedJson();
+        unsigned['expiresAt'] = now
+            .add(const Duration(minutes: 10))
+            .toIso8601String();
+        final signature = await Ed25519().sign(
+          utf8.encode(jsonEncode(unsigned)),
+          keyPair: signingKey,
+        );
+        final extended = VelockPairingControlResponse.parse(
+          Uint8List.fromList(
+            utf8.encode(
+              jsonEncode({
+                ...unsigned,
+                'signature': base64UrlEncode(signature.bytes),
+              }),
+            ),
+          ),
+        );
+        expect(
+          await extended.verify(
+            descriptor: session.descriptor,
+            request: session.request,
+            now: () => now,
+          ),
+          isTrue,
+        );
+        now = session.request.expiresAt;
+        expect(
+          await extended.verify(
+            descriptor: session.descriptor,
+            request: session.request,
+            now: () => now,
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'requires confirmation and rejects an approval that expires',
       () async {
         await _expectCode(
           service.finalize(
@@ -203,7 +294,16 @@ void main() {
           'confirmation_required',
         );
 
-        now = now.add(const Duration(minutes: 5));
+        expect(
+          await approval.verify(
+            descriptor: session.descriptor,
+            request: session.request,
+            now: () => now,
+          ),
+          isTrue,
+        );
+
+        now = session.request.expiresAt;
         await _expectCode(
           service.finalize(
             session: session,

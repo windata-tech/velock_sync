@@ -76,9 +76,15 @@ final velockWizardReadinessServiceProvider =
       (ref) => PlatformVelockWizardReadinessService(),
     );
 
+/// One clock for transient authorization, including tests and finalization.
+final velockWizardClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
+);
+
 final velockPairingSessionServiceProvider =
     Provider<VelockPairingSessionService>(
       (ref) => PlatformVelockPairingSessionService(
+        now: ref.watch(velockWizardClockProvider),
         control: Platform.isIOS || Platform.isMacOS
             ? ApplePairingControlChannel()
             : MethodChannelAndroidExchangeChannel(),
@@ -121,6 +127,7 @@ final velockProfileFinalizerProvider = Provider<VelockProfileFinalizer>((ref) {
         profiles.listSummaries(kind: SyncDatasetKind.velockManaged),
     readConnection: connections.getConnectionById,
     pairing: ref.watch(velockPairingSessionServiceProvider),
+    now: ref.watch(velockWizardClockProvider),
   );
 });
 
@@ -136,71 +143,160 @@ final velockExistingProfilesProvider =
           .listSummaries(kind: SyncDatasetKind.velockManaged);
     });
 
-/// App-scoped pairing state for the Velock wizard. Holding the session outside
-/// the page keeps an approved pairing usable after the user leaves the wizard
-/// to create a missing connection and returns.
+enum VelockWizardAuthorizationProblem { expired, invalid }
+
+/// Retain setup choices across cloud-account navigation, never the validity of
+/// a one-time authorization. Its signed deadline still applies off this page.
 class VelockWizardSessionState {
   const VelockWizardSessionState({
     this.session,
     this.approval,
     this.finalization,
     this.connectionNeeded = false,
+    this.selectedConnectionId,
+    this.authorizationProblem,
   });
 
   final VelockPairingSession? session;
   final VelockPairingControlResponse? approval;
   final VelockProfileFinalizationResult? finalization;
-
-  /// Set when the wizard found no active remote connection while an approved
-  /// pairing was waiting to continue.
   final bool connectionNeeded;
+  final String? selectedConnectionId;
+  final VelockWizardAuthorizationProblem? authorizationProblem;
 
   VelockWizardSessionState copyWith({
-    VelockPairingSession? session,
     VelockPairingControlResponse? approval,
-    VelockProfileFinalizationResult? finalization,
     bool? connectionNeeded,
+    String? selectedConnectionId,
   }) => VelockWizardSessionState(
-    session: session ?? this.session,
+    session: session,
     approval: approval ?? this.approval,
-    finalization: finalization ?? this.finalization,
+    finalization: finalization,
     connectionNeeded: connectionNeeded ?? this.connectionNeeded,
+    selectedConnectionId: selectedConnectionId ?? this.selectedConnectionId,
+    authorizationProblem: authorizationProblem,
   );
 }
 
 class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
+  Timer? _expirationTimer;
+  VelockPairingSession? _flowSession;
+
   @override
-  VelockWizardSessionState build() => const VelockWizardSessionState();
+  VelockWizardSessionState build() {
+    ref.onDispose(() => _expirationTimer?.cancel());
+    return const VelockWizardSessionState();
+  }
 
-  void sessionStarted(VelockPairingSession session) =>
-      state = VelockWizardSessionState(session: session);
+  void sessionStarted(VelockPairingSession session) {
+    _flowSession = session;
+    state = VelockWizardSessionState(
+      session: session,
+      connectionNeeded: state.connectionNeeded,
+      selectedConnectionId: state.selectedConnectionId,
+    );
+    _scheduleExpiration();
+  }
 
-  void approved(VelockPairingControlResponse approval) =>
-      state = state.copyWith(approval: approval, connectionNeeded: false);
+  void approved(VelockPairingControlResponse approval) {
+    if (state.session == null || state.finalization != null) return;
+    state = state.copyWith(approval: approval, connectionNeeded: false);
+    if (!expireIfNeeded()) _scheduleExpiration();
+  }
 
   void connectionMissing() => state = state.copyWith(connectionNeeded: true);
-
-  /// The missing remote connection has since been created; the approved
-  /// pairing can continue without the "connection needed" banner.
   void connectionResolved() => state = state.copyWith(connectionNeeded: false);
+  void connectionSelected(String id) =>
+      state = state.copyWith(selectedConnectionId: id);
 
-  void profileFinalized(VelockProfileFinalizationResult result) =>
-      state = state.copyWith(
-        finalization: result,
-        session: result.pairingAcknowledged ? null : state.session,
-        approval: result.pairingAcknowledged ? null : state.approval,
-        connectionNeeded: false,
-      );
+  DateTime? get _deadline {
+    final requestDeadline = state.session?.request.expiresAt;
+    if (requestDeadline == null) return null;
+    final approvalDeadline = state.approval?.expiresAt;
+    return approvalDeadline != null &&
+            approvalDeadline.isBefore(requestDeadline)
+        ? approvalDeadline
+        : requestDeadline;
+  }
 
-  /// A freshly opened wizard must not keep showing an already-completed
-  /// profile: the home list is the canonical place to see created profiles.
-  /// In-progress pairings (approval waiting for a connection) are preserved.
+  void _scheduleExpiration() {
+    _expirationTimer?.cancel();
+    final deadline = _deadline;
+    if (deadline == null || state.finalization != null) return;
+    final remaining = deadline.difference(
+      ref.read(velockWizardClockProvider)().toUtc(),
+    );
+    _expirationTimer = Timer(
+      remaining.isNegative ? Duration.zero : remaining,
+      () {
+        // A resumed app or an adjusted clock must not rely on the timer alone.
+        if (!expireIfNeeded()) _scheduleExpiration();
+      },
+    );
+  }
+
+  bool expireIfNeeded() {
+    final session = state.session;
+    final deadline = _deadline;
+    if (session == null ||
+        deadline == null ||
+        state.finalization != null ||
+        ref.read(velockWizardClockProvider)().toUtc().isBefore(deadline)) {
+      return false;
+    }
+    authorizationInvalidated(session, VelockWizardAuthorizationProblem.expired);
+    return true;
+  }
+
+  /// Old async checks cannot invalidate a newer authorization or a saved
+  /// profile. Only transient state is discarded; cloud accounts are untouched.
+  void authorizationInvalidated(
+    VelockPairingSession session,
+    VelockWizardAuthorizationProblem reason,
+  ) {
+    if (!identical(state.session, session) || state.finalization != null) {
+      return;
+    }
+    _expirationTimer?.cancel();
+    state = VelockWizardSessionState(
+      connectionNeeded: state.connectionNeeded,
+      selectedConnectionId: state.selectedConnectionId,
+      authorizationProblem: reason,
+    );
+  }
+
+  bool profileFinalized(
+    VelockProfileFinalizationResult result, {
+    VelockPairingSession? session,
+    VelockPairingControlResponse? approval,
+  }) {
+    final sourceSession = session ?? state.session;
+    if (sourceSession == null || !identical(sourceSession, _flowSession)) {
+      return false;
+    }
+    // The finalizer checks expiry immediately before committing the durable
+    // profile. A successful commit remains authorized even if its response/ACK
+    // arrives after the one-time deadline. Never apply it to a replacement flow.
+    _expirationTimer?.cancel();
+    state = VelockWizardSessionState(
+      finalization: result,
+      session: result.pairingAcknowledged ? null : (session ?? state.session),
+      approval: result.pairingAcknowledged
+          ? null
+          : (approval ?? state.approval),
+      selectedConnectionId: state.selectedConnectionId,
+    );
+    return true;
+  }
+
+  /// An unfinished ACK must remain retryable when the user re-enters setup.
   void clearCompletedFlow() {
-    if (state.finalization == null) return;
-    state = const VelockWizardSessionState();
+    if (state.finalization?.pairingAcknowledged != true) return;
+    reset();
   }
 
   void acknowledged() {
+    _expirationTimer?.cancel();
     final result = state.finalization;
     state = VelockWizardSessionState(
       finalization: result == null
@@ -212,7 +308,11 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
     );
   }
 
-  void reset() => state = const VelockWizardSessionState();
+  void reset() {
+    _flowSession = null;
+    _expirationTimer?.cancel();
+    state = const VelockWizardSessionState();
+  }
 }
 
 final velockWizardSessionProvider =

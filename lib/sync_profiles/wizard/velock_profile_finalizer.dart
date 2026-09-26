@@ -122,6 +122,18 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
       }
     }
 
+    // Connection/database reads may outlive the one-time approval. Check again
+    // immediately before persisting any trust or profile, not just on entry.
+    if (!await approval.verify(
+      descriptor: session.descriptor,
+      request: session.request,
+      now: _now,
+    )) {
+      throw const VelockProfileFinalizationException(
+        'invalid_pairing_response',
+      );
+    }
+
     final profile = VelockSyncProfile(
       profileId: _requiredGeneratedId(_nextId(), 'profile_id_unavailable'),
       datasetId: approval.vaultId,
@@ -146,6 +158,18 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
       producerId: approval.producerId,
       signingPublicKey: Uint8List.fromList(session.descriptor.publicKey.bytes),
     );
+    // Trust retention can await storage too. The one-time approval must still
+    // be valid when the durable profile save is initiated. Once saved, its
+    // durable grant (and ACK retry) does not expire with the pairing response.
+    if (!await approval.verify(
+      descriptor: session.descriptor,
+      request: session.request,
+      now: _now,
+    )) {
+      throw const VelockProfileFinalizationException(
+        'invalid_pairing_response',
+      );
+    }
     await _saveProfile(profile.toEnvelope());
     try {
       await _pairing.acknowledge(session);

@@ -38,6 +38,7 @@ void main() {
   late SyncStateDatabase database;
   late ProviderContainer container;
   late List<ProtocolModel> probes;
+  late DateTime wizardNow;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -46,9 +47,11 @@ void main() {
     await LocalDataManager.instance.init();
     database = await SyncStateDatabase.inMemory();
     probes = [];
+    wizardNow = DateTime.now().toUtc();
     container = ProviderContainer(
       overrides: [
         syncStateDatabaseProvider.overrideWithValue(database),
+        velockWizardClockProvider.overrideWithValue(() => wizardNow),
         credentialStoreProvider.overrideWithValue(_UnusedCredentials()),
         syncSettingsServiceProvider.overrideWithValue(_Settings()),
         protocolConnectionProbeProvider.overrideWithValue(({
@@ -175,6 +178,76 @@ void main() {
     'approved restore survives actual WebDAV save and returns to review',
     (tester) async {
       final approved = await _rememberApproval(container);
+      try {
+        final router = await mount(
+          tester,
+          location: '/sync-profiles/new/velock?intent=restore',
+        );
+        await tester.ensureVisible(
+          find.byKey(const Key('go-create-connection')),
+        );
+        await tester.tap(find.byKey(const Key('go-create-connection')));
+        await tester.pumpAndSettle();
+        const target = '/sync-profiles/new/velock?intent=restore';
+        expect(
+          tester.widget<Protocols>(find.byType(Protocols)).returnTo,
+          target,
+        );
+        await tester.tap(find.text('WebDAV'));
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<NewWebDav>(find.byType(NewWebDav)).returnTo,
+          target,
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('webdav_address')),
+          'https://example.com',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('webdav_port')),
+          '443',
+        );
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+        expect(router.routeInformationProvider.value.uri.toString(), target);
+        expect(
+          tester
+              .widget<VelockDatasetWizard>(find.byType(VelockDatasetWizard))
+              .restoring,
+          isTrue,
+        );
+        expect(
+          container.read(velockWizardSessionProvider).approval,
+          same(approved),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('确认恢复位置'), findsOneWidget);
+        expect(find.text('查找并恢复'), findsOneWidget);
+        expect(probes, isNotEmpty);
+        expect(
+          await container.read(connectionRepositoryProvider).loadConnections(),
+          hasLength(1),
+        );
+        // Connection saving and returning to review must not create a profile or
+        // publish anything. Signed approval and destination checks happen later.
+        expect(
+          await container.read(syncProfileRepositoryProvider).listSummaries(),
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        // The authorization deadline is app-scoped; cancel it before the
+        // widget test's pending-timer check (tearDown runs after that check).
+        container.read(velockWizardSessionProvider.notifier).reset();
+      }
+    },
+  );
+
+  testWidgets('slow cloud setup keeps saved storage and returns to renewal', (
+    tester,
+  ) async {
+    await _rememberApproval(container);
+    try {
       final router = await mount(
         tester,
         location: '/sync-profiles/new/velock?intent=restore',
@@ -182,11 +255,10 @@ void main() {
       await tester.ensureVisible(find.byKey(const Key('go-create-connection')));
       await tester.tap(find.byKey(const Key('go-create-connection')));
       await tester.pumpAndSettle();
-      const target = '/sync-profiles/new/velock?intent=restore';
-      expect(tester.widget<Protocols>(find.byType(Protocols)).returnTo, target);
       await tester.tap(find.text('WebDAV'));
       await tester.pumpAndSettle();
-      expect(tester.widget<NewWebDav>(find.byType(NewWebDav)).returnTo, target);
+      wizardNow = wizardNow.add(const Duration(minutes: 6));
+      await tester.pump(const Duration(minutes: 6));
       await tester.enterText(
         find.byKey(const ValueKey('webdav_address')),
         'https://example.com',
@@ -194,7 +266,10 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('webdav_port')), '443');
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
-      expect(router.routeInformationProvider.value.uri.toString(), target);
+      expect(
+        router.routeInformationProvider.value.uri.toString(),
+        '/sync-profiles/new/velock?intent=restore',
+      );
       expect(
         tester
             .widget<VelockDatasetWizard>(find.byType(VelockDatasetWizard))
@@ -202,26 +277,24 @@ void main() {
         isTrue,
       );
       expect(
-        container.read(velockWizardSessionProvider).approval,
-        same(approved),
+        find.byKey(const Key('renew-velock-authorization')),
+        findsOneWidget,
       );
-      await tester.pumpAndSettle();
-      expect(find.text('确认恢复位置'), findsOneWidget);
-      expect(find.text('查找并恢复'), findsOneWidget);
-      expect(probes, isNotEmpty);
+      expect(find.text('确认恢复位置'), findsNothing);
+      expect(container.read(velockWizardSessionProvider).approval, isNull);
       expect(
         await container.read(connectionRepositoryProvider).loadConnections(),
         hasLength(1),
       );
-      // Connection saving and returning to review must not create a profile or
-      // publish anything. Signed approval and destination checks happen later.
       expect(
         await container.read(syncProfileRepositoryProvider).listSummaries(),
         isEmpty,
       );
       expect(tester.takeException(), isNull);
-    },
-  );
+    } finally {
+      container.read(velockWizardSessionProvider.notifier).reset();
+    }
+  });
 
   for (final provider in [
     RemoteProviderType.googleDrive,
@@ -387,7 +460,7 @@ class _Settings implements SyncSettingsService {
 Future<VelockPairingControlResponse> _rememberApproval(
   ProviderContainer container,
 ) async {
-  final now = DateTime.now().toUtc();
+  final now = container.read(velockWizardClockProvider)().toUtc();
   final key = await Ed25519().newKeyPairFromSeed(List.filled(32, 8));
   final descriptor = VelockPairingDescriptor(
     producerId: 'source',

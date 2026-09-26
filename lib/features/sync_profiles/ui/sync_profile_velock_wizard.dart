@@ -184,8 +184,13 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
   Future<void> _handleVelockAppResume() async {
     await Future<void>.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
+    ref.read(velockWizardSessionProvider.notifier).expireIfNeeded();
     final wizard = ref.read(velockWizardSessionProvider);
-    if (wizard.session == null || wizard.approval != null) return;
+    if (wizard.session == null || wizard.finalization != null) return;
+    if (wizard.approval != null) {
+      await _verifyCurrentApproval(wizard.session!, wizard.approval!);
+      return;
+    }
     await _inspectPendingVelockPairing(wizard.session!);
   }
 
@@ -195,6 +200,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
     // Deferred to the post-frame phase: modifying provider state during
     // initState/build throws "tried to modify a provider while building".
     ref.read(velockWizardSessionProvider.notifier).clearCompletedFlow();
+    ref.read(velockWizardSessionProvider.notifier).expireIfNeeded();
     final wizard = ref.read(velockWizardSessionProvider);
     if (wizard.session != null && wizard.approval == null) {
       await _inspectPendingVelockPairing(wizard.session!);
@@ -205,10 +211,15 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
 
   Future<void> _autoResumeVelockWizard() async {
     if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    ref.read(velockWizardSessionProvider.notifier).expireIfNeeded();
     final wizard = ref.read(velockWizardSessionProvider);
     final session = wizard.session;
     final approval = wizard.approval;
-    if (session == null || approval == null || !wizard.connectionNeeded) {
+    if (session == null || approval == null || wizard.finalization != null) {
+      return;
+    }
+    if (!await _verifyCurrentApproval(session, approval) ||
+        !wizard.connectionNeeded) {
       return;
     }
     final connections = (await ref.read(velockWizardConnectionsProvider)())
@@ -216,11 +227,54 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
         .toList(growable: false);
     if (!mounted ||
         connections.isEmpty ||
+        !_authorizationIsCurrent(session, approval) ||
         ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
     ref.read(velockWizardSessionProvider.notifier).connectionResolved();
-    await _continueVelockProfile(session, approval);
+    await _continueVelockProfile(session, approval, reuseSelection: true);
+  }
+
+  bool _authorizationIsCurrent(
+    VelockPairingSession session,
+    VelockPairingControlResponse approval,
+  ) {
+    if (!mounted) return false;
+    final wizard = ref.read(velockWizardSessionProvider);
+    return identical(wizard.session, session) &&
+        identical(wizard.approval, approval) &&
+        wizard.finalization == null;
+  }
+
+  Future<bool> _verifyCurrentApproval(
+    VelockPairingSession session,
+    VelockPairingControlResponse approval,
+  ) async {
+    if (!mounted) return false;
+    final controller = ref.read(velockWizardSessionProvider.notifier);
+    controller.expireIfNeeded();
+    if (!_authorizationIsCurrent(session, approval)) return false;
+    var verified = false;
+    try {
+      verified = await approval.verify(
+        descriptor: session.descriptor,
+        request: session.request,
+        now: ref.read(velockWizardClockProvider),
+      );
+    } on Object {
+      // A malformed response is not authorization. Do not leave it displayed
+      // as approved or proceed to cloud I/O after a cryptographic failure.
+    }
+    if (!mounted) return false;
+    controller.expireIfNeeded();
+    if (!_authorizationIsCurrent(session, approval)) return false;
+    if (!verified) {
+      controller.authorizationInvalidated(
+        session,
+        VelockWizardAuthorizationProblem.invalid,
+      );
+    }
+    return verified;
   }
 
   Future<void> _inspectVelock() async {
@@ -318,14 +372,27 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       if (!mounted) return;
       _inspectingPairing = false;
       setState(() => _checkingVelock = false);
+      ref.read(velockWizardSessionProvider.notifier).expireIfNeeded();
+      if (!identical(ref.read(velockWizardSessionProvider).session, session)) {
+        return;
+      }
       if (state.isApproved) {
         final approval = state.response!;
         ref.read(velockWizardSessionProvider.notifier).approved(approval);
-        await _continueVelockProfile(session, approval);
+        await _continueVelockProfile(session, approval, reuseSelection: true);
         return;
       }
       if (state.status == VelockPairingControlStatus.pending) {
         await _showPendingPairingProblem(session);
+        return;
+      }
+      if (state.status == VelockPairingControlStatus.expired) {
+        ref
+            .read(velockWizardSessionProvider.notifier)
+            .authorizationInvalidated(
+              session,
+              VelockWizardAuthorizationProblem.expired,
+            );
         return;
       }
       ref.read(velockWizardSessionProvider.notifier).reset();
@@ -334,8 +401,12 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       if (!mounted) return;
       _inspectingPairing = false;
       setState(() => _checkingVelock = false);
-      ref.read(velockWizardSessionProvider.notifier).reset();
-      await _showEndedPairingProblem(null);
+      final controller = ref.read(velockWizardSessionProvider.notifier);
+      controller.expireIfNeeded();
+      controller.authorizationInvalidated(
+        session,
+        VelockWizardAuthorizationProblem.invalid,
+      );
     }
   }
 
@@ -386,6 +457,10 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
   }
 
   Future<void> _reopenVelockPairing(VelockPairingSession session) async {
+    ref.read(velockWizardSessionProvider.notifier).expireIfNeeded();
+    if (!identical(ref.read(velockWizardSessionProvider).session, session)) {
+      return;
+    }
     try {
       await ref.read(velockPairingSessionServiceProvider).reopen(session);
     } on Object {
@@ -452,23 +527,25 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
 
   Future<void> _continueVelockProfile(
     VelockPairingSession session,
-    VelockPairingControlResponse approval,
-  ) async {
+    VelockPairingControlResponse approval, {
+    bool reuseSelection = false,
+  }) async {
     if (_continuingSetup) return;
     _continuingSetup = true;
     try {
+      if (!await _verifyCurrentApproval(session, approval)) return;
       final connections = (await ref.read(velockWizardConnectionsProvider)())
           .where((connection) => connection.status == ConnectionStatus.active)
           .toList(growable: false);
-      if (!mounted) return;
+      if (!mounted || !_authorizationIsCurrent(session, approval)) return;
       if (connections.isEmpty) {
         ref.read(velockWizardSessionProvider.notifier).connectionMissing();
         showMessage(
           context,
           syncText(
             context,
-            '授权已保留。接下来选择你的云端位置。',
-            'Authorization is saved. Choose your cloud location next.',
+            '接下来选择你的云端位置。如果授权过期，可直接重新授权，无需重新添加位置。',
+            'Choose cloud storage next. If access expires, authorize again without adding your storage again.',
           ),
         );
         return;
@@ -477,10 +554,25 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       // "还需要一个远端连接" banner must not keep the flow stuck.
       ref.read(velockWizardSessionProvider.notifier).connectionResolved();
 
-      final connection = connections.length == 1
-          ? connections.single
-          : await _chooseVelockConnection(connections);
-      if (connection == null || !mounted) return;
+      final selectedId = ref
+          .read(velockWizardSessionProvider)
+          .selectedConnectionId;
+      final retained = reuseSelection
+          ? connections.where((item) => item.id == selectedId).firstOrNull
+          : null;
+      final connection =
+          retained ??
+          (connections.length == 1
+              ? connections.single
+              : await _chooseVelockConnection(connections));
+      if (connection == null ||
+          !mounted ||
+          !_authorizationIsCurrent(session, approval)) {
+        return;
+      }
+      ref
+          .read(velockWizardSessionProvider.notifier)
+          .connectionSelected(connection.id);
 
       final review = await _reviewVelockProfile(
         approval: approval,
@@ -489,15 +581,8 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       if (review == null || !mounted) return;
 
       setState(() => _checkingVelock = true);
-      // Verify the signed account before probing the selected cloud location.
-      if (!await approval.verify(
-        descriptor: session.descriptor,
-        request: session.request,
-      )) {
-        throw const VelockProfileFinalizationException(
-          'invalid_pairing_response',
-        );
-      }
+      // A user may spend longer than the authorization lifetime in review.
+      if (!await _verifyCurrentApproval(session, approval)) return;
       await ref
           .read(backupDestinationServiceProvider)
           .check(
@@ -507,7 +592,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                 approval.trustedProducerIds ?? [approval.producerId],
             restoring: widget.restoring,
           );
-      if (!mounted) return;
+      if (!mounted || !await _verifyCurrentApproval(session, approval)) return;
       final result = await ref
           .read(velockProfileFinalizerProvider)
           .finalize(
@@ -520,8 +605,11 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
           );
       if (!mounted) return;
       setState(() => _checkingVelock = false);
-      ref.read(velockWizardSessionProvider.notifier).profileFinalized(result);
+      final accepted = ref
+          .read(velockWizardSessionProvider.notifier)
+          .profileFinalized(result, session: session, approval: approval);
       ref.read(profilesRevisionProvider.notifier).bump();
+      if (!accepted) return;
       if (!result.pairingAcknowledged) {
         showMessage(
           context,
@@ -553,6 +641,16 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       if (!mounted) return;
       setState(() => _checkingVelock = false);
       logw('Velock profile finalization failed: ${error.runtimeType}: $error');
+      if (error is VelockProfileFinalizationException &&
+          error.code == 'invalid_pairing_response') {
+        final controller = ref.read(velockWizardSessionProvider.notifier);
+        controller.expireIfNeeded();
+        controller.authorizationInvalidated(
+          session,
+          VelockWizardAuthorizationProblem.invalid,
+        );
+        return;
+      }
       final message = switch (error) {
         BackupDestinationException(code: 'backup_not_found') => syncText(
           context,
@@ -614,6 +712,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       showMessage(context, message);
     } finally {
       _continuingSetup = false;
+      if (mounted && _checkingVelock) setState(() => _checkingVelock = false);
     }
   }
 
@@ -867,8 +966,20 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                     Text(
                       syncText(
                         context,
-                        wizard.approval == null ? '1 · 连接格间' : '1 · 格间已允许连接',
-                        wizard.approval == null
+                        wizard.authorizationProblem ==
+                                VelockWizardAuthorizationProblem.expired
+                            ? '连接授权已过期'
+                            : wizard.authorizationProblem != null
+                            ? '需要重新授权'
+                            : wizard.approval == null
+                            ? '1 · 连接格间'
+                            : '1 · 格间已允许连接',
+                        wizard.authorizationProblem ==
+                                VelockWizardAuthorizationProblem.expired
+                            ? 'Connection approval expired'
+                            : wizard.authorizationProblem != null
+                            ? 'Authorize access again'
+                            : wizard.approval == null
                             ? '1 · Connect Velock'
                             : '1 · Velock access allowed',
                       ),
@@ -881,12 +992,16 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                     Text(
                       syncText(
                         context,
-                        wizard.approval != null
+                        wizard.authorizationProblem != null
+                            ? '为了保护你的数据，需要在格间重新确认一次。已添加的云端位置会保留，不用重新填写。'
+                            : wizard.approval != null
                             ? '你的数据仍由格间加密和解密。下一步选择云端位置。'
                             : widget.restoring
                             ? '在格间恢复原账号后，允许 Sync 下载它的云端备份。'
                             : '打开并解锁格间，在「云备份」中允许备份。首次使用请保存好恢复卡。',
-                        wizard.approval != null
+                        wizard.authorizationProblem != null
+                            ? 'Confirm access in Velock again to protect your data. Your saved cloud locations are kept; no need to enter them again.'
+                            : wizard.approval != null
                             ? 'Velock keeps control of encryption. Choose cloud storage next.'
                             : widget.restoring
                             ? 'Recover the original account in Velock, then allow Sync to download its backup.'
@@ -896,16 +1011,24 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                     if (wizard.approval == null) ...[
                       const SizedBox(height: 22),
                       BackupActionButton(
-                        key: const Key('inspect-velock-readiness'),
+                        key: Key(
+                          wizard.authorizationProblem != null
+                              ? 'renew-velock-authorization'
+                              : 'inspect-velock-readiness',
+                        ),
                         label: syncText(
                           context,
                           _checkingVelock
                               ? '正在检查…'
+                              : wizard.authorizationProblem != null
+                              ? '重新授权'
                               : wizard.session == null
                               ? '连接格间'
                               : '已在格间允许，继续',
                           _checkingVelock
                               ? 'Checking…'
+                              : wizard.authorizationProblem != null
+                              ? 'Authorize again'
                               : wizard.session == null
                               ? 'Connect Velock'
                               : 'I allowed access. Continue',
@@ -924,6 +1047,18 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                               : () => _reopenVelockPairing(wizard.session!),
                           child: Text(
                             syncText(context, '重新打开格间', 'Open Velock again'),
+                          ),
+                        ),
+                      if (wizard.authorizationProblem != null)
+                        TextButton(
+                          key: const Key('cancel-velock-reauthorization'),
+                          onPressed: _checkingVelock
+                              ? null
+                              : () => ref
+                                    .read(velockWizardSessionProvider.notifier)
+                                    .reset(),
+                          child: Text(
+                            syncText(context, '取消本次设置', 'Cancel setup'),
                           ),
                         ),
                     ],
