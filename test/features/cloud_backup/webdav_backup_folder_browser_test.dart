@@ -308,6 +308,244 @@ void main() {
     },
   );
 
+  test('creates one encoded collection with no request body', () async {
+    final adapter = _Adapter((_) async => _response(201, ''));
+    final browser = WebDavBackupFolderBrowser(
+      connections: connections,
+      dio: Dio()..httpClientAdapter = adapter,
+    );
+
+    await browser.createFolder(
+      protocol: protocol(),
+      relativeSegments: const ['目录'],
+      name: '中文 % # ?',
+    );
+
+    expect(adapter.requests, hasLength(1));
+    final request = adapter.requests.single;
+    expect(request.method, 'MKCOL');
+    expect(
+      request.uri.toString(),
+      'http://dav.example.test/address%20root/configured%20path/'
+      '%E7%9B%AE%E5%BD%95/'
+      '%E4%B8%AD%E6%96%87%20%25%20%23%20%3F/',
+    );
+    expect(
+      request.headers['Authorization'],
+      'Basic ${base64Encode(utf8.encode('alice:secret'))}',
+    );
+    expect(request.followRedirects, isFalse);
+    expect(request.maxRedirects, 0);
+    expect(request.connectTimeout, const Duration(seconds: 20));
+    expect(request.sendTimeout, const Duration(seconds: 20));
+    expect(request.receiveTimeout, const Duration(seconds: 20));
+    expect(adapter.lastBody, isEmpty);
+    expect(credentials.reads, 1);
+    expect(credentials.writes, 0);
+  });
+
+  test('classifies new collection names without over-rejecting literals', () {
+    expect(WebDavBackupFolderBrowser.folderNameError(''), 'empty_name');
+    expect(WebDavBackupFolderBrowser.folderNameError(' \t\n'), 'empty_name');
+    expect(WebDavBackupFolderBrowser.folderNameError(' name'), 'invalid_name');
+    expect(WebDavBackupFolderBrowser.folderNameError('name '), 'invalid_name');
+    expect(WebDavBackupFolderBrowser.folderNameError('.'), 'invalid_name');
+    expect(WebDavBackupFolderBrowser.folderNameError('..'), 'invalid_name');
+    expect(WebDavBackupFolderBrowser.folderNameError('a/b'), 'invalid_name');
+    expect(WebDavBackupFolderBrowser.folderNameError(r'a\b'), 'invalid_name');
+    expect(
+      WebDavBackupFolderBrowser.folderNameError('bad\nname'),
+      'invalid_name',
+    );
+    expect(
+      WebDavBackupFolderBrowser.folderNameError(List.filled(86, '中').join()),
+      'name_too_long',
+    );
+    expect(
+      WebDavBackupFolderBrowser.folderNameError(List.filled(85, '中').join()),
+      isNull,
+    );
+    expect(WebDavBackupFolderBrowser.folderNameError('中文 内部 % # ?'), isNull);
+  });
+
+  test('rejects invalid names before credentials or network', () async {
+    final cases = <String, String>{
+      '': 'empty_name',
+      '   ': 'empty_name',
+      ' name': 'invalid_name',
+      '.': 'invalid_name',
+      '..': 'invalid_name',
+      'a/b': 'invalid_name',
+      r'a\b': 'invalid_name',
+      'bad\nname': 'invalid_name',
+      List.filled(86, '中').join(): 'name_too_long',
+    };
+
+    for (final entry in cases.entries) {
+      final adapter = _Adapter((_) async => _response(201, ''));
+      final browser = WebDavBackupFolderBrowser(
+        connections: connections,
+        dio: Dio()..httpClientAdapter = adapter,
+      );
+
+      await expectLater(
+        browser.createFolder(protocol: protocol(), name: entry.key),
+        throwsA(
+          isA<WebDavBackupFolderException>().having(
+            (error) => error.code,
+            'code',
+            'provider.webdav.${entry.value}',
+          ),
+        ),
+      );
+      expect(adapter.requests, isEmpty);
+      expect(credentials.reads, 0);
+    }
+  });
+
+  test(
+    'rejects invalid parent segments before credentials or network',
+    () async {
+      final adapter = _Adapter((_) async => _response(201, ''));
+      final browser = WebDavBackupFolderBrowser(
+        connections: connections,
+        dio: Dio()..httpClientAdapter = adapter,
+      );
+
+      await expectLater(
+        browser.createFolder(
+          protocol: protocol(),
+          relativeSegments: const ['valid', 'bad/segment'],
+          name: 'child',
+        ),
+        throwsArgumentError,
+      );
+      expect(adapter.requests, isEmpty);
+      expect(credentials.reads, 0);
+    },
+  );
+
+  test('does not use an existing folder after one MKCOL 405', () async {
+    final adapter = _Adapter((_) async => _response(405, ''));
+    final browser = WebDavBackupFolderBrowser(
+      connections: connections,
+      dio: Dio()..httpClientAdapter = adapter,
+    );
+
+    await expectLater(
+      browser.createFolder(protocol: protocol(), name: 'existing'),
+      throwsA(
+        isA<ProviderRequestException>()
+            .having((error) => error.statusCode, 'statusCode', 405)
+            .having(
+              (error) => error.errorCode,
+              'errorCode',
+              'provider.http.405',
+            ),
+      ),
+    );
+    expect(adapter.requests, hasLength(1));
+    expect(adapter.requests.single.method, 'MKCOL');
+    expect(adapter.lastBody, isEmpty);
+  });
+
+  for (final status in <int>[401, 403, 409]) {
+    test('maps MKCOL HTTP $status without retrying', () async {
+      final adapter = _Adapter((_) async => _response(status, ''));
+      final browser = WebDavBackupFolderBrowser(
+        connections: connections,
+        dio: Dio()..httpClientAdapter = adapter,
+      );
+
+      await expectLater(
+        browser.createFolder(protocol: protocol(), name: 'child'),
+        throwsA(
+          isA<ProviderRequestException>()
+              .having((error) => error.statusCode, 'statusCode', status)
+              .having(
+                (error) => error.errorCode,
+                'errorCode',
+                'provider.http.$status',
+              ),
+        ),
+      );
+      expect(adapter.requests, hasLength(1));
+      expect(adapter.requests.single.method, 'MKCOL');
+    });
+  }
+
+  for (final status in <int>[500, 200, 204]) {
+    test('treats MKCOL HTTP $status as an unknown outcome', () async {
+      final adapter = _Adapter((_) async => _response(status, ''));
+      final browser = WebDavBackupFolderBrowser(
+        connections: connections,
+        dio: Dio()..httpClientAdapter = adapter,
+      );
+
+      await expectLater(
+        browser.createFolder(protocol: protocol(), name: 'child'),
+        throwsA(
+          isA<WebDavBackupFolderException>().having(
+            (error) => error.code,
+            'code',
+            'provider.webdav.create_outcome_unknown',
+          ),
+        ),
+      );
+      expect(adapter.requests, hasLength(1));
+      expect(adapter.requests.single.method, 'MKCOL');
+    });
+  }
+
+  test('bounds create requests and treats a timeout as unknown', () async {
+    final responseCompleter = Completer<ResponseBody>();
+    final adapter = _Adapter((_) => responseCompleter.future);
+    final browser = WebDavBackupFolderBrowser(
+      connections: connections,
+      dio: Dio()..httpClientAdapter = adapter,
+      timeout: const Duration(milliseconds: 10),
+    );
+
+    await expectLater(
+      browser.createFolder(protocol: protocol(), name: 'child'),
+      throwsA(
+        isA<WebDavBackupFolderException>().having(
+          (error) => error.code,
+          'code',
+          'provider.webdav.create_outcome_unknown',
+        ),
+      ),
+    );
+    expect(adapter.requests, hasLength(1));
+    responseCompleter.complete(_response(201, ''));
+    await Future<void>.delayed(Duration.zero);
+  });
+
+  test('treats an unconfirmed transport failure as unknown', () async {
+    final adapter = _Adapter(
+      (options) async => throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+      ),
+    );
+    final browser = WebDavBackupFolderBrowser(
+      connections: connections,
+      dio: Dio()..httpClientAdapter = adapter,
+    );
+
+    await expectLater(
+      browser.createFolder(protocol: protocol(), name: 'child'),
+      throwsA(
+        isA<WebDavBackupFolderException>().having(
+          (error) => error.code,
+          'code',
+          'provider.webdav.create_outcome_unknown',
+        ),
+      ),
+    );
+    expect(adapter.requests, hasLength(1));
+  });
+
   for (final segment in <String>['', '.', '..', 'a/b', r'a\b', 'bad\nname']) {
     test('rejects invalid relative segment ${jsonEncode(segment)}', () async {
       final adapter = _Adapter((_) async => _response(207, _xml('')));

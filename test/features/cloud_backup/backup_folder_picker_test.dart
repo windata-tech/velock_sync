@@ -16,6 +16,8 @@ void main() {
     void Function(List<String>?)? onSelected,
     Locale locale = const Locale('zh'),
     double textScale = 1,
+    Future<void> Function(List<String>, String)? create,
+    bool restoring = false,
   }) async {
     await tester.pumpWidget(
       PlatformProvider(
@@ -41,6 +43,8 @@ void main() {
                         connectionName: '我的 NAS',
                         basePath: '/dav',
                         loadFolders: load,
+                        createFolder: create,
+                        restoring: restoring,
                       ),
                     ),
                   );
@@ -190,6 +194,190 @@ void main() {
     },
   );
 
+  testWidgets(
+    'explicit creation opens the new folder but does not select it or start backup',
+    (tester) async {
+      final created = <List<String>>[];
+      List<String>? selected;
+      await pumpPicker(
+        tester,
+        load: (path) async =>
+            path.isEmpty ? const [WebDavBackupFolder(name: '硬盘')] : const [],
+        create: (parent, name) async => created.add([...parent, name]),
+        onSelected: (path) => selected = path,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('backup-folder-硬盘')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('new-backup-folder')));
+      await tester.pumpAndSettle();
+      expect(find.text('创建位置：/dav/硬盘'), findsOneWidget);
+      expect(created, isEmpty);
+      await tester.enterText(
+        find.byKey(const Key('new-backup-folder-name')),
+        ' 格间备份 100% ',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-new-backup-folder')));
+      await tester.pumpAndSettle();
+      expect(created, [
+        ['硬盘', '格间备份 100%'],
+      ]);
+      expect(find.text('/dav/硬盘/格间备份 100%'), findsOneWidget);
+      expect(find.byKey(const Key('backup-folder-created')), findsOneWidget);
+      expect(selected, isNull);
+      await tester.tap(find.byKey(const Key('use-backup-folder')));
+      await tester.pumpAndSettle();
+      expect(selected, ['硬盘', '格间备份 100%']);
+    },
+  );
+
+  testWidgets('cancel and invalid or duplicate names never create a folder', (
+    tester,
+  ) async {
+    var calls = 0;
+    await pumpPicker(
+      tester,
+      load: (_) async => const [WebDavBackupFolder(name: '已有文件夹')],
+      create: (_, _) async {
+        calls++;
+      },
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('new-backup-folder')));
+    await tester.pumpAndSettle();
+    for (final name in ['', '../不应创建', '.', '已有文件夹']) {
+      await tester.enterText(
+        find.byKey(const Key('new-backup-folder-name')),
+        name,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-new-backup-folder')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('new-backup-folder-name')), findsOneWidget);
+      expect(calls, 0);
+    }
+    await tester.tap(find.byKey(const Key('cancel-new-backup-folder')));
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    expect(find.text('/dav'), findsOneWidget);
+  });
+
+  testWidgets(
+    'creation in flight cannot duplicate, navigate or select the old folder',
+    (tester) async {
+      final pending = Completer<void>();
+      var calls = 0;
+      await pumpPicker(
+        tester,
+        load: (_) async => const [],
+        create: (_, _) {
+          calls++;
+          return pending.future;
+        },
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('new-backup-folder')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('new-backup-folder-name')),
+        '新目录',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('confirm-new-backup-folder')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('new-backup-folder')));
+      await tester.pump();
+      expect(calls, 1);
+      expect(
+        tester
+            .widget<BackupActionButton>(
+              find.byKey(const Key('use-backup-folder')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester.widget<PopScope>(find.byType(PopScope).first).canPop,
+        isFalse,
+      );
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('/dav/新目录'), findsOneWidget);
+    },
+  );
+
+  for (final error in [
+    ProviderRequestException.fromStatus(405),
+    const WebDavBackupFolderException('provider.webdav.create_outcome_unknown'),
+  ]) {
+    testWidgets(
+      'failed/unconfirmed creation does not open or select an existing folder: $error',
+      (tester) async {
+        var calls = 0;
+        var loads = 0;
+        List<String>? selected;
+        await pumpPicker(
+          tester,
+          load: (_) async {
+            loads++;
+            return const [];
+          },
+          create: (_, _) async {
+            calls++;
+            throw error;
+          },
+          onSelected: (path) => selected = path,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('new-backup-folder')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('new-backup-folder-name')),
+          '新目录',
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('confirm-new-backup-folder')));
+        await tester.pumpAndSettle();
+        expect(calls, 1);
+        expect(loads, 1);
+        expect(find.text('/dav'), findsOneWidget);
+        expect(find.byKey(const Key('backup-folder-created')), findsNothing);
+        expect(
+          find.byKey(const Key('backup-folder-create-error')),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<BackupActionButton>(
+                find.byKey(const Key('use-backup-folder')),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(selected, isNull);
+        await tester.tap(find.byKey(const Key('refresh-after-folder-create')));
+        await tester.pumpAndSettle();
+        expect(loads, 2);
+        expect(calls, 1);
+      },
+    );
+  }
+
+  testWidgets(
+    'restore mode remains read-only even when creation callback is provided',
+    (tester) async {
+      await pumpPicker(
+        tester,
+        restoring: true,
+        load: (_) async => const [],
+        create: (_, _) async => fail('Must not create during restore'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('new-backup-folder')), findsNothing);
+    },
+  );
+
   for (final locale in const [Locale('zh'), Locale('en')]) {
     testWidgets('folder picker fits 320px and 2x text in $locale', (
       tester,
@@ -202,6 +390,7 @@ void main() {
         tester,
         locale: locale,
         textScale: 2,
+        create: (_, _) async {},
         load: (_) async => const [
           WebDavBackupFolder(name: '长文件夹名称 folder with spaces 100%'),
         ],
@@ -212,6 +401,25 @@ void main() {
         find.byKey(const Key('use-backup-folder')).hitTestable(),
         findsOneWidget,
       );
+      final newFolder = find.byKey(const Key('new-backup-folder'));
+      await tester.scrollUntilVisible(
+        newFolder,
+        120,
+        scrollable: find.descendant(
+          of: find.byKey(const Key('backup-folder-list')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.tap(newFolder);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('new-backup-folder-name')),
+        '新的格间备份',
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('cancel-new-backup-folder')));
+      await tester.pumpAndSettle();
     });
   }
 }

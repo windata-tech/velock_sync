@@ -14,7 +14,8 @@ class WebDavBackupFolder {
   final String name;
 }
 
-/// Raised for sanitized WebDAV browsing failures that are not HTTP failures.
+/// Raised for sanitized WebDAV folder browser failures that are not HTTP
+/// failures.
 class WebDavBackupFolderException implements Exception {
   const WebDavBackupFolderException(this.code);
 
@@ -24,7 +25,8 @@ class WebDavBackupFolderException implements Exception {
   String toString() => 'WebDAV backup folder browsing failed: $code';
 }
 
-/// Lists immediate child collections without creating or modifying anything.
+/// Browses immediate child collections without modifying them. Folder creation
+/// is only performed by [createFolder].
 class WebDavBackupFolderBrowser {
   WebDavBackupFolderBrowser({
     required ConnectionRepository connections,
@@ -48,6 +50,21 @@ class WebDavBackupFolderBrowser {
   final ConnectionRepository _connections;
   final Dio _dio;
   final Duration _timeout;
+
+  /// Returns a stable validation code for a new collection name.
+  static String? folderNameError(String name) {
+    if (name.trim().isEmpty) return 'empty_name';
+    if (name == '.' ||
+        name == '..' ||
+        name.contains('/') ||
+        name.contains(r'\') ||
+        _containsControlCharacter(name) ||
+        name != name.trim()) {
+      return 'invalid_name';
+    }
+    if (utf8.encode(name).length > 255) return 'name_too_long';
+    return null;
+  }
 
   Future<List<WebDavBackupFolder>> list({
     required WebDavProtocolModel protocol,
@@ -165,6 +182,121 @@ class WebDavBackupFolderBrowser {
       throw const FormatException('WebDAV response is invalid.');
     }
   }
+
+  /// Creates exactly one child collection after validating the requested path.
+  Future<void> createFolder({
+    required WebDavProtocolModel protocol,
+    List<String> relativeSegments = const [],
+    required String name,
+  }) async {
+    for (final segment in relativeSegments) {
+      _validateRelativeSegment(segment);
+    }
+
+    final nameError = folderNameError(name);
+    if (nameError != null) {
+      throw WebDavBackupFolderException('provider.webdav.$nameError');
+    }
+
+    final Uri target;
+    try {
+      final root = RemoteObjectStoreFactory.webDavUri(protocol);
+      target = root.replace(
+        pathSegments: [
+          ...root.pathSegments.where((segment) => segment.isNotEmpty),
+          ...relativeSegments,
+          name,
+          '',
+        ],
+        query: null,
+        fragment: null,
+      );
+    } on ArgumentError {
+      throw const WebDavBackupFolderException(
+        'provider.webdav.invalid_configuration',
+      );
+    }
+
+    final String? password;
+    try {
+      password = await _connections.readWebDavPassword(protocol.credentialRef);
+    } catch (_) {
+      throw const WebDavBackupFolderException('provider.webdav.request_failed');
+    }
+    final headers = <String, String>{'Accept': 'application/xml, text/xml'};
+    final username = protocol.username;
+    if (username != null &&
+        username.isNotEmpty &&
+        password != null &&
+        password.isNotEmpty) {
+      headers['Authorization'] =
+          'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+    }
+
+    final Response<String> response;
+    try {
+      response = await _dio
+          .requestUri<String>(
+            target,
+            options: Options(
+              method: 'MKCOL',
+              responseType: ResponseType.plain,
+              headers: headers,
+              connectTimeout: _timeout,
+              sendTimeout: _timeout,
+              receiveTimeout: _timeout,
+              followRedirects: false,
+              maxRedirects: 0,
+              validateStatus: (_) => true,
+            ),
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw const WebDavBackupFolderException(
+        'provider.webdav.create_outcome_unknown',
+      );
+    } on ProviderRequestException catch (error) {
+      if (_isUnknownCreateStatus(error.statusCode)) {
+        throw const WebDavBackupFolderException(
+          'provider.webdav.create_outcome_unknown',
+        );
+      }
+      rethrow;
+    } on DioException catch (error) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode != null) {
+        if (_isUnknownCreateStatus(statusCode)) {
+          throw const WebDavBackupFolderException(
+            'provider.webdav.create_outcome_unknown',
+          );
+        }
+        throw ProviderRequestException.fromStatus(statusCode);
+      }
+      throw const WebDavBackupFolderException(
+        'provider.webdav.create_outcome_unknown',
+      );
+    } catch (_) {
+      throw const WebDavBackupFolderException(
+        'provider.webdav.create_outcome_unknown',
+      );
+    }
+
+    final statusCode = response.statusCode;
+    if (statusCode == 201) return;
+    if (statusCode == null || _isUnknownCreateStatus(statusCode)) {
+      throw const WebDavBackupFolderException(
+        'provider.webdav.create_outcome_unknown',
+      );
+    }
+    if (statusCode == 405) {
+      throw ProviderRequestException.fromStatus(statusCode);
+    }
+    throw ProviderRequestException.fromStatus(statusCode);
+  }
+
+  static bool _isUnknownCreateStatus(int statusCode) =>
+      (statusCode >= 200 && statusCode < 300) ||
+      (statusCode >= 500 && statusCode <= 599);
 
   static void _validateRelativeSegment(String segment) {
     if (segment.isEmpty ||

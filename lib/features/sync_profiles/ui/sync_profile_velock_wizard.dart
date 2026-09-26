@@ -593,6 +593,13 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
               restoring: widget.restoring,
               loadFolders: (segments) =>
                   loader(protocol: protocol, relativeSegments: segments),
+              createFolder: widget.restoring
+                  ? null
+                  : (segments, name) => ref.read(backupFolderCreatorProvider)(
+                      protocol: protocol,
+                      relativeSegments: segments,
+                      name: name,
+                    ),
             ),
           ),
         );
