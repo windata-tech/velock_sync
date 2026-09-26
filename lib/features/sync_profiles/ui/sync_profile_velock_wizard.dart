@@ -3,6 +3,8 @@
 library;
 
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
+import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/features/cloud_backup/application/backup_destination_service.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
@@ -147,6 +149,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
   bool _continuingSetup = false;
   bool _inspectingPairing = false;
   bool _pairingProblemDialogVisible = false;
+  String? _destinationError;
 
   @override
   void initState() {
@@ -574,13 +577,47 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
           .read(velockWizardSessionProvider.notifier)
           .connectionSelected(connection.id);
 
+      var remoteRootSegments = <String>[];
+      final protocol = connection.protocol;
+      if (protocol is WebDavProtocolModel) {
+        final loader = ref.read(backupFolderLoaderProvider);
+        final initialSegments = ref
+            .read(velockWizardSessionProvider)
+            .selectedRemoteRootSegments;
+        final picked = await Navigator.of(context).push<List<String>>(
+          CupertinoPageRoute(
+            builder: (_) => BackupFolderPicker(
+              connectionName: connection.name,
+              basePath: _destinationFolderPath(protocol, const []),
+              initialSegments: initialSegments,
+              restoring: widget.restoring,
+              loadFolders: (segments) =>
+                  loader(protocol: protocol, relativeSegments: segments),
+            ),
+          ),
+        );
+        if (!mounted || picked == null) return;
+        // Retain the selected directory even if browsing outlasted the short
+        // approval window. A new approval still verifies before any write.
+        if (ref.read(velockWizardSessionProvider).selectedConnectionId !=
+            connection.id) {
+          return;
+        }
+        ref.read(velockWizardSessionProvider.notifier).folderSelected(picked);
+        remoteRootSegments = picked;
+        if (!await _verifyCurrentApproval(session, approval)) return;
+      }
       final review = await _reviewVelockProfile(
         approval: approval,
         connection: connection,
+        remoteRootSegments: remoteRootSegments,
       );
       if (review == null || !mounted) return;
 
-      setState(() => _checkingVelock = true);
+      setState(() {
+        _checkingVelock = true;
+        _destinationError = null;
+      });
       // A user may spend longer than the authorization lifetime in review.
       if (!await _verifyCurrentApproval(session, approval)) return;
       await ref
@@ -591,6 +628,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
             trustedProducerIds:
                 approval.trustedProducerIds ?? [approval.producerId],
             restoring: widget.restoring,
+            remoteRootSegments: remoteRootSegments,
           );
       if (!mounted || !await _verifyCurrentApproval(session, approval)) return;
       final result = await ref
@@ -599,6 +637,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
             session: session,
             approval: approval,
             connectionId: connection.id,
+            remoteRootSegments: remoteRootSegments,
             displayName: review.displayName,
             backgroundPolicy: review.backgroundPolicy,
             userConfirmed: true,
@@ -709,7 +748,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
           'Setup did not finish. Please retry. If a connection was saved, continue from the home screen.',
         ),
       };
-      showMessage(context, message);
+      setState(() => _destinationError = message);
     } finally {
       _continuingSetup = false;
       if (mounted && _checkingVelock) setState(() => _checkingVelock = false);
@@ -745,6 +784,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
   Future<_VelockProfileReview?> _reviewVelockProfile({
     required VelockPairingControlResponse approval,
     required ConnectionModel connection,
+    required List<String> remoteRootSegments,
   }) async {
     final defaults =
         (await ref.read(syncSettingsServiceProvider).load()).settings;
@@ -787,6 +827,18 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                   color: context.appSecondaryLabel,
                 ),
               ),
+              if (connection.protocol
+                  case final WebDavProtocolModel protocol) ...[
+                const SizedBox(height: 8),
+                Text(
+                  syncText(
+                    context,
+                    '文件夹：${_destinationFolderPath(protocol, remoteRootSegments)}',
+                    'Folder: ${_destinationFolderPath(protocol, remoteRootSegments)}',
+                  ),
+                  key: const Key('velock-review-folder'),
+                ),
+              ],
               const SizedBox(height: 18),
               if (!widget.restoring)
                 AdaptiveSwitchRow(
@@ -1096,13 +1148,26 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                         ),
                       ),
                       const SizedBox(height: 22),
+                      if (_destinationError != null) ...[
+                        Text(
+                          _destinationError!,
+                          key: const Key('backup-destination-error'),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       BackupActionButton(
                         key: const Key('continue-velock-setup'),
                         label: syncText(
                           context,
-                          _checkingVelock ? '正在检查云端…' : '选择已添加的位置',
+                          _checkingVelock
+                              ? '正在检查云端…'
+                              : _destinationError != null
+                              ? '重新选择文件夹'
+                              : '选择已添加的位置',
                           _checkingVelock
                               ? 'Checking storage…'
+                              : _destinationError != null
+                              ? 'Choose another folder'
                               : 'Choose an existing location',
                         ),
                         onPressed: _checkingVelock
@@ -1172,3 +1237,9 @@ class _VelockProfileReview {
   final String displayName;
   final SyncProfileBackgroundPolicy backgroundPolicy;
 }
+
+String _destinationFolderPath(
+  WebDavProtocolModel protocol,
+  List<String> relativeSegments,
+) =>
+    '/${[...RemoteObjectStoreFactory.webDavUri(protocol).pathSegments.where((s) => s.isNotEmpty), ...relativeSegments].join('/')}';

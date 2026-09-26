@@ -1,5 +1,7 @@
 import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
+import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
+import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/engine/logical_keys.dart';
 
 /// Read-only inventory of what a profile already stored on its remote.
@@ -61,12 +63,15 @@ class RemoteInventorySnapshot {
 class RemoteInventoryService {
   RemoteInventoryService({
     required ConnectionRepository connections,
+    RemoteInventoryStoreFactory? remoteFactory,
     this.pageLimit = 100,
     this.maxObjects = 600,
     this.timeout = const Duration(seconds: 25),
-  }) : _connections = connections;
+  }) : _connections = connections,
+       _remoteFactory = remoteFactory ?? RemoteObjectStoreFactory.create;
 
   final ConnectionRepository _connections;
+  final RemoteInventoryStoreFactory _remoteFactory;
   final int pageLimit;
   final int maxObjects;
   final Duration timeout;
@@ -74,14 +79,16 @@ class RemoteInventoryService {
   Future<RemoteInventorySnapshot> scan({
     required String connectionId,
     required String vaultId,
+    List<String> remoteRootSegments = const [],
   }) async {
     final connection = await _connections.getConnectionById(connectionId);
     if (connection == null) {
       throw StateError('远端连接已不存在。');
     }
-    final store = await RemoteObjectStoreFactory.create(
+    final store = await _remoteFactory(
       connections: _connections,
       protocol: connection.protocol,
+      remoteRootSegments: remoteRootSegments,
     );
     final prefix = LogicalKeys.vaultPrefix(vaultId);
     final buckets = <String, _RemoteInventoryBucket>{};
@@ -141,6 +148,13 @@ class RemoteInventoryService {
     );
   }
 }
+
+typedef RemoteInventoryStoreFactory =
+    Future<RemoteObjectStore> Function({
+      required ConnectionRepository connections,
+      required ProtocolModel protocol,
+      required List<String> remoteRootSegments,
+    });
 
 class _RemoteInventoryBucket {
   int count = 0;

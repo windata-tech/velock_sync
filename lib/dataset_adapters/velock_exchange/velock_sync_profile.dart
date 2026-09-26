@@ -19,13 +19,15 @@ class VelockSyncProfile {
     required this.pairedProducerPublicKeyId,
     required this.exchangeBindingId,
     List<String>? trustedProducerIds,
+    List<String> remoteRootSegments = const [],
     required this.backgroundPolicy,
     required this.state,
     required this.createdAt,
   }) : trustedProducerIds = _canonicalTrustedProducerIds(
          trustedProducerIds ?? [pairedProducerId],
          pairedProducerId: pairedProducerId,
-       );
+       ),
+       remoteRootSegments = canonicalRemoteRootSegments(remoteRootSegments);
 
   final String profileId;
   final String datasetId;
@@ -40,6 +42,12 @@ class VelockSyncProfile {
   /// Remote producer IDs this profile may download. The paired producer is
   /// always included; restored cards can authorize previous iPhones too.
   final List<String> trustedProducerIds;
+
+  /// Decoded relative WebDAV path segments selected for this profile.
+  ///
+  /// The connection remains the immutable NAS entrance. This per-profile scope
+  /// is appended only when constructing that profile's remote client.
+  final List<String> remoteRootSegments;
   final SyncProfileBackgroundPolicy backgroundPolicy;
   final SyncProfileState state;
   final DateTime createdAt;
@@ -61,12 +69,17 @@ class VelockSyncProfile {
         'pairedProducerPublicKeyId': pairedProducerPublicKeyId,
         'exchangeBindingId': exchangeBindingId,
         'trustedProducerIds': trustedProducerIds,
+        if (remoteRootSegments.isNotEmpty)
+          'remoteRootSegments': remoteRootSegments,
       },
       createdAt: createdAt.toUtc(),
     );
   }
 
-  VelockSyncProfile copyWith({SyncProfileState? state}) => VelockSyncProfile(
+  VelockSyncProfile copyWith({
+    SyncProfileState? state,
+    List<String>? remoteRootSegments,
+  }) => VelockSyncProfile(
     profileId: profileId,
     datasetId: datasetId,
     vaultId: vaultId,
@@ -77,6 +90,7 @@ class VelockSyncProfile {
     pairedProducerPublicKeyId: pairedProducerPublicKeyId,
     exchangeBindingId: exchangeBindingId,
     trustedProducerIds: trustedProducerIds,
+    remoteRootSegments: remoteRootSegments ?? this.remoteRootSegments,
     backgroundPolicy: backgroundPolicy,
     state: state ?? this.state,
     createdAt: createdAt,
@@ -94,6 +108,7 @@ class VelockSyncProfile {
     const allowedDatasetFields = {
       ...requiredDatasetFields,
       'trustedProducerIds',
+      'remoteRootSegments',
     };
     if (!envelope.dataset.keys.toSet().containsAll(requiredDatasetFields) ||
         envelope.dataset.keys.any(
@@ -115,6 +130,7 @@ class VelockSyncProfile {
       ),
       exchangeBindingId: _requiredDatasetString(envelope, 'exchangeBindingId'),
       trustedProducerIds: _trustedProducerIdsFromEnvelope(envelope),
+      remoteRootSegments: _remoteRootSegmentsFromEnvelope(envelope),
       backgroundPolicy: envelope.backgroundPolicy,
       state: envelope.state,
       createdAt: envelope.createdAt,
@@ -147,6 +163,41 @@ class VelockSyncProfile {
       );
     }
     return value.cast<String>();
+  }
+
+  static List<String> _remoteRootSegmentsFromEnvelope(
+    SyncProfileEnvelope envelope,
+  ) {
+    if (!envelope.dataset.containsKey('remoteRootSegments')) {
+      return const []; // Legacy profile: connection root remains the scope.
+    }
+    final value = envelope.dataset['remoteRootSegments'];
+    if (value is! List || value.any((item) => item is! String)) {
+      throw const FormatException(
+        'Velock profile remote root segments are invalid.',
+      );
+    }
+    return value.cast<String>();
+  }
+
+  /// Validates and defensively copies decoded relative path segments.
+  static List<String> canonicalRemoteRootSegments(Iterable<String> segments) {
+    final values = List<String>.of(segments);
+    for (final segment in values) {
+      if (segment.isEmpty ||
+          segment == '.' ||
+          segment == '..' ||
+          segment.contains('/') ||
+          segment.contains('\\') ||
+          segment.runes.any(
+            (rune) => rune <= 0x1f || (rune >= 0x7f && rune <= 0x9f),
+          )) {
+        throw const FormatException(
+          'Velock profile remote root segments are invalid.',
+        );
+      }
+    }
+    return List<String>.unmodifiable(values);
   }
 
   static List<String> _canonicalTrustedProducerIds(

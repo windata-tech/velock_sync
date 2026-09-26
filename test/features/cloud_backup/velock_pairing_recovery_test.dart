@@ -1,5 +1,7 @@
 // ignore_for_file: depend_on_referenced_packages
 import 'dart:convert';
+import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
+import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
@@ -44,6 +46,7 @@ void main() {
 
         controller.sessionStarted(session);
         controller.connectionSelected('connection-restore');
+        controller.folderSelected(['共享 文件夹', '备份']);
         controller.approved(approval);
         controller.connectionMissing();
 
@@ -60,6 +63,21 @@ void main() {
         expect(state.session, isNull);
         expect(state.approval, isNull);
         expect(state.selectedConnectionId, 'connection-restore');
+        expect(state.selectedRemoteRootSegments, ['共享 文件夹', '备份']);
+        controller.sessionStarted(fixture.session(requestId: 'renewed-folder'));
+        expect(
+          container
+              .read(velockWizardSessionProvider)
+              .selectedRemoteRootSegments,
+          ['共享 文件夹', '备份'],
+        );
+        controller.connectionSelected('another-location');
+        expect(
+          container
+              .read(velockWizardSessionProvider)
+              .selectedRemoteRootSegments,
+          isEmpty,
+        );
         expect(state.connectionNeeded, isTrue);
       },
     );
@@ -442,6 +460,7 @@ void main() {
             freshSession.request.requestId,
           );
           expect(harness.state.selectedConnectionId, 'connection-restore');
+          await _chooseCurrentFolder(tester);
           expect(find.text('确认恢复位置'), findsOneWidget);
           expect(
             tester
@@ -494,6 +513,99 @@ void main() {
     );
 
     testWidgets(
+      'selecting a saved NAS first browses folders and forwards the chosen scope',
+      (tester) async {
+        try {
+          harness.connections
+            ..clear()
+            ..add(_connection('connection-restore'));
+          await harness.seedApproved(requestId: 'nested-folder');
+          harness.finalizer.invalidOnFinalize = true;
+          await _pumpWizard(tester, harness, restoring: true);
+          await tester.tap(find.byKey(const Key('continue-velock-setup')));
+          await tester.pumpAndSettle();
+          expect(find.text('找到原备份文件夹'), findsOneWidget);
+          expect(
+            find.byKey(const Key('finalize-velock-profile')),
+            findsNothing,
+          );
+          expect(harness.destination.checkCount, 0);
+          await tester.tap(find.byKey(const ValueKey('backup-folder-共享 文件夹')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('backup-folder-备份')));
+          await tester.pumpAndSettle();
+          await _chooseCurrentFolder(tester);
+          expect(find.text('文件夹：/velock/共享 文件夹/备份'), findsOneWidget);
+          expect(harness.destination.checkCount, 0);
+          await tester.tap(find.byKey(const Key('finalize-velock-profile')));
+          await tester.pumpAndSettle();
+          expect(harness.destination.lastSegments, ['共享 文件夹', '备份']);
+          expect(harness.finalizer.lastSegments, ['共享 文件夹', '备份']);
+          expect(
+            (harness.connections.single.protocol as WebDavProtocolModel).path,
+            '/velock',
+          );
+        } finally {
+          harness.controller.reset();
+        }
+      },
+    );
+
+    testWidgets('cancel folder selection never probes or finalizes a backup', (
+      tester,
+    ) async {
+      try {
+        harness.connections
+          ..clear()
+          ..add(_connection('connection-restore'));
+        await harness.seedApproved(requestId: 'cancel-folder');
+        await _pumpWizard(tester, harness);
+        await tester.tap(find.byKey(const Key('continue-velock-setup')));
+        await tester.pumpAndSettle();
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(harness.destination.checkCount, 0);
+        expect(harness.finalizer.finalizeCount, 0);
+        expect(find.byKey(const Key('finalize-velock-profile')), findsNothing);
+      } finally {
+        harness.controller.reset();
+      }
+    });
+
+    testWidgets(
+      'failed preflight keeps an actionable error and lets user choose another folder',
+      (tester) async {
+        try {
+          harness.connections
+            ..clear()
+            ..add(_connection('connection-restore'));
+          await harness.seedApproved(requestId: 'failed-folder');
+          harness.destination.failCheck = true;
+          await _pumpWizard(tester, harness);
+          await tester.tap(find.byKey(const Key('continue-velock-setup')));
+          await tester.pumpAndSettle();
+          await _chooseCurrentFolder(tester);
+          await tester.tap(find.byKey(const Key('finalize-velock-profile')));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('backup-destination-error')),
+            findsOneWidget,
+          );
+          expect(find.text('重新选择文件夹'), findsOneWidget);
+          expect(harness.finalizer.finalizeCount, 0);
+          final choose = find.byKey(const Key('continue-velock-setup'));
+          await tester.ensureVisible(choose);
+          await tester.tap(choose);
+          await tester.pumpAndSettle();
+          expect(find.text('选择备份文件夹'), findsOneWidget);
+          expect(harness.destination.checkCount, 1);
+        } finally {
+          harness.controller.reset();
+        }
+      },
+    );
+
+    testWidgets(
       'a finalizer invalid pairing response enters renewal recovery',
       (tester) async {
         try {
@@ -512,6 +624,7 @@ void main() {
           await tester.tap(continueButton);
           await tester.pumpAndSettle();
 
+          await _chooseCurrentFolder(tester);
           expect(find.text('确认恢复位置'), findsOneWidget);
           await tester.tap(find.byKey(const Key('finalize-velock-profile')));
           await tester.pumpAndSettle();
@@ -553,6 +666,7 @@ void main() {
           await tester.ensureVisible(continueButton);
           await tester.tap(continueButton);
           await tester.pumpAndSettle();
+          await _chooseCurrentFolder(tester);
           expect(find.text('确认恢复位置'), findsOneWidget);
 
           harness.clock.value = session.request.expiresAt;
@@ -797,6 +911,14 @@ class _WidgetHarness {
         velockWizardReadinessServiceProvider.overrideWithValue(readiness),
         velockProfileFinalizerProvider.overrideWithValue(finalizer),
         backupDestinationServiceProvider.overrideWithValue(destination),
+        backupFolderLoaderProvider.overrideWithValue(
+          ({required protocol, required relativeSegments}) async =>
+              relativeSegments.isEmpty
+              ? const [WebDavBackupFolder(name: '共享 文件夹')]
+              : relativeSegments.length == 1
+              ? const [WebDavBackupFolder(name: '备份')]
+              : const [],
+        ),
         syncSettingsServiceProvider.overrideWithValue(_TestSettings()),
       ],
     );
@@ -953,6 +1075,7 @@ class _RecordingFinalizer implements VelockProfileFinalizer {
   int finalizeCount = 0;
   int retryAcknowledgementCount = 0;
   bool invalidOnFinalize = false;
+  List<String>? lastSegments;
 
   @override
   Future<VelockProfileFinalizationResult> finalize({
@@ -962,7 +1085,9 @@ class _RecordingFinalizer implements VelockProfileFinalizer {
     required String displayName,
     required SyncProfileBackgroundPolicy backgroundPolicy,
     required bool userConfirmed,
+    List<String> remoteRootSegments = const [],
   }) async {
+    lastSegments = remoteRootSegments;
     finalizeCount += 1;
     if (invalidOnFinalize) {
       throw const VelockProfileFinalizationException(
@@ -987,6 +1112,8 @@ class _RecordingDestination extends BackupDestinationService {
       );
 
   int checkCount = 0;
+  List<String>? lastSegments;
+  bool failCheck = false;
 
   @override
   Future<void> check({
@@ -994,8 +1121,11 @@ class _RecordingDestination extends BackupDestinationService {
     required String vaultId,
     required Iterable<String> trustedProducerIds,
     required bool restoring,
+    List<String> remoteRootSegments = const [],
   }) async {
+    lastSegments = remoteRootSegments;
     checkCount += 1;
+    if (failCheck) throw const BackupDestinationException('readback_failed');
   }
 }
 
@@ -1089,4 +1219,10 @@ Future<VelockPairingControlResponse> _signedApproval({
   return VelockPairingControlResponse.parse(
     Uint8List.fromList(utf8.encode(jsonEncode(encoded))),
   );
+}
+
+Future<void> _chooseCurrentFolder(WidgetTester tester) async {
+  expect(find.byKey(const Key('use-backup-folder')), findsOneWidget);
+  await tester.tap(find.byKey(const Key('use-backup-folder')));
+  await tester.pumpAndSettle();
 }

@@ -86,3 +86,11 @@
 - finalizer 保存持久 profile 前重验到期；授权有效时发起的持久保存完成后，ACK 可晚于临时期限。同一 flow 的晚到结果不得覆盖新 session/reset；ACK 未完成不能被 clearCompletedFlow 清除或被已有 profile 卡片遮盖。
 - 回归：`test/features/cloud_backup/velock_pairing_recovery_test.dart`、`backup_navigation_test.dart` 和 pairing/finalizer 单测。widget 持有应用级 Timer，必须在测试体 finally 中 reset/dispose，不能只在 addTearDown 清理。
 - 现场根因与验证边界：`docs/verification/2026-09-26-pairing-recovery.md`。NAS 并发 401 与本轮临时授权过期是不同问题，禁止混称为 NAS 已全流程通过。
+
+
+## WebDAV 格间备份目录选择（2026-09-26）
+
+- 已有云连接不等于实际备份文件夹。格间向导选择 WebDAV 连接后必须提供只读目录浏览，再由用户确认完整目录；不能只提示用户进入共享文件夹却不给入口。
+- `VelockSyncProfile.remoteRootSegments` 是相对于原连接的 decoded 路径段；旧配置默认空列表。不得全局改写原连接，否则普通同步与其他备份会被重定向。预检、恢复扫描、runner、inventory、join profile 重建必须保持同一 scope。
+- 浏览仅 Depth:1 PROPFIND，拒绝外源/越界 href，不自动重试401/403，不把读取失败当空目录；尚未明确选择及最终确认时不得写入或创建配置。授权过期仍需重授权，不因选文件夹放宽签名/期限门禁。
+- 331 项回归通过，改动范围 analyze 无问题；已安装新版 Sync Debug 模拟器。安装后模拟器界面停在连接格间，等待用户自行批准才能继续真实 NAS 列表/预检。本轮没有真实 NAS 备份恢复成功结论，先前并发401边界保留。详见 `docs/verification/2026-09-26-backup-folder-selection.md`。

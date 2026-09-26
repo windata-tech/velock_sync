@@ -9,6 +9,7 @@ import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
+import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_pairing_session.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_profile_finalizer.dart';
 
@@ -131,6 +132,60 @@ void main() {
       });
       expect(profile.backgroundPolicy.enabled, isTrue);
       expect(profile.backgroundPolicy.requiresCharging, isTrue);
+    });
+
+    test('persists a per-profile remote root scope', () async {
+      const remoteRootSegments = ['中文 空格', '%', '#', '?'];
+      final result = await service.finalize(
+        session: session,
+        approval: approval,
+        connectionId: 'connection-1',
+        displayName: 'Personal vault',
+        backgroundPolicy: const SyncProfileBackgroundPolicy(),
+        userConfirmed: true,
+        remoteRootSegments: remoteRootSegments,
+      );
+
+      expect(result.profile.remoteRootSegments, remoteRootSegments);
+      expect(saved.single.dataset['remoteRootSegments'], remoteRootSegments);
+    });
+
+    test('rejects a scope for an OAuth connection before saving', () async {
+      connection = _oauthConnection();
+
+      await _expectCode(
+        service.finalize(
+          session: session,
+          approval: approval,
+          connectionId: 'connection-1',
+          displayName: 'Personal vault',
+          backgroundPolicy: const SyncProfileBackgroundPolicy(),
+          userConfirmed: true,
+          remoteRootSegments: const ['folder'],
+        ),
+        'invalid_remote_root_segments',
+      );
+
+      expect(saved, isEmpty);
+      expect(events, isEmpty);
+    });
+
+    test('rejects malformed remote root segments before saving', () async {
+      await _expectCode(
+        service.finalize(
+          session: session,
+          approval: approval,
+          connectionId: 'connection-1',
+          displayName: 'Personal vault',
+          backgroundPolicy: const SyncProfileBackgroundPolicy(),
+          userConfirmed: true,
+          remoteRootSegments: const ['..'],
+        ),
+        'invalid_remote_root_segments',
+      );
+
+      expect(saved, isEmpty);
+      expect(events, isEmpty);
     });
 
     test('keeps the saved profile when acknowledgement needs retry', () async {
@@ -372,6 +427,22 @@ ConnectionModel _connection({
   createdAt: DateTime.utc(2026, 7, 18),
   updatedAt: DateTime.utc(2026, 7, 18),
   status: status,
+);
+
+ConnectionModel _oauthConnection() => ConnectionModel(
+  id: 'connection-1',
+  name: 'OAuth',
+  source: 'Velock',
+  target: 'Remote',
+  protocol: const ProtocolModel.oauth(
+    providerType: RemoteProviderType.googleDrive,
+    clientId: 'public-client-id',
+    credentialRef: 'opaque-ref',
+    rootId: 'root',
+  ),
+  createdAt: DateTime.utc(2026, 7, 18),
+  updatedAt: DateTime.utc(2026, 7, 18),
+  status: ConnectionStatus.active,
 );
 
 class _PairingService implements VelockPairingSessionService {

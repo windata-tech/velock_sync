@@ -51,6 +51,7 @@ void main() {
         pairedProducerPublicKeyId: 'paired-producer-key',
         exchangeBindingId: 'exchange-1',
         trustedProducerIds: const ['paired-producer', 'previous-iphone'],
+        remoteRootSegments: const ['团队 备份', '%', '#', '?'],
         backgroundPolicy: const SyncProfileBackgroundPolicy(),
         state: SyncProfileState.active,
         createdAt: DateTime.utc(2026, 7, 17),
@@ -85,7 +86,22 @@ void main() {
       expect(adapterFactory.createdFor, fixture.profile.profileId);
       expect(remoteFactoryCalls, 1);
       expect(receivedProtocol!.credentialRef, fixture.credentialRef);
+      expect(
+        receivedProtocol!.address,
+        Uri.parse('https://example.test')
+            .replace(
+              port: 443,
+              pathSegments: const ['sync', '团队 备份', '%', '#', '?'],
+            )
+            .toString(),
+      );
+      expect(receivedProtocol!.path, isNull);
       expect(receivedPassword, 'password-from-secure-store');
+      expect(
+        (fixture.connection.protocol as WebDavProtocolModel).address,
+        'https://example.test',
+      );
+      expect((fixture.connection.protocol as WebDavProtocolModel).path, 'sync');
       expect(
         jsonEncode(fixture.connection.toJson()),
         isNot(contains('password-from-secure-store')),

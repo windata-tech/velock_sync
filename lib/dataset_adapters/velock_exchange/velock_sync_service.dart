@@ -188,7 +188,10 @@ class VelockSyncService implements VelockSyncRunner {
     // a remote client, so an insufficient local staging volume cannot cause
     // even protocol bootstrap traffic.
     await _diskPreflight.ensureAvailable(_stagingRoot);
-    final remote = await _remoteForConnection(connection.protocol);
+    final remote = await _remoteForConnection(
+      connection.protocol,
+      profile.remoteRootSegments,
+    );
     await _publishRootReadme(remote: remote, profile: profile);
     // Best-effort exchange of signed join requests: peers surface new devices
     // for user approval, and this device publishes its own request. A failure
@@ -278,13 +281,20 @@ class VelockSyncService implements VelockSyncRunner {
 
   Future<RemoteObjectStore> _remoteForConnection(
     ProtocolModel protocol,
-  ) async => switch (protocol) {
-    WebDavProtocolModel(:final credentialRef) => _remoteFactory(
-      protocol: protocol,
-      password: await _connections.readWebDavPassword(credentialRef),
-    ),
-    OAuthProtocolModel() => _oauthRemoteFactory(protocol),
-  };
+    List<String> remoteRootSegments,
+  ) async {
+    final scopedProtocol = RemoteObjectStoreFactory.scopeProtocol(
+      protocol,
+      remoteRootSegments,
+    );
+    return switch (scopedProtocol) {
+      WebDavProtocolModel(:final credentialRef) => _remoteFactory(
+        protocol: scopedProtocol,
+        password: await _connections.readWebDavPassword(credentialRef),
+      ),
+      OAuthProtocolModel() => _oauthRemoteFactory(scopedProtocol),
+    };
+  }
 
   static RemoteObjectStore _defaultRemoteFactory({
     required WebDavProtocolModel protocol,

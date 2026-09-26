@@ -154,6 +154,7 @@ class VelockWizardSessionState {
     this.finalization,
     this.connectionNeeded = false,
     this.selectedConnectionId,
+    this.selectedRemoteRootSegments = const [],
     this.authorizationProblem,
   });
 
@@ -162,18 +163,23 @@ class VelockWizardSessionState {
   final VelockProfileFinalizationResult? finalization;
   final bool connectionNeeded;
   final String? selectedConnectionId;
+  final List<String> selectedRemoteRootSegments;
   final VelockWizardAuthorizationProblem? authorizationProblem;
 
   VelockWizardSessionState copyWith({
     VelockPairingControlResponse? approval,
     bool? connectionNeeded,
     String? selectedConnectionId,
+    List<String>? selectedRemoteRootSegments,
   }) => VelockWizardSessionState(
     session: session,
     approval: approval ?? this.approval,
     finalization: finalization,
     connectionNeeded: connectionNeeded ?? this.connectionNeeded,
     selectedConnectionId: selectedConnectionId ?? this.selectedConnectionId,
+    selectedRemoteRootSegments: selectedRemoteRootSegments == null
+        ? this.selectedRemoteRootSegments
+        : List.unmodifiable(selectedRemoteRootSegments),
     authorizationProblem: authorizationProblem,
   );
 }
@@ -194,6 +200,7 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
       session: session,
       connectionNeeded: state.connectionNeeded,
       selectedConnectionId: state.selectedConnectionId,
+      selectedRemoteRootSegments: state.selectedRemoteRootSegments,
     );
     _scheduleExpiration();
   }
@@ -206,8 +213,15 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
 
   void connectionMissing() => state = state.copyWith(connectionNeeded: true);
   void connectionResolved() => state = state.copyWith(connectionNeeded: false);
-  void connectionSelected(String id) =>
-      state = state.copyWith(selectedConnectionId: id);
+  void connectionSelected(String id) => state = state.copyWith(
+    selectedConnectionId: id,
+    selectedRemoteRootSegments: id == state.selectedConnectionId
+        ? state.selectedRemoteRootSegments
+        : const [],
+  );
+
+  void folderSelected(List<String> segments) =>
+      state = state.copyWith(selectedRemoteRootSegments: segments);
 
   DateTime? get _deadline {
     final requestDeadline = state.session?.request.expiresAt;
@@ -261,6 +275,7 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
     state = VelockWizardSessionState(
       connectionNeeded: state.connectionNeeded,
       selectedConnectionId: state.selectedConnectionId,
+      selectedRemoteRootSegments: state.selectedRemoteRootSegments,
       authorizationProblem: reason,
     );
   }
@@ -285,6 +300,7 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
           ? null
           : (approval ?? state.approval),
       selectedConnectionId: state.selectedConnectionId,
+      selectedRemoteRootSegments: state.selectedRemoteRootSegments,
     );
     return true;
   }

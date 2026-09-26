@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
+import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
@@ -45,6 +46,7 @@ abstract interface class VelockProfileFinalizer {
     required String displayName,
     required SyncProfileBackgroundPolicy backgroundPolicy,
     required bool userConfirmed,
+    List<String> remoteRootSegments = const [],
   });
 
   Future<bool> retryAcknowledgement(VelockPairingSession session);
@@ -88,9 +90,19 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
     required String displayName,
     required SyncProfileBackgroundPolicy backgroundPolicy,
     required bool userConfirmed,
+    List<String> remoteRootSegments = const [],
   }) async {
     if (!userConfirmed) {
       throw const VelockProfileFinalizationException('confirmation_required');
+    }
+    final List<String> normalizedRemoteRootSegments;
+    try {
+      normalizedRemoteRootSegments =
+          VelockSyncProfile.canonicalRemoteRootSegments(remoteRootSegments);
+    } on FormatException {
+      throw const VelockProfileFinalizationException(
+        'invalid_remote_root_segments',
+      );
     }
     final normalizedDisplayName = displayName.trim();
     if (normalizedDisplayName.isEmpty || normalizedDisplayName.length > 128) {
@@ -112,6 +124,12 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
     }
     if (connection.status != ConnectionStatus.active) {
       throw const VelockProfileFinalizationException('connection_unavailable');
+    }
+    if (normalizedRemoteRootSegments.isNotEmpty &&
+        connection.protocol is! WebDavProtocolModel) {
+      throw const VelockProfileFinalizationException(
+        'invalid_remote_root_segments',
+      );
     }
 
     for (final existing in await _readProfiles()) {
@@ -145,6 +163,7 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
       pairedProducerPublicKeyId: approval.producerPublicKeyId,
       exchangeBindingId: approval.exchangeBindingId,
       trustedProducerIds: approval.trustedProducerIds ?? [approval.producerId],
+      remoteRootSegments: normalizedRemoteRootSegments,
       backgroundPolicy: backgroundPolicy,
       state: SyncProfileState.active,
       createdAt: _now().toUtc(),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
@@ -50,6 +51,9 @@ void main() {
     wizardNow = DateTime.now().toUtc();
     container = ProviderContainer(
       overrides: [
+        backupFolderLoaderProvider.overrideWithValue(
+          ({required protocol, required relativeSegments}) async => const [],
+        ),
         syncStateDatabaseProvider.overrideWithValue(database),
         velockWizardClockProvider.overrideWithValue(() => wizardNow),
         credentialStoreProvider.overrideWithValue(_UnusedCredentials()),
@@ -166,7 +170,9 @@ void main() {
     );
     expect(
       tester
-          .widget<VelockDatasetWizard>(find.byType(VelockDatasetWizard))
+          .widget<VelockDatasetWizard>(
+            find.byType(VelockDatasetWizard, skipOffstage: false),
+          )
           .restoring,
       isTrue,
     );
@@ -212,7 +218,9 @@ void main() {
         expect(router.routeInformationProvider.value.uri.toString(), target);
         expect(
           tester
-              .widget<VelockDatasetWizard>(find.byType(VelockDatasetWizard))
+              .widget<VelockDatasetWizard>(
+                find.byType(VelockDatasetWizard, skipOffstage: false),
+              )
               .restoring,
           isTrue,
         );
@@ -220,6 +228,9 @@ void main() {
           container.read(velockWizardSessionProvider).approval,
           same(approved),
         );
+        await tester.pumpAndSettle();
+        expect(find.text('找到原备份文件夹'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('use-backup-folder')));
         await tester.pumpAndSettle();
         expect(find.text('确认恢复位置'), findsOneWidget);
         expect(find.text('查找并恢复'), findsOneWidget);
@@ -272,7 +283,9 @@ void main() {
       );
       expect(
         tester
-            .widget<VelockDatasetWizard>(find.byType(VelockDatasetWizard))
+            .widget<VelockDatasetWizard>(
+              find.byType(VelockDatasetWizard, skipOffstage: false),
+            )
             .restoring,
         isTrue,
       );

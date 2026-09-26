@@ -4,6 +4,7 @@ library;
 
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:async';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -821,6 +822,12 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
           .scan(
             connectionId: widget.profile.connectionId,
             vaultId: widget.profile.vaultId,
+            remoteRootSegments:
+                widget.profile.kind == SyncDatasetKind.velockManaged
+                ? VelockSyncProfile.fromEnvelope(
+                    widget.profile,
+                  ).remoteRootSegments
+                : const [],
           );
       if (!mounted) return;
       setState(() => _remote = snapshot);

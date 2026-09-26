@@ -73,6 +73,7 @@ class JoinApprovalApplier {
       pairedProducerPublicKeyId: profile.pairedProducerPublicKeyId,
       exchangeBindingId: profile.exchangeBindingId,
       trustedProducerIds: merged,
+      remoteRootSegments: profile.remoteRootSegments,
       backgroundPolicy: profile.backgroundPolicy,
       state: profile.state,
       createdAt: profile.createdAt,

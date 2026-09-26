@@ -16,11 +16,15 @@ void main() {
       nextId: () => 'unique-test',
     );
   });
-  Future<void> check({bool restoring = false}) => service.check(
+  Future<void> check({
+    bool restoring = false,
+    List<String> remoteRootSegments = const [],
+  }) => service.check(
     connectionId: 'cloud',
     vaultId: 'original-account',
     trustedProducerIds: ['trusted-device'],
     restoring: restoring,
+    remoteRootSegments: remoteRootSegments,
   );
   Future<void> seed(String key) =>
       remote.put(key, Stream.value([1, 2]), contentLength: 2);
@@ -180,6 +184,64 @@ void main() {
     );
     await expectLater(check(), throwsA(isA<BackupDestinationException>()));
     expect(remote.writes, isEmpty);
+  });
+
+  test('a non-empty scope fails closed without a scoped opener', () async {
+    var openCalls = 0;
+    service = BackupDestinationService(
+      open: (_) async {
+        openCalls += 1;
+        return remote;
+      },
+    );
+
+    await expectLater(
+      check(remoteRootSegments: const ['folder']),
+      throwsA(
+        isA<BackupDestinationException>().having(
+          (error) => error.code,
+          'code',
+          'scoped_open_unavailable',
+        ),
+      ),
+    );
+    expect(openCalls, 0);
+    expect(remote.writes, isEmpty);
+  });
+
+  test('preflight and restore both use the scoped opener', () async {
+    final scopes = <List<String>>[];
+    var unscopedCalls = 0;
+    service = BackupDestinationService(
+      open: (_) async {
+        unscopedCalls += 1;
+        return remote;
+      },
+      openScoped: (_, remoteRootSegments) async {
+        scopes.add(List<String>.of(remoteRootSegments));
+        return remote;
+      },
+      nextId: () => 'unique-test',
+    );
+
+    await check(remoteRootSegments: const ['folder']);
+    expect(scopes, [
+      ['folder'],
+    ]);
+    expect(unscopedCalls, 0);
+
+    await seed(
+      LogicalKeys.commit('original-account', 'trusted-device', 1, 'b1'),
+    );
+    scopes.clear();
+    await check(
+      restoring: true,
+      remoteRootSegments: const ['folder', 'nested'],
+    );
+    expect(scopes, [
+      ['folder', 'nested'],
+    ]);
+    expect(unscopedCalls, 0);
   });
 }
 

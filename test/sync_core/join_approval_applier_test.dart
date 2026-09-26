@@ -15,6 +15,7 @@ import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dar
 const _vaultId = '374d09fc-0375-4a6f-8284-26bf29ac276d';
 const _localProducer = '6b71c91c-1604-45dc-91c4-fe54ae27d432';
 const _joinedProducer = 'a202a0b1-f5f1-4b15-9e61-f932ab019e02';
+const _remoteRootSegments = ['团队 备份', '%', '#', '?'];
 
 VelockSyncProfile _profile() => VelockSyncProfile(
   profileId: 'profile-1',
@@ -27,6 +28,7 @@ VelockSyncProfile _profile() => VelockSyncProfile(
   pairedProducerPublicKeyId: 'key-1',
   exchangeBindingId: 'binding-1',
   trustedProducerIds: const [_localProducer],
+  remoteRootSegments: _remoteRootSegments,
   backgroundPolicy: const SyncProfileBackgroundPolicy(),
   state: SyncProfileState.active,
   createdAt: DateTime.utc(2026, 9, 11),
@@ -99,6 +101,7 @@ void main() {
     expect(persisted, isNotNull);
     final reloaded = VelockSyncProfile.fromEnvelope(persisted!);
     expect(reloaded.trustedProducerIds, contains(_joinedProducer));
+    expect(reloaded.remoteRootSegments, _remoteRootSegments);
   });
 
   test(

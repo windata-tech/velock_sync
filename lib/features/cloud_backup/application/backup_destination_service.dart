@@ -11,17 +11,24 @@ final backupDestinationServiceProvider = Provider<BackupDestinationService>((
   ref,
 ) {
   final connections = ref.watch(connectionRepositoryProvider);
+  Future<RemoteObjectStore> open(
+    String id,
+    List<String> remoteRootSegments,
+  ) async {
+    final connection = await connections.getConnectionById(id);
+    if (connection == null) {
+      throw const BackupDestinationException('connection_missing');
+    }
+    return RemoteObjectStoreFactory.create(
+      connections: connections,
+      protocol: connection.protocol,
+      remoteRootSegments: remoteRootSegments,
+    );
+  }
+
   return BackupDestinationService(
-    open: (id) async {
-      final connection = await connections.getConnectionById(id);
-      if (connection == null) {
-        throw const BackupDestinationException('connection_missing');
-      }
-      return RemoteObjectStoreFactory.create(
-        connections: connections,
-        protocol: connection.protocol,
-      );
-    },
+    open: (id) => open(id, const []),
+    openScoped: open,
   );
 });
 
@@ -37,10 +44,16 @@ class BackupDestinationException implements Exception {
 class BackupDestinationService {
   BackupDestinationService({
     required this.open,
+    this.openScoped,
     String Function()? nextId,
     this.timeout = const Duration(seconds: 25),
   }) : nextId = nextId ?? const Uuid().v4;
   final Future<RemoteObjectStore> Function(String connectionId) open;
+  final Future<RemoteObjectStore> Function(
+    String connectionId,
+    List<String> remoteRootSegments,
+  )?
+  openScoped;
   final String Function() nextId;
   final Duration timeout;
 
@@ -49,11 +62,22 @@ class BackupDestinationService {
     required String vaultId,
     required Iterable<String> trustedProducerIds,
     required bool restoring,
+    List<String> remoteRootSegments = const [],
   }) async {
     final cancellation = RemoteOperationCancellation();
     final timer = Timer(timeout, cancellation.cancel);
     try {
-      final remote = await open(connectionId).timeout(timeout);
+      final Future<RemoteObjectStore> remoteFuture;
+      if (remoteRootSegments.isEmpty) {
+        remoteFuture = open(connectionId);
+      } else {
+        final scopedOpen = openScoped;
+        if (scopedOpen == null) {
+          throw const BackupDestinationException('scoped_open_unavailable');
+        }
+        remoteFuture = scopedOpen(connectionId, remoteRootSegments);
+      }
+      final remote = await remoteFuture.timeout(timeout);
       if (restoring) {
         // Only locally trusted producers from the signed Velock approval.
         // Never scan other accounts or let an empty folder become a new vault.

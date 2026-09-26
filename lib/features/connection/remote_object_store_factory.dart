@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
 import 'package:velock_sync/providers/webdav/webdav_object_store.dart';
@@ -12,15 +13,62 @@ abstract final class RemoteObjectStoreFactory {
   static Future<RemoteObjectStore> create({
     required ConnectionRepository connections,
     required ProtocolModel protocol,
-  }) async => switch (protocol) {
-    WebDavProtocolModel(:final credentialRef) => WebDavObjectStore(
-      dio: Dio(),
-      baseUri: webDavUri(protocol),
-      username: protocol.username,
-      password: await connections.readWebDavPassword(credentialRef),
-    ),
-    OAuthProtocolModel() => connections.createOAuthRemote(protocol),
-  };
+    List<String> remoteRootSegments = const [],
+  }) async {
+    final scopedProtocol = scopeProtocol(protocol, remoteRootSegments);
+    return switch (scopedProtocol) {
+      WebDavProtocolModel(:final credentialRef) => WebDavObjectStore(
+        dio: Dio(),
+        baseUri: webDavUri(scopedProtocol),
+        username: scopedProtocol.username,
+        password: await connections.readWebDavPassword(credentialRef),
+      ),
+      OAuthProtocolModel() => connections.createOAuthRemote(scopedProtocol),
+    };
+  }
+
+  /// Adds one profile-specific relative path scope to a copied protocol.
+  ///
+  /// The supplied protocol is never mutated. Resetting [WebDavProtocolModel.path]
+  /// after embedding the already-resolved URI prevents a later call from
+  /// appending that provider path a second time.
+  static ProtocolModel scopeProtocol(
+    ProtocolModel protocol,
+    List<String> remoteRootSegments,
+  ) {
+    final segments = _validatedRemoteRootSegments(remoteRootSegments);
+    if (segments.isEmpty) return protocol;
+    if (protocol is! WebDavProtocolModel) {
+      throw ArgumentError.value(
+        protocol,
+        'protocol',
+        'remote root scopes are supported only for WebDAV',
+      );
+    }
+
+    final currentUri = webDavUri(protocol);
+    final scopedUri = currentUri.replace(
+      pathSegments: [
+        ...currentUri.pathSegments.where((segment) => segment.isNotEmpty),
+        ...segments,
+      ],
+      query: null,
+      fragment: null,
+    );
+    return protocol.copyWith(address: scopedUri.toString(), path: null);
+  }
+
+  static List<String> _validatedRemoteRootSegments(List<String> segments) {
+    try {
+      return VelockSyncProfile.canonicalRemoteRootSegments(segments);
+    } on FormatException {
+      throw ArgumentError.value(
+        segments,
+        'remoteRootSegments',
+        'must contain decoded non-empty relative path segments',
+      );
+    }
+  }
 
   static Uri webDavUri(WebDavProtocolModel protocol) {
     final address = Uri.tryParse(protocol.address);
@@ -29,15 +77,21 @@ abstract final class RemoteObjectStoreFactory {
       throw ArgumentError.value(protocol.address, 'protocol', 'is invalid');
     }
     final providerPath = Uri.tryParse(protocol.path ?? '');
+    final providerSegments = <String>[...?providerPath?.pathSegments];
+    // Both '/' and '/share/' identify collections. Strip only the final
+    // separator, not empty interior segments that change path semantics.
+    if (providerSegments.isNotEmpty && providerSegments.last.isEmpty) {
+      providerSegments.removeLast();
+    }
     final segments = <String>[
       ...address.pathSegments.where((segment) => segment.isNotEmpty),
-      ...?providerPath?.pathSegments.where(
+      ...providerSegments.where(
         (segment) => segment.isNotEmpty && segment != '.' && segment != '..',
       ),
     ];
     final expectedSegmentCount =
         address.pathSegments.where((segment) => segment.isNotEmpty).length +
-        (providerPath?.pathSegments.length ?? 0);
+        providerSegments.length;
     if (segments.length != expectedSegmentCount) {
       throw ArgumentError.value(protocol.path, 'protocol.path', 'is invalid');
     }
