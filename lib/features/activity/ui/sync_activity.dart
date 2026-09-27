@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_core/conflicts/conflict_resolution_service.dart';
 import 'package:velock_sync/sync_core/conflicts/conflict_resolution_strategy.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
@@ -34,7 +35,13 @@ class SyncActivity extends HookConsumerWidget {
       SyncConflictRecord conflict,
       ConflictResolutionStrategy strategy,
     ) async {
-      var message = '无法完成冲突解决。';
+      // Built lazily so the locale is only read while the page is still
+      // mounted, exactly like the message itself.
+      var message = () => syncText(
+        messageContext,
+        '无法完成冲突解决。',
+        'Could not resolve the conflict.',
+      );
       try {
         final result = await resolutionService.resolve(
           conflictId: conflict.conflictId,
@@ -46,16 +53,24 @@ class SyncActivity extends HookConsumerWidget {
           return;
         }
         if (result.errorCode == 'velock-resolution-pending') {
-          message = '已打开 Velock；处理完成后回到这里再次选择“在 Velock 中处理”。';
+          message = () => syncText(
+            messageContext,
+            '已打开 Velock；处理完成后回到这里再次选择“在 Velock 中处理”。',
+            'Velock is open. When it finishes, come back here and choose “Open in Velock” again.',
+          );
         } else if (result.errorCode == 'untrusted-velock-receipt') {
-          message = 'Velock 返回结果未通过验证，冲突仍保持未解决。';
+          message = () => syncText(
+            messageContext,
+            'Velock 返回结果未通过验证，冲突仍保持未解决。',
+            'The result from Velock failed validation, so the conflict is still unresolved.',
+          );
         }
       } on Object {
         // Resolution service failures are deliberately reduced to the same
         // generic UI state as non-completion results below.
       }
       if (messageContext.mounted) {
-        showPlatformMessage(messageContext, message);
+        showPlatformMessage(messageContext, message());
       }
     }
 
@@ -70,10 +85,10 @@ class SyncActivity extends HookConsumerWidget {
         child: FutureBuilder<_ActivityData>(
           future: activity,
           builder: (context, snapshot) => AdaptiveSliverScaffold(
-            title: '活动',
+            title: syncText(context, '活动', 'Activity'),
             actions: [
               AdaptiveIconButton(
-                tooltip: '刷新活动记录',
+                tooltip: syncText(context, '刷新活动记录', 'Refresh activity'),
                 onPressed: refresh,
                 icon: Icon(
                   adaptiveIcon(
@@ -109,10 +124,12 @@ List<Widget> _activitySlivers(
   onResolve,
 }) {
   if (snapshot.connectionState != ConnectionState.done) {
-    return const [
+    return [
       SliverFillRemaining(
         hasScrollBody: false,
-        child: AdaptiveLoadingState(label: '正在加载活动记录'),
+        child: AdaptiveLoadingState(
+          label: syncText(context, '正在加载活动记录', 'Loading activity'),
+        ),
       ),
     ];
   }
@@ -120,7 +137,14 @@ List<Widget> _activitySlivers(
     return [
       SliverFillRemaining(
         hasScrollBody: false,
-        child: AdaptiveErrorState(message: '无法读取活动记录。', onRetry: onRetry),
+        child: AdaptiveErrorState(
+          message: syncText(
+            context,
+            '无法读取活动记录。',
+            'Could not read the activity record.',
+          ),
+          onRetry: onRetry,
+        ),
       ),
     ];
   }
@@ -137,8 +161,12 @@ List<Widget> _activitySlivers(
             material: Icons.history_rounded,
             cupertino: CupertinoIcons.clock,
           ),
-          title: '还没有同步活动',
-          message: '同步运行、待恢复传输和需要处理的冲突会集中显示在这里。',
+          title: syncText(context, '还没有同步活动', 'No sync activity yet'),
+          message: syncText(
+            context,
+            '同步运行、待恢复传输和需要处理的冲突会集中显示在这里。',
+            'Sync runs, transfers waiting to resume and conflicts that need attention all appear here.',
+          ),
         ),
       ),
     ];
@@ -149,7 +177,7 @@ List<Widget> _activitySlivers(
     if (values.runs.isNotEmpty)
       SliverToBoxAdapter(
         child: AdaptiveListSection(
-          header: '最近同步',
+          header: syncText(context, '最近同步', 'Recent syncs'),
           children: [
             for (final run in values.runs)
               Builder(
@@ -164,14 +192,18 @@ List<Widget> _activitySlivers(
                           ? AppTone.danger.color(context)
                           : AppTone.ok.color(context),
                     ),
-                    title: Text(failed ? '同步失败' : '同步完成'),
+                    title: Text(
+                      failed
+                          ? syncText(context, '同步失败', 'Sync failed')
+                          : syncText(context, '同步完成', 'Sync completed'),
+                    ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '${values.nameFor(run.profileId)} · '
-                          '${AppFormat.relativeTime(run.completedAt ?? run.startedAt)}',
+                          '${values.nameFor(context, run.profileId)} · '
+                          '${AppFormat.relativeTime(run.completedAt ?? run.startedAt, context: context)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppType.rowSubtitle.copyWith(
@@ -179,10 +211,15 @@ List<Widget> _activitySlivers(
                           ),
                         ),
                         if (failed)
+                          // The reason must stay readable at both lengths, so
+                          // it wraps instead of being shortened with an
+                          // ellipsis.
                           Text(
-                            AppFormat.errorSummary(run.errorCode),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            AppFormat.errorSummary(
+                              run.errorCode,
+                              context: context,
+                            ),
+                            maxLines: 2,
                             style: AppType.rowSubtitle.copyWith(
                               color: AppTone.danger.color(context),
                             ),
@@ -200,7 +237,7 @@ List<Widget> _activitySlivers(
     if (values.transfers.isNotEmpty)
       SliverToBoxAdapter(
         child: AdaptiveListSection(
-          header: '待恢复传输',
+          header: syncText(context, '待恢复传输', 'Transfers to resume'),
           children: [
             for (final transfer in values.transfers)
               AdaptiveListTile(
@@ -210,10 +247,10 @@ List<Widget> _activitySlivers(
                       : CupertinoIcons.arrow_down,
                   color: AppTone.brand.color(context),
                 ),
-                title: Text(_transferTitle(transfer)),
+                title: Text(_transferTitle(context, transfer)),
                 subtitle: Text(
-                  '${values.nameFor(transfer.profileId)} · ${_transferProgress(transfer)}'
-                  '${transfer.errorCode == null ? '' : ' · ${AppFormat.errorSummary(transfer.errorCode)}'}',
+                  '${values.nameFor(context, transfer.profileId)} · ${_transferProgress(context, transfer)}'
+                  '${transfer.errorCode == null ? '' : ' · ${AppFormat.errorSummary(transfer.errorCode, context: context)}'}',
                   maxLines: 2,
                 ),
               ),
@@ -222,7 +259,7 @@ List<Widget> _activitySlivers(
       ),
     SliverToBoxAdapter(
       child: AdaptiveListSection(
-        header: '待处理冲突',
+        header: syncText(context, '待处理冲突', 'Conflicts to review'),
         children: values.conflicts.isEmpty
             ? [
                 AdaptiveListTile(
@@ -234,7 +271,13 @@ List<Widget> _activitySlivers(
                     ),
                     color: AppColors.success,
                   ),
-                  title: const Text('没有待处理冲突。'),
+                  title: Text(
+                    syncText(
+                      context,
+                      '没有待处理冲突。',
+                      'No conflicts need attention.',
+                    ),
+                  ),
                 ),
               ]
             : [
@@ -248,10 +291,10 @@ List<Widget> _activitySlivers(
                       ),
                       color: AppColors.warning,
                     ),
-                    title: Text(_conflictType(conflict.type)),
+                    title: Text(_conflictType(context, conflict.type)),
                     subtitle: Text(
-                      '${values.nameFor(conflict.profileId)} · '
-                      '${AppFormat.relativeTime(conflict.createdAt)}',
+                      '${values.nameFor(context, conflict.profileId)} · '
+                      '${AppFormat.relativeTime(conflict.createdAt, context: context)}',
                       maxLines: 2,
                     ),
                     trailing: _ConflictResolutionActions(
@@ -302,24 +345,34 @@ class _ActivityOverview extends StatelessWidget {
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  child: Text('同步记录与待处理项', style: AppType.rowTitleStrong),
+                  child: Text(
+                    syncText(
+                      context,
+                      '同步记录与待处理项',
+                      'Sync history and open items',
+                    ),
+                    style: AppType.rowTitleStrong,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
             AppMetricGrid(
               metrics: [
-                AppMetric(value: '${values.runs.length}', label: '最近运行'),
+                AppMetric(
+                  value: '${values.runs.length}',
+                  label: syncText(context, '最近运行', 'Recent runs'),
+                ),
                 AppMetric(
                   value: '${values.transfers.length}',
-                  label: '待恢复',
+                  label: syncText(context, '待恢复', 'To resume'),
                   tone: values.transfers.isEmpty
                       ? AppTone.neutral
                       : AppTone.attention,
                 ),
                 AppMetric(
                   value: '${values.conflicts.length}',
-                  label: '冲突',
+                  label: syncText(context, '冲突', 'Conflicts'),
                   tone: values.conflicts.isEmpty
                       ? AppTone.neutral
                       : AppTone.danger,
@@ -394,7 +447,8 @@ class _ActivityData {
 
   /// Human name for a profile. Never falls back to a raw identifier: users
   /// should not have to read `70fa13b9-238…` to follow an activity entry.
-  String nameFor(String profileId) => namesByProfileId[profileId] ?? '同步配置';
+  String nameFor(BuildContext context, String profileId) =>
+      namesByProfileId[profileId] ?? syncText(context, '同步配置', 'Sync profile');
 }
 
 class _ConflictResolutionActions extends StatelessWidget {
@@ -410,14 +464,17 @@ class _ConflictResolutionActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final strategies = _strategiesFor(kind);
     if (strategies.isEmpty) {
-      return const Text('不可用');
+      return Text(syncText(context, '不可用', 'Unavailable'));
     }
     return AdaptiveActionMenu<ConflictResolutionStrategy>(
-      tooltip: '解决冲突',
+      tooltip: syncText(context, '解决冲突', 'Resolve conflict'),
       onSelected: onSelected,
       items: [
         for (final strategy in strategies)
-          AdaptiveActionItem(value: strategy, label: _strategyLabel(strategy)),
+          AdaptiveActionItem(
+            value: strategy,
+            label: _strategyLabel(context, strategy),
+          ),
       ],
     );
   }
@@ -433,44 +490,83 @@ List<ConflictResolutionStrategy> _strategiesFor(SyncDatasetKind? kind) =>
       SyncDatasetKind.velockManaged => const [
         ConflictResolutionStrategy.openInVelock,
       ],
+      // Plain folder locations resolve conflicts themselves (keep both by
+      // default) and never enter this durable queue.
+      SyncDatasetKind.plainFolder => const [],
       null => const [],
     };
 
-String _strategyLabel(ConflictResolutionStrategy strategy) =>
-    switch (strategy) {
-      ConflictResolutionStrategy.keepLocal => '保留本地版本',
-      ConflictResolutionStrategy.keepRemote => '保留远端版本',
-      ConflictResolutionStrategy.keepBoth => '保留两个版本',
-      ConflictResolutionStrategy.openInVelock => '在 Velock 中处理',
+String _strategyLabel(
+  BuildContext context,
+  ConflictResolutionStrategy strategy,
+) => switch (strategy) {
+  ConflictResolutionStrategy.keepLocal => syncText(
+    context,
+    '保留本地版本',
+    'Keep this device version',
+  ),
+  ConflictResolutionStrategy.keepRemote => syncText(
+    context,
+    '保留远端版本',
+    'Keep remote version',
+  ),
+  ConflictResolutionStrategy.keepBoth => syncText(
+    context,
+    '保留两个版本',
+    'Keep both versions',
+  ),
+  ConflictResolutionStrategy.openInVelock => syncText(
+    context,
+    '在 Velock 中处理',
+    'Open in Velock',
+  ),
+};
+
+String _conflictType(BuildContext context, String value) =>
+    switch (value.split(':').first) {
+      'modify-modify' => syncText(
+        context,
+        '两个设备都修改了内容',
+        'Both devices changed this item',
+      ),
+      'delete-modify' => syncText(
+        context,
+        '删除与修改发生冲突',
+        'A delete and an edit conflict',
+      ),
+      _ => syncText(context, '需要处理的同步冲突', 'Sync conflict to review'),
     };
 
-String _conflictType(String value) => switch (value.split(':').first) {
-  'modify-modify' => '两个设备都修改了内容',
-  'delete-modify' => '删除与修改发生冲突',
-  _ => '需要处理的同步冲突',
-};
-
-String _transferTitle(TransferJobRecord transfer) {
-  final direction = transfer.direction == TransferJobDirection.upload
-      ? '上传'
-      : '下载';
-  return '$direction${_transferState(transfer.state)}';
+String _transferTitle(BuildContext context, TransferJobRecord transfer) {
+  final state = _transferState(context, transfer.state);
+  return transfer.direction == TransferJobDirection.upload
+      ? syncText(context, '上传$state', 'Upload $state')
+      : syncText(context, '下载$state', 'Download $state');
 }
 
-String _transferState(TransferJobState state) => switch (state) {
-  TransferJobState.queued => '排队中',
-  TransferJobState.running => '进行中',
-  TransferJobState.paused => '已暂停',
-  TransferJobState.retryWaiting => '等待重试',
-  TransferJobState.failed => '失败',
-  TransferJobState.cancelled => '已取消',
-  TransferJobState.completed => '完成',
-};
+String _transferState(BuildContext context, TransferJobState state) =>
+    switch (state) {
+      TransferJobState.queued => syncText(context, '排队中', 'queued'),
+      TransferJobState.running => syncText(context, '进行中', 'in progress'),
+      TransferJobState.paused => syncText(context, '已暂停', 'paused'),
+      TransferJobState.retryWaiting => syncText(
+        context,
+        '等待重试',
+        'waiting to retry',
+      ),
+      TransferJobState.failed => syncText(context, '失败', 'failed'),
+      TransferJobState.cancelled => syncText(context, '已取消', 'cancelled'),
+      TransferJobState.completed => syncText(context, '完成', 'done'),
+    };
 
-String _transferProgress(TransferJobRecord transfer) {
+String _transferProgress(BuildContext context, TransferJobRecord transfer) {
   final expected = transfer.expectedSize;
   if (expected == null) {
-    return '${AppFormat.bytes(transfer.completedBytes)} 已传输';
+    return syncText(
+      context,
+      '${AppFormat.bytes(transfer.completedBytes)} 已传输',
+      '${AppFormat.bytes(transfer.completedBytes)} transferred',
+    );
   }
   return '${AppFormat.bytes(transfer.completedBytes)} / ${AppFormat.bytes(expected)}';
 }
@@ -487,32 +583,70 @@ Future<void> _showActivityRunDetails(
     code: run.errorCode,
     profileId: run.profileId,
     at: run.completedAt ?? run.startedAt,
+    context: context,
     extra: [
-      if (run.errorCategory != null) '错误分类：${run.errorCategory}',
-      if (run.providerStatusCode != null) '服务状态码：${run.providerStatusCode}',
-      if (run.retryable != null) '可重试：${run.retryable! ? '是' : '否'}',
+      if (run.errorCategory != null)
+        syncText(
+          context,
+          '错误分类：${run.errorCategory}',
+          'Error category: ${run.errorCategory}',
+        ),
+      if (run.providerStatusCode != null)
+        syncText(
+          context,
+          '服务状态码：${run.providerStatusCode}',
+          'Provider status code: ${run.providerStatusCode}',
+        ),
+      if (run.retryable != null)
+        syncText(
+          context,
+          '可重试：${run.retryable! ? '是' : '否'}',
+          'Retryable: ${run.retryable! ? 'yes' : 'no'}',
+        ),
     ].join('\n'),
   );
   return showAppDetailSheet(
     context,
-    title: failed ? '同步失败' : '同步完成',
+    title: failed
+        ? syncText(context, '同步失败', 'Sync failed')
+        : syncText(context, '同步完成', 'Sync completed'),
     rows: [
-      AppDetailSheetRow(label: '同步配置', value: values.nameFor(run.profileId)),
-      AppDetailSheetRow(label: '开始时间', value: AppFormat.stamp(run.startedAt)),
-      AppDetailSheetRow(label: '结束时间', value: AppFormat.stamp(run.completedAt)),
       AppDetailSheetRow(
-        label: '结果',
-        value: failed ? '未完成' : '已完成',
+        label: syncText(context, '同步配置', 'Sync profile'),
+        value: values.nameFor(context, run.profileId),
+      ),
+      AppDetailSheetRow(
+        label: syncText(context, '开始时间', 'Started'),
+        value: AppFormat.stamp(run.startedAt),
+      ),
+      AppDetailSheetRow(
+        label: syncText(context, '结束时间', 'Finished'),
+        value: AppFormat.stamp(run.completedAt),
+      ),
+      AppDetailSheetRow(
+        label: syncText(context, '结果', 'Result'),
+        value: failed
+            ? syncText(context, '未完成', 'Not completed')
+            : syncText(context, '已完成', 'Completed'),
         tone: failed ? AppTone.danger : AppTone.ok,
       ),
       if (failed)
         AppDetailSheetRow(
-          label: '可能原因',
-          value: AppFormat.errorSummary(run.errorCode),
+          label: syncText(context, '可能原因', 'Likely cause'),
+          value: AppFormat.errorSummary(run.errorCode, context: context),
         ),
       if (run.suggestedAction != null)
-        AppDetailSheetRow(label: '建议操作', value: run.suggestedAction!),
+        AppDetailSheetRow(
+          label: syncText(context, '建议操作', 'Suggested action'),
+          value: run.suggestedAction!,
+        ),
     ],
-    footnote: technical.isEmpty ? null : '技术详情\n$technical',
+    footnote: technical.isEmpty
+        ? null
+        : syncText(
+            context,
+            '技术详情\n$technical',
+            'Technical details\n$technical',
+          ),
   );
 }

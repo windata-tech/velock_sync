@@ -1,3 +1,12 @@
+import 'package:velock_sync/features/sync_profiles/ui/sync_profile_home.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
+import 'package:flutter/cupertino.dart';
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
+import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,15 +61,30 @@ class _NoRuns implements SyncProfileRunService {
   @override
   Future<SyncProfileDispatchResult> runNow(String profileId) async {
     calls++;
-    throw StateError('Viewing help must not start sync');
+    return SyncProfileDispatchResult(
+      profileId: profileId,
+      status: SyncProfileDispatchStatus.skippedNotRunnable,
+    );
   }
 }
 
 void main() {
+  final captureKey = GlobalKey();
   late SyncStateDatabase db;
   late SyncProfileRepository repository;
   late _NoRuns runner;
   setUp(() async {
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+    final font = Platform.environment['BACKUP_UI_FONT'];
+    if (font != null) {
+      await (FontLoader('BackupQA')..addFont(
+            File(font).readAsBytes().then((b) => ByteData.sublistView(b)),
+          ))
+          .load();
+    }
+
     db = await SyncStateDatabase.inMemory();
     repository = SyncProfileRepository(db);
     runner = _NoRuns();
@@ -100,6 +124,8 @@ void main() {
     String locale = 'zh',
     double scale = 1,
     bool directly = false,
+    bool home = false,
+    bool settle = true,
   }) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -109,7 +135,9 @@ void main() {
       routes: [
         GoRoute(
           path: '/',
-          builder: (_, _) => directly
+          builder: (_, _) => home
+              ? const SyncProfilesHome()
+              : directly
               ? BackupHistoryHelp(profile: _profile)
               : const SyncProfileDetail(profileId: 'p'),
         ),
@@ -129,6 +157,10 @@ void main() {
           syncProfileRunServiceProvider.overrideWithValue(runner),
           velockWizardReadinessServiceProvider.overrideWithValue(_Ready()),
           connectionDetailProvider('cloud').overrideWith(_Connection.new),
+          backupFolderLoaderProvider.overrideWithValue(
+            ({required protocol, required relativeSegments}) async =>
+                const <WebDavBackupFolder>[],
+          ),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -139,18 +171,102 @@ void main() {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          theme: ThemeData(platform: TargetPlatform.iOS),
+          theme: ThemeData(
+            platform: TargetPlatform.iOS,
+            cupertinoOverrideTheme: CupertinoThemeData(
+              textTheme: CupertinoTextThemeData(
+                textStyle: const CupertinoTextThemeData().textStyle.copyWith(
+                  fontFamily: 'BackupQA',
+                ),
+                actionTextStyle: const CupertinoTextThemeData().actionTextStyle
+                    .copyWith(fontFamily: 'BackupQA'),
+                navTitleTextStyle: const CupertinoTextThemeData()
+                    .navTitleTextStyle
+                    .copyWith(fontFamily: 'BackupQA'),
+                navActionTextStyle: const CupertinoTextThemeData()
+                    .navActionTextStyle
+                    .copyWith(fontFamily: 'BackupQA'),
+              ),
+            ),
+            fontFamily: Platform.environment['BACKUP_UI_FONT'] == null
+                ? null
+                : 'BackupQA',
+          ),
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(
               context,
             ).copyWith(textScaler: TextScaler.linear(scale)),
-            child: child!,
+            child: RepaintBoundary(key: captureKey, child: child!),
           ),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    // A running transfer renders an inline spinner on the primary action, which
+    // animates forever: callers asserting the in-flight state pump explicit
+    // frames instead of waiting for the tree to settle.
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
     return router;
+  }
+
+  for (final home in [false, true]) {
+    for (final outcome in ['completed', 'failed']) {
+      testWidgets(
+        '${home ? 'home' : 'detail'} tracks external running -> $outcome without another tap',
+        (tester) async {
+          await db.startSyncRun(
+            runId: 'background-run',
+            profileId: 'p',
+            startedAt: DateTime.utc(2026, 9, 27),
+          );
+          try {
+            await mount(tester, home: home, settle: false);
+            // The in-flight state lives on the card and its primary action.
+            expect(find.text('正在传输，请稍候'), findsOneWidget);
+            expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
+            final primary = find.byKey(const Key('backup-primary-action'));
+            expect(tester.widget<BackupActionButton>(primary).busy, isTrue);
+            expect(
+              find.descendant(
+                of: primary,
+                matching: find.byType(CircularProgressIndicator),
+              ),
+              findsOneWidget,
+            );
+            await db.finishSyncRun(
+              runId: 'background-run',
+              state: outcome,
+              completedAt: DateTime.utc(2026, 9, 27, 0, 1),
+              errorCode: outcome == 'failed' ? 'sync.unexpected' : null,
+            );
+            await tester.pump(const Duration(seconds: 1));
+            await tester.pumpAndSettle();
+            expect(find.text('正在传输，请稍候'), findsNothing);
+            expect(tester.widget<BackupActionButton>(primary).busy, isFalse);
+            expect(find.byType(CircularProgressIndicator), findsNothing);
+            expect(
+              find.text(
+                outcome == 'completed' ? '上次备份已完成' : '有一件事需要你处理',
+              ),
+              findsOneWidget,
+            );
+            expect((await db.latestSyncRun('p'))!.state, outcome);
+            expect(runner.calls, 0);
+            // Terminal state stops polling; nothing should revert to running.
+            await tester.pump(const Duration(seconds: 3));
+            expect(find.text('正在传输，请稍候'), findsNothing);
+            expect(tester.widget<BackupActionButton>(primary).busy, isFalse);
+          } finally {
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+          }
+        },
+      );
+    }
   }
 
   testWidgets(
@@ -162,8 +278,83 @@ void main() {
       expect(find.text('查看并处理'), findsNothing);
       await tester.tap(find.byKey(const Key('backup-primary-action')));
       await tester.pumpAndSettle();
-      expect(find.text('备份为什么停止'), findsOneWidget);
-      expect(find.text('需要以前的备份才能继续'), findsOneWidget);
+      expect(find.text('找回备份位置'), findsOneWidget);
+      expect(find.text('请选择原来的备份文件夹'), findsOneWidget);
+      // Measure painted blue ink, not the Icon box or 44px hit target.
+      final iconRect = tester.getRect(find.byIcon(Icons.chevron_left_rounded));
+      final surfaceLeft = tester
+          .getTopLeft(
+            find
+                .descendant(
+                  of: find.byType(BackupCard).first,
+                  matching: find.byType(DecoratedBox),
+                )
+                .first,
+          )
+          .dx;
+      expect(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('backup-history-missing-original')),
+            )
+            .dx,
+        surfaceLeft,
+        reason: 'Secondary action shares the same page grid as the cards',
+      );
+      await tester.runAsync(() async {
+        final boundary =
+            captureKey.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final image = await boundary.toImage(pixelRatio: 2);
+        final rgba = (await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        ))!;
+        int? inkLeft;
+        for (
+          var y = (iconRect.top * 2).floor();
+          y < (iconRect.bottom * 2).ceil();
+          y++
+        ) {
+          for (
+            var x = (iconRect.left * 2).floor();
+            x < (iconRect.right * 2).ceil();
+            x++
+          ) {
+            final i = (y * image.width + x) * 4;
+            final r = rgba.getUint8(i),
+                g = rgba.getUint8(i + 1),
+                b = rgba.getUint8(i + 2);
+            if (b > r + 40 && b > g + 20) {
+              if (inkLeft == null || x < inkLeft) inkLeft = x;
+            }
+          }
+        }
+        image.dispose();
+        expect(inkLeft, isNotNull);
+        expect(
+          inkLeft! / 2,
+          closeTo(surfaceLeft, 1.5),
+          reason:
+              'Visible back chevron must align with the card left edge, not receive a second nav inset',
+        );
+      });
+      final output = Platform.environment['BACKUP_UI_SCREENSHOT_DIR'];
+      if (output != null) {
+        await tester.runAsync(() async {
+          final boundary =
+              captureKey.currentContext!.findRenderObject()!
+                  as RenderRepaintBoundary;
+          final image = await boundary.toImage(pixelRatio: 2);
+          final bytes = (await image.toByteData(
+            format: ui.ImageByteFormat.png,
+          ))!;
+          await Directory(output).create(recursive: true);
+          await File(
+            '$output/history-help.png',
+          ).writeAsBytes(bytes.buffer.asUint8List());
+          image.dispose();
+        });
+      }
       expect(find.text('后台同步'), findsNothing);
       expect(find.text('重新连接格间'), findsNothing);
       expect(find.text('/base/backup/共享给我/new folder'), findsOneWidget);
@@ -182,7 +373,7 @@ void main() {
   );
 
   testWidgets(
-    'browse action uses the actual connection, without starting a run',
+    'browse is a read-only picker; selecting and cancelling does not mutate',
     (tester) async {
       await mount(tester, directly: true);
       await tester.scrollUntilVisible(
@@ -192,7 +383,126 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('backup-history-browse-location')));
       await tester.pumpAndSettle();
-      expect(find.text('browser:cloud'), findsOneWidget);
+      expect(find.byType(BackupFolderPicker), findsOneWidget);
+      expect(find.text('新建文件夹'), findsNothing);
+      expect(runner.calls, 0);
+      await tester.tap(find.byKey(const Key('backup-folder-up')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('use-backup-folder')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('backup-location-confirm')),
+        findsOneWidget,
+      );
+      expect((await repository.read('p'))!.toJson(), _profile.toJson());
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect((await repository.read('p'))!.toJson(), _profile.toJson());
+      expect(runner.calls, 0);
+    },
+  );
+
+  testWidgets(
+    'confirming folder saves only location; backup requires a separate explicit action',
+    (tester) async {
+      await mount(tester, directly: true);
+      await tester.tap(find.byKey(const Key('backup-history-browse-location')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('backup-folder-up')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('use-backup-folder')));
+      await tester.pumpAndSettle();
+      expect(runner.calls, 0);
+      expect(find.text('保存位置'), findsOneWidget);
+      expect(find.text('确认并继续备份'), findsNothing);
+      expect(find.textContaining('不启动同步'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('backup-location-confirm')));
+      await tester.pumpAndSettle();
+      expect(runner.calls, 0);
+      expect(find.text('备份位置已更新'), findsOneWidget);
+      expect(find.text('本次只保存目录，尚未开始备份。'), findsOneWidget);
+      expect(find.text('请选择原来的备份文件夹'), findsNothing);
+      expect(
+        find.byKey(const Key('backup-history-missing-original')),
+        findsNothing,
+      );
+      // Saving the location never starts a transfer, so nothing is in flight and
+      // no blocking progress surface exists at all.
+      expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.textContaining('本次检查没有发现'), findsNothing);
+      final saved = (await repository.read('p'))!;
+      expect(VelockSyncProfile.fromEnvelope(saved).remoteRootSegments, [
+        '共享给我',
+      ]);
+      expect(
+        saved.dataset['pairedProducerId'],
+        _profile.dataset['pairedProducerId'],
+      );
+      expect(saved.connectionId, 'cloud');
+      expect(
+        (await db.latestSyncRun('p'))!.errorCode,
+        'remote.velock_history_incomplete',
+      );
+      expect(find.text('/base/backup/共享给我'), findsOneWidget);
+      expect(find.byKey(const Key('backup-history-feedback')), findsNothing);
+      final output = Platform.environment['BACKUP_UI_SCREENSHOT_DIR'];
+      if (output != null) {
+        await tester.runAsync(() async {
+          final boundary =
+              captureKey.currentContext!.findRenderObject()!
+                  as RenderRepaintBoundary;
+          final image = await boundary.toImage(pixelRatio: 2);
+          final bytes = (await image.toByteData(
+            format: ui.ImageByteFormat.png,
+          ))!;
+          await Directory(output).create(recursive: true);
+          await File(
+            '$output/folder-confirmed.png',
+          ).writeAsBytes(bytes.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+      await tester.tap(find.byKey(const Key('backup-history-start-backup')));
+      await tester.pumpAndSettle();
+      expect(runner.calls, 1);
+      expect(find.text('本次只保存目录，尚未开始备份。'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Done returns without starting sync; failed stale save never claims success',
+    (tester) async {
+      await mount(tester);
+      await tester.tap(find.byKey(const Key('backup-primary-action')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('backup-history-browse-location')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('use-backup-folder')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('backup-location-confirm')));
+      await tester.pumpAndSettle();
+      expect(runner.calls, 0);
+      await tester.tap(find.byKey(const Key('backup-history-done')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('backup-history-help')), findsNothing);
+      expect(runner.calls, 0);
+      expect(
+        (await db.latestSyncRun('p'))!.errorCode,
+        'remote.velock_history_incomplete',
+      );
+
+      await tester.tap(find.byKey(const Key('backup-primary-action')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('backup-history-browse-location')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('use-backup-folder')));
+      await tester.pumpAndSettle();
+      await repository.setState('p', SyncProfileState.paused);
+      await tester.tap(find.byKey(const Key('backup-location-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.text('备份位置已更新'), findsNothing);
+      expect(find.textContaining('目录未保存'), findsOneWidget);
       expect(runner.calls, 0);
     },
   );

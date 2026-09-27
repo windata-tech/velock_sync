@@ -1,3 +1,5 @@
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_location_guard.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'dart:convert';
 
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
@@ -21,6 +23,8 @@ class SyncProfileRepository {
 
   final SyncStateDatabase _database;
 
+  Object get executionScopeKey => _database.executionScopeKey;
+
   Future<void> save(SyncProfileEnvelope profile) =>
       _database.upsertSyncProfilePayload(
         profileId: profile.profileId,
@@ -30,6 +34,26 @@ class SyncProfileRepository {
         state: profile.state.name,
         payload: jsonEncode(profile.toJson()),
       );
+
+  /// Explicit user-confirmed relocation only. Keeps all trust/cursors/history;
+  /// never edits the shared connection or claims that the new folder is valid.
+  Future<SyncProfileEnvelope> selectOriginalVelockFolder({
+    required SyncProfileEnvelope expected,
+    required List<String> segments,
+  }) => withVelockLocationGuard(_database, expected.profileId, () async {
+    final current = await read(expected.profileId);
+    if (current == null ||
+        current.state != SyncProfileState.active ||
+        jsonEncode(current.toJson()) != jsonEncode(expected.toJson()) ||
+        await _database.hasRunningSyncRun(expected.profileId)) {
+      throw StateError('Backup changed or is running. Reopen and try again.');
+    }
+    final updated = VelockSyncProfile.fromEnvelope(
+      current,
+    ).copyWith(remoteRootSegments: segments).toEnvelope();
+    await save(updated);
+    return updated;
+  });
 
   Future<SyncProfileEnvelope?> read(String profileId) async {
     final record = await _database.readVisibleSyncProfilePayload(profileId);

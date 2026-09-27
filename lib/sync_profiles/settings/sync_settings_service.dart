@@ -182,6 +182,7 @@ class DurableSyncSettingsService implements SyncSettingsService {
             (profile) => switch (profile.kind) {
               SyncDatasetKind.selectedFolder => 'selectedFolder',
               SyncDatasetKind.velockManaged => 'velockManaged',
+              SyncDatasetKind.plainFolder => 'plainFolder',
               null => 'unavailable',
             },
           ),

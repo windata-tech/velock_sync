@@ -1,12 +1,12 @@
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/cloud_backup/ui/velock_recovery_guide.dart';
-import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/wd_routes.dart';
+import 'package:velock_sync/widgets/velock_brand_mark.dart';
 import 'package:velock_sync/features/connection/ui/connection.dart';
 import 'package:velock_sync/features/connection/ui/connections.dart';
 import 'package:velock_sync/features/connection/ui/connection_guidance.dart';
@@ -17,6 +17,9 @@ import 'package:velock_sync/features/connection/ui/new_webdav.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/features/activity/ui/sync_activity.dart';
 import 'package:velock_sync/features/selected_folder/ui/selected_folder_profiles.dart';
+import 'package:velock_sync/features/plain_sync/ui/add_plain_location.dart';
+import 'package:velock_sync/features/plain_sync/ui/plain_location_detail.dart';
+import 'package:velock_sync/features/plain_sync/ui/plain_sync_home.dart';
 import 'package:velock_sync/features/sync_profiles/ui/new_sync_profile.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
@@ -80,6 +83,17 @@ class AppRoutes {
   static const ({String name, String path}) syncProfileDetail = (
     name: 'syncProfileDetail',
     path: '/sync-profiles/:profileId',
+  );
+
+  /// Plain (unencrypted) folder sync locations.
+  static const ({String name, String path}) addPlainLocation = (
+    name: 'addPlainLocation',
+    path: '/plain-locations/new',
+  );
+
+  static const ({String name, String path}) plainLocationDetail = (
+    name: 'plainLocationDetail',
+    path: '/plain-locations/:profileId',
   );
 
   static const ({String name, String path}) about = (
@@ -155,8 +169,7 @@ GoRouter createAppRouter({
             WdRoute(
               name: AppRoutes.files.name,
               path: AppRoutes.files.path,
-              builder: (context, state) =>
-                  const SyncProfilesHome(kind: SyncDatasetKind.selectedFolder),
+              builder: (context, state) => const PlainSyncHome(),
             ),
           ],
         ),
@@ -203,6 +216,28 @@ GoRouter createAppRouter({
       name: AppRoutes.selectedFolderProfiles.name,
       path: AppRoutes.selectedFolderProfiles.path,
       builder: (context, state) => const SelectedFolderProfiles(),
+    ),
+    WdRoute(
+      name: AppRoutes.addPlainLocation.name,
+      path: AppRoutes.addPlainLocation.path,
+      builder: (context, state) => const AddPlainLocation(),
+    ),
+    WdRoute(
+      name: AppRoutes.plainLocationDetail.name,
+      path: AppRoutes.plainLocationDetail.path,
+      builder: (context, state) {
+        final profileId = state.pathParameters['profileId'];
+        if (profileId == null || profileId.isEmpty) {
+          return Scaffold(
+            body: Center(
+              child: Text(
+                syncText(context, '找不到该同步位置。', 'Sync location not found.'),
+              ),
+            ),
+          );
+        }
+        return PlainLocationDetail(profileId: profileId);
+      },
     ),
     WdRoute(
       name: AppRoutes.syncProfileDetail.name,
@@ -293,7 +328,13 @@ GoRouter createAppRouter({
         if (id == null) {
           return Center(child: Text('404! no id parameter.'));
         }
-        return Connection(id);
+        final String? segments = state.uri.queryParameters['segments'];
+        return Connection(
+          id,
+          initialSegments: segments == null || segments.isEmpty
+              ? const []
+              : segments.split('/').where((part) => part.isNotEmpty).toList(),
+        );
       },
     ),
   ],
@@ -315,7 +356,15 @@ class WDShellPage extends StatelessWidget {
         backgroundColor: context.appGroupedSurface,
         items: [
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.shield),
+            // The real Velock mark from the Velock app, flat and tinted with
+            // the bar's own selected/unselected colours.
+            icon: VelockBrandMark(
+              size: 24,
+              flat: true,
+              color: navigationShell.currentIndex == 0
+                  ? context.appPrimary
+                  : context.appSecondaryLabel,
+            ),
             label: syncText(context, '格间', "Velock"),
           ),
           BottomNavigationBarItem(

@@ -9,6 +9,7 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/features/connection/ui/connection_info_sheet.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
@@ -186,12 +187,32 @@ class Connections extends HookConsumerWidget {
                   AppRoutes.connection.name,
                   pathParameters: {'id': connection.id},
                 ),
+                onInfo: () =>
+                    showConnectionInfoSheet(context, connection.protocol),
+                onEdit: () => _editConnection(context, connection),
                 onDelete: () => _removeConnection(context, ref, connection),
               ),
           ],
         ),
       ),
     ];
+  }
+
+  /// Editing a connection reopens the form it was created with, prefilled.
+  void _editConnection(BuildContext context, ConnectionModel connection) {
+    final protocol = connection.protocol;
+    if (protocol is OAuthProtocolModel) {
+      context.pushNamed(
+        AppRoutes.newOAuth.name,
+        pathParameters: {'provider': protocol.providerType.name},
+        queryParameters: {'replace': connection.id},
+      );
+      return;
+    }
+    context.pushNamed(
+      AppRoutes.newWebDav.name,
+      queryParameters: {'replace': connection.id},
+    );
   }
 
   Future<void> _removeConnection(
@@ -231,17 +252,21 @@ class Connections extends HookConsumerWidget {
   }
 }
 
-enum _ConnectionAction { delete }
+enum _ConnectionAction { info, edit, delete }
 
 class _ConnectionTile extends StatelessWidget {
   const _ConnectionTile({
     required this.connection,
     required this.onOpen,
+    required this.onInfo,
+    required this.onEdit,
     required this.onDelete,
   });
 
   final ConnectionModel connection;
   final VoidCallback onOpen;
+  final VoidCallback onInfo;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
@@ -281,13 +306,27 @@ class _ConnectionTile extends StatelessWidget {
             tooltip: syncText(context, '更多操作', 'More Actions'),
             items: [
               AdaptiveActionItem(
+                value: _ConnectionAction.info,
+                label: syncText(context, '连接说明', 'Connection info'),
+                icon: Icons.info_outline,
+              ),
+              AdaptiveActionItem(
+                value: _ConnectionAction.edit,
+                label: syncText(context, '修改连接', 'Edit Connection'),
+                icon: Icons.edit_outlined,
+              ),
+              AdaptiveActionItem(
                 value: _ConnectionAction.delete,
                 label: syncText(context, '删除连接', 'Delete Connection'),
                 icon: Icons.delete_outline_rounded,
                 isDestructive: true,
               ),
             ],
-            onSelected: (_) => onDelete(),
+            onSelected: (action) => switch (action) {
+              _ConnectionAction.info => onInfo(),
+              _ConnectionAction.edit => onEdit(),
+              _ConnectionAction.delete => onDelete(),
+            },
           ),
         ],
       ),

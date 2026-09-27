@@ -6,15 +6,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/files_provider.dart';
-import 'package:velock_sync/providers/provider_capability_summary.dart';
+import 'package:velock_sync/features/connection/ui/connection_info_sheet.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/app_components.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
@@ -23,7 +25,14 @@ import 'package:webdav_client_plus/webdav_client_plus.dart';
 class Connection extends HookConsumerWidget {
   final String id;
 
-  const Connection(this.id, {super.key});
+  /// Relative folder (already split into segments) to open first.
+  ///
+  /// Used by the backup detail page so "cloud location" lands on the folder
+  /// that actually holds the backup instead of the connection root. The
+  /// connection root stays the browsing boundary, so Back walks up to it.
+  final List<String> initialSegments;
+
+  const Connection(this.id, {super.key, this.initialSegments = const []});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,11 +41,21 @@ class Connection extends HookConsumerWidget {
       try {
         await ref.read(connectionsProvider.notifier).refreshStatuses();
         if (context.mounted) {
-          showPlatformMessage(context, '已更新连接状态。');
+          showPlatformMessage(
+            context,
+            syncText(context, '已更新连接状态。', 'Connection status updated.'),
+          );
         }
       } on Object {
         if (context.mounted) {
-          showPlatformMessage(context, '无法测试连接，请检查网络和授权。');
+          showPlatformMessage(
+            context,
+            syncText(
+              context,
+              '无法测试连接，请检查网络和授权。',
+              'Unable to test connections. Check your network and authorization.',
+            ),
+          );
         }
       }
     }
@@ -50,7 +69,7 @@ class Connection extends HookConsumerWidget {
               leading: AppBackButton(
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
-              title: const Text('连接详情'),
+              title: Text(syncText(context, '连接详情', 'Connection details')),
             ),
             body: AdaptiveEmptyState(
               icon: adaptiveIcon(
@@ -58,10 +77,14 @@ class Connection extends HookConsumerWidget {
                 material: Icons.link_off,
                 cupertino: CupertinoIcons.link,
               ),
-              title: '连接不存在',
-              message: '这个连接可能已被删除。返回连接列表查看当前可用的连接。',
+              title: syncText(context, '连接不存在', 'Connection not found'),
+              message: syncText(
+                context,
+                '这个连接可能已被删除。返回连接列表查看当前可用的连接。',
+                'This connection may have been deleted. Go back to the connections list to see which ones are available.',
+              ),
               action: AppPrimaryButton(
-                label: '返回连接列表',
+                label: syncText(context, '返回连接列表', 'Back to connections'),
                 onPressed: () => context.pop(),
               ),
             ),
@@ -81,6 +104,26 @@ class Connection extends HookConsumerWidget {
           remoteFileBrowserProvider(connectionModel: connectionModel).notifier,
         );
 
+        // One-shot: open the backup's own folder once the browser has loaded.
+        final jumpedToInitialSegments = useRef(false);
+        final wanted = initialSegments.isEmpty
+            ? null
+            : _scopedPath(connectionModel, initialSegments);
+        if (wanted != null &&
+            !jumpedToInitialSegments.value &&
+            asyncFileBrowserState.hasValue &&
+            !asyncFileBrowserState.isLoading &&
+            notifier.currentPath != wanted) {
+          jumpedToInitialSegments.value = true;
+          Future<void>.microtask(() async {
+            try {
+              await notifier.go(wanted);
+            } on Object {
+              /* the browser keeps showing the connection root */
+            }
+          });
+        }
+
         Future<void> refreshBrowser() async {
           await notifier.refresh();
           await testConnection();
@@ -89,7 +132,10 @@ class Connection extends HookConsumerWidget {
         final isLoading = asyncFileBrowserState.isLoading;
         final fileBrowserState = notifier.visibleState;
         final browserError = asyncFileBrowserState.hasError && !isLoading
-            ? _RemoteBrowserErrorPresentation.from(asyncFileBrowserState.error!)
+            ? _RemoteBrowserErrorPresentation.from(
+                context,
+                asyncFileBrowserState.error!,
+              )
             : null;
         final canGoUp = notifier.canGoBack;
         void goBack() {
@@ -216,7 +262,7 @@ class Connection extends HookConsumerWidget {
                           : null,
                       onRetry: notifier.refresh,
                       secondaryAction: AppSecondaryButton(
-                        label: '编辑连接',
+                        label: syncText(context, '编辑连接', 'Edit connection'),
                         onPressed: () => context.pushNamed(
                           AppRoutes.newWebDav.name,
                           queryParameters: {'replace': connectionModel.id},
@@ -266,6 +312,7 @@ class Connection extends HookConsumerWidget {
                                         child: RemoteFileItem(
                                           file: file,
                                           progress: progress,
+                                          inactive: isLoading,
                                         ),
                                       ),
                                     ),
@@ -292,12 +339,20 @@ class Connection extends HookConsumerWidget {
                     ),
                   )
                 else if (!isLoading && fileBrowserState != null)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     hasScrollBody: false,
                     child: AdaptiveEmptyState(
                       icon: CupertinoIcons.folder,
-                      title: '这个目录还是空的',
-                      message: '远端文件和文件夹会显示在这里。',
+                      title: syncText(
+                        context,
+                        '这个目录还是空的',
+                        'This folder is empty',
+                      ),
+                      message: syncText(
+                        context,
+                        '远端文件和文件夹会显示在这里。',
+                        'Remote files and folders show up here.',
+                      ),
                     ),
                   ),
               ],
@@ -311,11 +366,15 @@ class Connection extends HookConsumerWidget {
           leading: AppBackButton(
             onPressed: () => Navigator.of(context).maybePop(),
           ),
-          title: const Text('连接详情'),
+          title: Text(syncText(context, '连接详情', 'Connection details')),
         ),
         body: AdaptiveErrorState(
-          title: '无法加载连接',
-          message: '连接信息读取失败，请重试；如果问题持续，请返回连接列表检查配置。',
+          title: syncText(context, '无法加载连接', 'Could not load connection'),
+          message: syncText(
+            context,
+            '连接信息读取失败，请重试；如果问题持续，请返回连接列表检查配置。',
+            'Reading the connection failed. Try again; if it keeps failing, go back to the connections list and check the settings.',
+          ),
           details: kDebugMode ? '$error' : null,
           onRetry: () => ref.invalidate(connectionDetailProvider(id)),
         ),
@@ -377,7 +436,7 @@ class _OAuthConnectionDetails extends StatelessWidget {
               pathParameters: {'provider': protocol.providerType.name},
               queryParameters: {'replace': connection.id},
             ),
-            child: const Text('重新授权'),
+            child: Text(syncText(context, '重新授权', 'Authorize again')),
           ),
         ],
       ),
@@ -388,7 +447,7 @@ class _OAuthConnectionDetails extends StatelessWidget {
         ),
         children: [
           AdaptiveListSection(
-            header: '账号与目录',
+            header: syncText(context, '账号与目录', 'Account and folder'),
             children: [
               AdaptiveListTile(
                 leading: AdaptiveIconBadge(
@@ -399,7 +458,13 @@ class _OAuthConnectionDetails extends StatelessWidget {
                   ),
                 ),
                 title: Text(protocol.accountLabel ?? connection.target),
-                subtitle: const Text('授权账号或远端目录摘要'),
+                subtitle: Text(
+                  syncText(
+                    context,
+                    '授权账号或远端目录摘要',
+                    'Signed-in account or remote folder summary',
+                  ),
+                ),
               ),
             ],
           ),
@@ -411,7 +476,11 @@ class _OAuthConnectionDetails extends StatelessWidget {
               0,
             ),
             child: Text(
-              '同步内容使用所选远端目录保存为协议对象；这里不会显示或读取 OAuth Token。',
+              syncText(
+                context,
+                '同步内容使用所选远端目录保存为协议对象；这里不会显示或读取 OAuth Token。',
+                'Synced items are stored as protocol objects in the remote folder you chose; no OAuth token is shown or read here.',
+              ),
               style: TextStyle(color: context.appSecondaryLabel, height: 1.35),
             ),
           ),
@@ -444,42 +513,7 @@ class _ConnectionInfoButton extends StatelessWidget {
           ),
           semanticLabel: label,
         ),
-        onPressed: () {
-          final summary = providerCapabilitySummary(protocol);
-          showAppDetailSheet(
-            context,
-            title: label,
-            rows: [
-              AppDetailSheetRow(
-                label: syncText(context, '说明', 'About'),
-                value: syncText(
-                  context,
-                  '这些是连接方式的技术说明，不是当前服务器的检测结果。',
-                  'These describe the connection implementation, not test results for this server.',
-                ),
-              ),
-              AppDetailSheetRow(
-                label: syncText(context, '连接方式', 'Connection type'),
-                value: summary.providerName,
-              ),
-              if (summary.features.isNotEmpty)
-                AppDetailSheetRow(
-                  label: syncText(context, '功能说明', 'Features'),
-                  value: summary.features.join('\n'),
-                ),
-              if (summary.limitations.isNotEmpty)
-                AppDetailSheetRow(
-                  label: syncText(context, '注意事项', 'Limitations'),
-                  value: summary.limitations.join('\n'),
-                ),
-            ],
-            footnote: syncText(
-              context,
-              '浏览文件夹不需要设置这些项目。能否备份，以实际连接和备份检查为准。',
-              'There is nothing to configure here. Backup availability is determined by actual connection and backup checks.',
-            ),
-          );
-        },
+        onPressed: () => showConnectionInfoSheet(context, protocol),
       ),
     );
   }
@@ -489,7 +523,16 @@ class RemoteFileItem extends StatelessWidget {
   final WebdavFile file;
   final double? progress;
 
-  const RemoteFileItem({super.key, required this.file, this.progress});
+  /// The browser is busy, so the tile cannot be opened right now. The glyph
+  /// keeps its own colour and the card is faded instead of turning grey.
+  final bool inactive;
+
+  const RemoteFileItem({
+    super.key,
+    required this.file,
+    this.progress,
+    this.inactive = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -499,7 +542,7 @@ class RemoteFileItem extends StatelessWidget {
 
     final radius = BorderRadius.circular(AppRadii.medium);
     final textColor = Theme.of(context).textTheme.bodyMedium?.color;
-    return DecoratedBox(
+    final content = DecoratedBox(
       decoration: BoxDecoration(
         color: context.appGroupedSurface.withValues(alpha: 0.82),
         borderRadius: radius,
@@ -526,6 +569,11 @@ class RemoteFileItem extends StatelessWidget {
                               ? CupertinoIcons.doc_text_fill
                               : Icons.description),
                     size: 26,
+                    // Explicit colour so a disabled parent button cannot
+                    // repaint the glyph with its own grey.
+                    color: file.isDir
+                        ? context.appPrimary
+                        : context.appSecondaryLabel,
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
@@ -572,6 +620,10 @@ class RemoteFileItem extends StatelessWidget {
         ),
       ),
     );
+    // Always the same widget shape: swapping the root widget type would unmount
+    // and rebuild the whole tile (and its text elements) on every refresh, which
+    // is exactly the flicker the loading state must avoid.
+    return Opacity(opacity: inactive ? AppOpacity.disabled : 1, child: content);
   }
 }
 
@@ -586,91 +638,169 @@ class _RemoteBrowserErrorPresentation {
   final String title;
   final String message;
 
-  factory _RemoteBrowserErrorPresentation.from(Object error) {
+  factory _RemoteBrowserErrorPresentation.from(
+    BuildContext context,
+    Object error,
+  ) {
     if (error is DioException) {
       switch (error.type) {
         case DioExceptionType.connectionTimeout:
         case DioExceptionType.sendTimeout:
         case DioExceptionType.receiveTimeout:
         case DioExceptionType.transformTimeout:
-          return const _RemoteBrowserErrorPresentation(
-            title: '连接超时',
-            message: '远端服务器响应超时。请检查网络状况，或稍后重试。',
+          return _RemoteBrowserErrorPresentation(
+            title: syncText(context, '连接超时', 'Connection timed out'),
+            message: syncText(
+              context,
+              '远端服务器响应超时。请检查网络状况，或稍后重试。',
+              'The remote server did not respond in time. Check your network, or try again later.',
+            ),
           );
         case DioExceptionType.badCertificate:
-          return const _RemoteBrowserErrorPresentation(
-            title: '证书不受信任',
-            message: '无法验证远端服务器的安全证书，请检查服务器证书配置后重试。',
+          return _RemoteBrowserErrorPresentation(
+            title: syncText(context, '证书不受信任', 'Certificate not trusted'),
+            message: syncText(
+              context,
+              '无法验证远端服务器的安全证书，请检查服务器证书配置后重试。',
+              'The remote server certificate could not be verified. Check the certificate configuration and try again.',
+            ),
           );
         case DioExceptionType.badResponse:
-          return _fromStatusCode(error.response?.statusCode);
+          return _fromStatusCode(context, error.response?.statusCode);
         case DioExceptionType.cancel:
-          return const _RemoteBrowserErrorPresentation(
-            title: '请求已取消',
-            message: '本次文件夹读取已取消，点击重试可以重新加载。',
+          return _RemoteBrowserErrorPresentation(
+            title: syncText(context, '请求已取消', 'Request cancelled'),
+            message: syncText(
+              context,
+              '本次文件夹读取已取消，点击重试可以重新加载。',
+              'This folder read was cancelled. Tap retry to load it again.',
+            ),
           );
         case DioExceptionType.connectionError:
           if (_isConnectionRefused(error.error)) {
-            return const _RemoteBrowserErrorPresentation(
-              title: '无法连接到远端服务器',
-              message: '服务器拒绝了连接。请确认设备与服务器处于同一网络，并检查地址、端口以及 WebDAV 服务是否已启动。',
+            return _RemoteBrowserErrorPresentation(
+              title: syncText(
+                context,
+                '无法连接到远端服务器',
+                'Could not reach the remote server',
+              ),
+              message: syncText(
+                context,
+                '服务器拒绝了连接。请确认设备与服务器处于同一网络，并检查地址、端口以及 WebDAV 服务是否已启动。',
+                'The server refused the connection. Check that this device is on the same network as the server, and check the address, the port and whether the WebDAV service is running.',
+              ),
             );
           }
-          return const _RemoteBrowserErrorPresentation(
-            title: '网络连接失败',
-            message: '暂时无法连接到远端服务器，请检查网络和服务器状态后重试。',
+          return _RemoteBrowserErrorPresentation(
+            title: syncText(context, '网络连接失败', 'Network connection failed'),
+            message: syncText(
+              context,
+              '暂时无法连接到远端服务器，请检查网络和服务器状态后重试。',
+              'The remote server cannot be reached right now. Check your network and the server state, then try again.',
+            ),
           );
         case DioExceptionType.unknown:
           break;
       }
     }
     if (error is SocketException && _isConnectionRefused(error)) {
-      return const _RemoteBrowserErrorPresentation(
-        title: '无法连接到远端服务器',
-        message: '服务器拒绝了连接。请确认设备与服务器处于同一网络，并检查地址、端口以及 WebDAV 服务是否已启动。',
+      return _RemoteBrowserErrorPresentation(
+        title: syncText(
+          context,
+          '无法连接到远端服务器',
+          'Could not reach the remote server',
+        ),
+        message: syncText(
+          context,
+          '服务器拒绝了连接。请确认设备与服务器处于同一网络，并检查地址、端口以及 WebDAV 服务是否已启动。',
+          'The server refused the connection. Check that this device is on the same network as the server, and check the address, the port and whether the WebDAV service is running.',
+        ),
       );
     }
     if (error is UnsupportedError) {
-      return const _RemoteBrowserErrorPresentation(
-        title: '暂不支持浏览此连接',
-        message: '当前协议还不支持在线浏览文件，请返回连接列表使用其他功能。',
+      return _RemoteBrowserErrorPresentation(
+        title: syncText(
+          context,
+          '暂不支持浏览此连接',
+          'Browsing this connection is not supported yet',
+        ),
+        message: syncText(
+          context,
+          '当前协议还不支持在线浏览文件，请返回连接列表使用其他功能。',
+          'This protocol cannot browse files online yet. Go back to the connections list and use the other features.',
+        ),
       );
     }
-    return const _RemoteBrowserErrorPresentation(
-      title: '无法加载文件夹',
-      message: '读取远端目录时发生问题，请稍后重试。如果仍然失败，可以查看错误详情。',
+    return _RemoteBrowserErrorPresentation(
+      title: syncText(context, '无法加载文件夹', 'Could not load the folder'),
+      message: syncText(
+        context,
+        '读取远端目录时发生问题，请稍后重试。如果仍然失败，可以查看错误详情。',
+        'Something went wrong while reading the remote folder. Try again later; if it still fails, open the error details.',
+      ),
     );
   }
 
-  static _RemoteBrowserErrorPresentation _fromStatusCode(int? statusCode) {
+  static _RemoteBrowserErrorPresentation _fromStatusCode(
+    BuildContext context,
+    int? statusCode,
+  ) {
     return switch (statusCode) {
-      401 => const _RemoteBrowserErrorPresentation(
-        title: '认证失败',
-        message: '远端服务器拒绝了当前账号。请重新输入用户名和密码后再试。',
+      401 => _RemoteBrowserErrorPresentation(
+        title: syncText(context, '认证失败', 'Sign-in failed'),
+        message: syncText(
+          context,
+          '远端服务器拒绝了当前账号。请重新输入用户名和密码后再试。',
+          'The remote server rejected this account. Enter the username and password again and retry.',
+        ),
       ),
-      403 => const _RemoteBrowserErrorPresentation(
-        title: '没有访问权限',
-        message: '当前账号无法访问这个远端目录，请检查 WebDAV 权限设置。',
+      403 => _RemoteBrowserErrorPresentation(
+        title: syncText(context, '没有访问权限', 'No access permission'),
+        message: syncText(
+          context,
+          '当前账号无法访问这个远端目录，请检查 WebDAV 权限设置。',
+          'This account cannot access the remote folder. Check the WebDAV permissions.',
+        ),
       ),
-      404 => const _RemoteBrowserErrorPresentation(
-        title: '目录不存在',
-        message: '配置的远端目录不存在或已被移动，请检查 WebDAV 路径。',
+      404 => _RemoteBrowserErrorPresentation(
+        title: syncText(context, '目录不存在', 'Folder not found'),
+        message: syncText(
+          context,
+          '配置的远端目录不存在或已被移动，请检查 WebDAV 路径。',
+          'The configured remote folder does not exist or has moved. Check the WebDAV path.',
+        ),
       ),
-      409 => const _RemoteBrowserErrorPresentation(
-        title: '远端目录发生冲突',
-        message: '远端目录当前存在冲突，请确认没有其他设备正在同时操作。',
+      409 => _RemoteBrowserErrorPresentation(
+        title: syncText(context, '远端目录发生冲突', 'Remote folder conflict'),
+        message: syncText(
+          context,
+          '远端目录当前存在冲突，请确认没有其他设备正在同时操作。',
+          'The remote folder is in conflict right now. Check that no other device is working in it at the same time.',
+        ),
       ),
-      final int code when code >= 500 => const _RemoteBrowserErrorPresentation(
-        title: '服务器暂时不可用',
-        message: '远端服务器暂时无法处理请求，请稍后重试。',
+      final int code when code >= 500 => _RemoteBrowserErrorPresentation(
+        title: syncText(context, '服务器暂时不可用', 'Server temporarily unavailable'),
+        message: syncText(
+          context,
+          '远端服务器暂时无法处理请求，请稍后重试。',
+          'The remote server cannot handle the request right now. Try again later.',
+        ),
       ),
       final int code => _RemoteBrowserErrorPresentation(
-        title: '远端返回异常',
-        message: '远端服务器返回 HTTP $code，请检查服务器配置后重试。',
+        title: syncText(context, '远端返回异常', 'Unexpected remote reply'),
+        message: syncText(
+          context,
+          '远端服务器返回 HTTP $code，请检查服务器配置后重试。',
+          'The remote server returned HTTP $code. Check the server configuration and retry.',
+        ),
       ),
-      _ => const _RemoteBrowserErrorPresentation(
-        title: '远端返回异常',
-        message: '远端服务器返回了无法识别的响应，请稍后重试。',
+      _ => _RemoteBrowserErrorPresentation(
+        title: syncText(context, '远端返回异常', 'Unexpected remote reply'),
+        message: syncText(
+          context,
+          '远端服务器返回了无法识别的响应，请稍后重试。',
+          'The remote server returned a response that could not be recognised. Try again later.',
+        ),
       ),
     };
   }
@@ -683,4 +813,24 @@ bool _isConnectionRefused(Object? cause) {
       code == 111 ||
       code == 10061 ||
       cause.message.toLowerCase().contains('connection refused');
+}
+
+/// Absolute WebDAV path of a profile folder inside [connection], or null when
+/// the connection cannot be expressed as a path (OAuth) or the segments are not
+/// a valid relative folder (the value arrives through a route parameter).
+String? _scopedPath(ConnectionModel connection, List<String> segments) {
+  if (connection.protocol is! WebDavProtocolModel) return null;
+  try {
+    final scoped = RemoteObjectStoreFactory.scopeProtocol(
+      connection.protocol,
+      segments,
+    );
+    if (scoped is! WebDavProtocolModel) return null;
+    final parts = RemoteObjectStoreFactory.webDavUri(
+      scoped,
+    ).pathSegments.where((segment) => segment.isNotEmpty);
+    return '/${parts.join('/')}';
+  } on Object {
+    return null;
+  }
 }

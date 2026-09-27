@@ -1,3 +1,5 @@
+import 'package:velock_sync/sync_core/engine/sync_upload_engine.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -36,6 +38,47 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
     await LocalDataManager.instance.init();
   });
+
+  test(
+    'destination cannot change while adapter preflight is in progress',
+    () async {
+      final fixture = await _Fixture.create();
+      addTearDown(fixture.dispose);
+      final adapter = _BlockedAdapterFactory();
+      var remoteCalls = 0;
+      final service = fixture.service(
+        adapterFactory: adapter,
+        remoteFactory: ({required protocol, required password}) {
+          remoteCalls++;
+          throw StateError('Must not construct remote');
+        },
+      );
+      final running = service.run(fixture.profile.profileId);
+      final failed = expectLater(running, throwsStateError);
+      await adapter.entered.future;
+      try {
+        await expectLater(
+          fixture.profiles.selectOriginalVelockFolder(
+            expected: fixture.profile.toEnvelope(),
+            segments: ['old'],
+          ),
+          throwsA(isA<SyncRunBusyException>()),
+        );
+        expect(
+          (await fixture.profiles.read(fixture.profile.profileId))!.toJson(),
+          fixture.profile.toEnvelope().toJson(),
+        );
+        expect(remoteCalls, 0);
+      } finally {
+        adapter.finish.complete();
+        await failed;
+      }
+      await fixture.profiles.selectOriginalVelockFolder(
+        expected: fixture.profile.toEnvelope(),
+        segments: ['old'],
+      );
+    },
+  );
 
   test(
     'runs active paired profiles through the standard runner using the secure WebDAV credential reference',
@@ -770,4 +813,15 @@ class _OfflineRemoteStore implements RemoteObjectStore {
     String logicalKey, {
     RemoteOperationCancellation? cancellation,
   }) async => throw const SocketException('offline');
+}
+
+class _BlockedAdapterFactory implements VelockDatasetAdapterFactory {
+  final entered = Completer<void>();
+  final finish = Completer<void>();
+  @override
+  Future<SyncDatasetAdapter> create(VelockSyncProfile profile) async {
+    entered.complete();
+    await finish.future;
+    throw StateError('Preflight failed');
+  }
 }

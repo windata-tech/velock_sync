@@ -68,6 +68,20 @@
 ## 普通用户云备份 UI 第一轮重构（2026-09-25）
 
 - 设计与验证记录：`docs/design/simple-cloud-backup.md`、`docs/verification/2026-09-25-simple-cloud-backup.md`。原 Sync `main` 备份为 `a1b7c6451afa40ce1f43de056c2288daa72ab413`；格间 `main` 备份为 `c5ba1ba2fa34c1f8e6935c9a1515acb2d42c2691`；两仓库服务器均有 annotated tag `backup/20260925-before-simple-sync`。重构交付分支为 `codex/simple-cloud-backup`，不得把 UI 重构当成完整协议实现。
+- **「云端保存位置」与「更换保存位置」不重复**（2026-09-27 用户：“这2个地方都有同样的入口，是否重复了？…现在好像没法更换哈”）：概览页的「云端保存位置」是**只读查看**（显示 `dataset.remoteRootSegments` 路径，点进去用 App 内浏览器定位到该目录）；「管理」页原来放的是同一个只读行，现改为**「更换保存位置」**（key `manage-change-location`），真正执行换目录。换目录流程抽成 `lib/features/cloud_backup/ui/velock_backup_location.dart` 的 `changeVelockBackupLocation`，与 `BackupHistoryHelp` 共用同一份（浏览→确认→`selectOriginalVelockFolder` 保存 `remoteRootSegments`），**不改共享连接、不启动同步、不迁移/删除两边数据**；返回 `(profile, saveFailed)` 记录，让帮助页继续用行内反馈、管理页用提示，避免把失败说成成功。回归：`sync_profile_removal_refresh_test.dart`（管理页有「更换保存位置」且不再有「云端保存位置」）+ `backup_history_help_test.dart`（共用流程后确认框改 key/文案为 `backup-location-confirm` /「保存位置」）。
+- **方向/冲突是「草稿 + 保存」**（2026-09-27 用户：“修改了同步方向和冲突处理后，右上角需要多一个保存按钮，返回的时候如果用户没保存，就弹对话框提示是否保存”）：详情页的同步方向与冲突处理不再点一下立刻写库，而是先进草稿；有草稿时页头出现「保存」（key `plain-detail-save`，无草稿时不渲染）。离开用 `PopScope(canPop: !dirty)` 拦截（页头返回走 `maybePop`，系统返回手势同样被拦），弹 action sheet：保存 / 不保存 / 取消。**保存成功必须回读 provider 确认**（`_update` 失败是弹提示而不是抛异常，不能把“被拒绝的保存”当成功）；保存后由调用方统一 pop 一次，避免双重 pop。结构类操作（更换文件夹、暂停/继续、删除、立即同步）仍是即时生效，不走草稿。回归 `test/features/plain_sync/plain_location_detail_test.dart`（草稿不落库、保存落库并清按钮、取消保留、不保存直接离开、离开时保存、干净页面不弹）。
+- **同步位置两半都能「打开」**（2026-09-27 用户：“在这前面添加一个按钮，打开…如果是打开本地的，就是本地的文件管理器（最好是要跳转到对应的目录位置）”）：详情页「本机文件夹 / 远端文件夹」两行现在是 `打开 | 更改`（keys `plain-local-open` / `plain-remote-open`）。**远端**用已有机制 `pushNamed(connection, segments:)` 在 App 内打开该目录（与格间「云端保存位置」同一路径，不重写浏览器）。**本机**交给系统文件管理器：Android 用 `content://` tree URI、Apple 用既有 native bookmark 通道解析出路径后开 `shareddocuments://<path>`、桌面用 `file://`；解析用的 security-scoped session 立刻释放（文件管理器有自己的权限），任何失败只给“这个设备上没有可以打开文件夹的应用。文件夹位置：…”而不是抛错。实现 `lib/features/plain_sync/local_folder_open.dart`（依赖注入，便于测试）。
+  ⚠️ iOS 的 `shareddocuments://` 是**未公开 scheme 的尽力而为**，只在模拟器/真机上人工确认过发出请求，**没有得到“已经在文件 App 里定位到该目录”的设备级验证**；若用户反馈无效，应改成 native `UIDocumentPickerViewController(directoryURL:)`（文档化，但打开的是选择器）再评估。回归 `test/features/plain_sync/local_folder_open_test.dart`（5 项，三种 grant + 无处理器 + 坏 bookmark）与 `plain_location_detail_test.dart` 的「both halves can be opened before being changed」。
+- **禁用不等于变灰**（2026-09-27 用户：“这些图标，在任何不可以点的时候，我不要这么灰啊，在原本图标颜色上加点透明的白就行，跟系统的那种风格保持一致”）：`CupertinoButton(onPressed: null)` 会用 `CupertinoColors.quaternaryLabel` 重绘整个 child，把绿色盾牌、蓝色文件夹、页头图标统统刷成灰色。规则改为：**图标自己带显式颜色**（例如文件夹用 `appPrimary`），禁用时只叠 `AppOpacity.disabled`（0.45，与设计系统既有的禁用透明度一致），不换色。已覆盖 `AdaptiveIconButton`、`AdaptiveActionMenu`、远端文件卡片（`RemoteFileItem.inactive`）。**注意卡片只能用同一个 widget 形状改透明度值**：靠 `inactive ? Opacity(...) : content` 切换根 widget 类型会整棵子树重建，`connection_loading_test.dart` 的“加载时保留原列表元素”断言会红（必须保住 `identical(element)` 与位置）。回归 `test/widgets/disabled_artwork_test.dart`。
+- **连接菜单要有「连接说明」**（2026-09-27 用户：“把菜单也加一个这个功能”）：连接列表「更多操作」里除修改/删除外，还要有只读的「连接说明」。说明内容抽成 `lib/features/connection/ui/connection_info_sheet.dart` 的 `showConnectionInfoSheet(context, protocol)`，连接详情页的信息按钮与列表菜单共用同一份实现（不许复制两份文案）；它只描述适配器能力，不探测服务器、不写远端、不改目录。回归 `test/features/connection/connection_edit_entry_test.dart`（含“不是当前服务器的检测结果”这条免责声明仍在）。
+- **连接要有「修改」**（2026-09-27 用户：“这里只有删除，没有修改？”）：连接列表的「更多操作」菜单现在同时给「修改连接」和「删除连接」，修改复用详情页铅笔的同一套路由——WebDAV 走 `newWebDav?replace=<id>`，OAuth 走 `newOAuth`（provider + `replace=<id>`）重新授权；不要新造编辑页。回归 `test/features/connection/connection_edit_entry_test.dart`（两种协议各一项，断言打开的是预填表单而不是空白新建）。
+- **「云端保存位置」要进到备份自己的文件夹**（2026-09-27 用户：“这个点过去了好像位置不对？它到了连接的根目录，而不是格间存放备份的目录”）：profile 的 `dataset.remoteRootSegments` 才是备份所在目录（现场是 `USB_HDD_8T/111`）。详情页那行现在副标题直接显示这个相对路径，点进去通过 `?segments=` 把目录交给 `Connection`，由它用 `RemoteObjectStoreFactory.scopeProtocol` 解析成绝对路径后一次性 `go()` 到该目录（连接根仍是浏览边界，可以往上走）；`segments` 来自路由参数，非法/越界值必须 try/catch 后忽略、退回连接根，不能把红色异常页丢给用户。回归：`test/features/cloud_backup/backup_navigation_test.dart`「cloud location opens the backup folder…」+ `test/features/connection/connection_initial_folder_test.dart`（含根目录、子目录跳转与越界拒绝三项）。
+- **明细表要真的成列**（2026-09-27 用户：“这里文字没有对齐？”）：`AppDetailSheetRow` 新增可选 `trailing`（贴在 sheet 右侧、用 tabular figures 对齐数字），别再把「大小 · 时间」拼成一个字符串——各行的字节数长度不同，时间就会参差不齐。已同步对象明细现在是【对象类型 · 方向｜时间（固定列）｜大小（右对齐）】；回归 `test/features/sync_profiles/synced_objects_sheet_test.dart` 断言三行金额右边缘一致、时间左边缘一致。
+- **动词跟着领域走**（2026-09-27 用户：“这个应该叫暂停备份而不是暂停传输吧？”）：格间域的动作/状态一律用「备份」（暂停备份/继续备份、上次备份已完成、暂时无法继续备份…），文件夹域用「同步」（暂停同步/继续同步、上次同步已完成…）。`BackupStage.lastTransferCompleted` 与详情页暂停行按 `isVelock` 分文案；真正指传输过程的句子（例如“系统可能暂停传输”“传输记录”）保留「传输」不改。
+- **品牌图标用格间真实的**（2026-09-27 用户：“这里的图标应该用格间真实的，上面的用彩色的，下面的用扁平化的，你去格间的项目里找一下，复制过来用”，格间项目 `/Users/parcool/AndroidStudioProjects/velock_codex`）：彩色源文件是格间的 `assets/images/app_logo.png`（152×152，绿盾+白 V），已复制为 `assets/branding/velock_mark.png`；**扁平版是同源派生**（把白底与白 V 抠成透明后填单色 `velock_mark_flat.png`，格间项目里没有单独的线稿版），底部 tab 用 `VelockBrandMark(flat: true, color: …)` 按选中态着色，格间状态卡徽章用彩色版（`BackupStatusCard` 的 `_CloudMark(branded: isVelock)`）。素材目录已在 pubspec 注册；组件在 `lib/widgets/velock_brand_mark.dart`。
+- **进度只长在正在跑的那张卡上**：明文首页用 `_runningProfileId` 区分“这张卡在同步”和“页面忙碌”，别的卡只禁用、不显示 spinner/「正在同步…」（否则两个位置会同时假装在同步）。
+- **进度不弹窗，状态长在按钮上**（2026-09-27 用户：“这个对话框不要了，把状态做到立即备份的按钮上，如果有其他类似的这种，也按照这个方式来实现”）：`runSyncWithProgress` 与明文同步的 runner 都不再打开阻塞式进度弹窗，`showAdaptiveBlockingProgress` 已删除。`BackupActionButton` 新增 `busy`（内联 spinner + 禁用重入），`BackupStatusCard` 在 `BackupStage.transferring` 时把主按钮置为 busy（标题「正在传输，请稍候」），明文首页/详情按钮显示「正在同步…」。**失败仍然必须是需要确认的持久弹窗**，明文“待确认删除”确认框也保留；只有“进行中/已完成”不再打断用户。写 spinner 相关测试时不能用 `pumpAndSettle`（无限动画），要用固定 `pump()` 帧。
+- **状态卡自带「详情」**（2026-09-27 用户：“把这个上次传输完成、立即备份这个卡片与备份详情与管理融合起来，反正你现在这个感觉有点重复累赘”）：格间首页不再有独立的「备份详情与管理」行，`BackupStatusCard` 新增 `secondaryLabel/onSecondary/secondaryKey`，与主操作并排（与明文同步位置卡片同一形态）；同一入口不要在两处重复。回归 `test/features/cloud_backup/backup_ui_test.dart` 断言该行不存在而卡片里有「详情」。
 - 三个主入口为格间/文件同步/设置；技术计数放二级诊断，必要冲突/待授权不隐藏。格间负责加解密、原账号恢复和实际应用数据，Sync 只传输且不索取恢复卡密码/秘密；授权、建连接、预检、上传对象或下载完成不得表述为完整备份/恢复成功。
 - 恢复必须先由格间找回原账号并签名授权；Sync 仅对原位置中签名授权内可信 producer 的候选历史做只读发现，随后仍走既有 runner 校验并由格间应用。候选发现不是完整验签/内容验证。返回新增云端页面必须保留 restore intent/已批准授权并自动继续；`returnTo` 仅允许已知内部流程。
 - OAuth 普通用户默认不看 Client ID/Token/root ID；公开注册未配置时明确本版本暂不可用并提供其他位置。开发者配置默认折叠，输入仅在保存后生效。预检仅 `ifAbsent` 写随机无敏感 probe、读回校验、只删自己成功创建的 probe；恢复探测不写远端。
@@ -133,3 +147,125 @@
 - 说明显示实际选定目录（含profile子目录），只读查看不运行同步、不清错误、不改授权/目录。当前不能自动重建完整新备份的限制必须明说，不能用重试/重新连接或新建空目录冒充修复。
 - 配置完成回有底部导航的首页；`SyncProfileDetail` 所有状态始终提供统一返回。有历史pop，无历史回对应产品首页，系统返回一致。禁止在wizard结束时只go到无底栏又无返回兜底的独立详情。
 - 本轮452项相关回归通过；iOS/Android真实路由测试覆盖无历史返回，现有模拟器GUI覆盖详情/说明/首页三入口。见 `docs/verification/2026-09-26-history-help-and-detail-navigation.md`。仅入口/导航修复，历史缺失的完整重传能力仍未接通。
+
+## 找回原备份目录操作闭环（2026-09-26）
+
+- 后续修正：BackupHistoryHelp不再只有只读文件浏览；首屏精简，WebDAV主按钮打开只读BackupFolderPicker，使用目录后再确认完整路径，明确“确认并继续备份”才修改本profile的remoteRootSegments并调用既有runner。不更改共享连接，不清历史错误/cursor/可信producer，选目录不等于备份成功。OAuth暂仍只读查看。
+- 全局返回图标32、触控区至少44。详细限制按需查看；不能重新堆成长说明页。
+- 目录修改与VelockSyncService整个预检/运行共享独立location lease，且保存前拒绝陈旧profile、运行中、已删除/非active状态。不要只检查已创建的run row，adapter预检期间也必须互斥。
+- 357项相关回归通过、九文件analyze无问题；现有iPhone 17 Pro Max Debug模拟器已构建安装启动，widget真实字体首屏已看图。未执行用户NAS目录选择/写入或真实恢复。见 `docs/verification/2026-09-26-original-backup-folder-action.md`。
+
+## 返回按钮视觉对齐（2026-09-26）
+
+- 页头返回箭头的**实际可见左侧笔画**应与白色内容卡片外侧16px页面边缘对齐，不是仅校验44触控框或Icon box。Cupertino的默认16px导航leading padding不能与按钮内部字形留白叠加；Material的默认56 leading槽也不能让44px按钮再次右移。
+- WDAppBar及AdaptiveSliverScaffold普通/大标题/紧凑页头统一此规则，非返回的自定义leading不改。像素扫描回归使用真实MaterialIcons，断言蓝色箭头与卡片边界差<=1.5px；次操作按钮同一页面边距。见 `docs/verification/2026-09-26-back-button-alignment.md`。
+
+## 确认旧目录不自动同步（2026-09-26，覆盖前述“确认并继续备份”行为）
+
+- 用户明确区分“确认旧目录”与“同步数据”。BackupHistoryHelp确认按钮只保存profile位置，禁止自动调用runner、传输结果提示或把保存说成备份成功。
+- 保存后切换“备份位置已更新 / 本次只保存目录，尚未开始备份”；主操作“完成”只返回。可选“开始备份”必须是用户另一独立点击，才能执行既有runner。不能保留旧错误标题误导用户反复换目录。
+- 253项回归、两文件analyze通过，现有Debug模拟器安装启动。见 `docs/verification/2026-09-26-folder-confirmation-only.md`。保存目录本身不是旧备份内容的完整性验证。
+
+## 自动/手动同步去重与运行状态（2026-09-26）
+
+- 前台自动同步和手动同步会创建不同 dispatcher，须按数据库文件身份 + profile 共享进行中 Future，不能只做实例内去重；跨 isolate 锁忙是“已在进行中”，不可写失败记录或报同步失败。
+- 首页/详情已有任务 running 时持续刷新本地状态，终态停轮询，dispose 取消 Timer；刷新保留正文。失败结果及抛异常用明确确认的持久弹窗，不能只用短 Toast。
+- 437 项相关回归通过，现场数据库任务已 completed 但页面残留 running；闪过的具体错误原文未捕获。详见 `docs/verification/2026-09-26-sync-running-state.md`。不代表新增业务数据完整备份/恢复验收。
+
+## 格间 / 文件同步状态口径（2026-09-26）
+
+- 两类 profile 独立记录状态，连接相同也不代表保存作用域相同；不得用格间成功覆盖文件夹失败，或自动把文件夹重定向到格间目录。
+- 已配置文件夹首页与格间首页/详情共用 BackupStatusCard + BackupPresentation，错误全文展示；失败时间明确为“上次失败”，旧安全写入失败不描述成当前整个云端均不可用。
+- 现场文件夹显示09:15旧失败且自动同步关闭，格间17:40已完成且使用111子目录；未实跑文件夹NAS重试，不能宣称其错误已经修复。验证记录：`docs/verification/2026-09-26-backup-file-status-consistency.md`。
+
+## 安全写入错误主操作（2026-09-26）
+
+- atomic_create_unsupported / collection_not_writable 使用 checkStorage，首页与详情直接进入 BackupStorageHelp，不得再绕概览/普通管理。
+- 打开只读；用户明确检查才创建非业务探针；检查通过不清失败、不自动同步，另点开始同步才调用runner。普通文件任务不得借此重定向到格间子目录。
+- 现有文件任务直接迁移目录仍未实现，失败页必须明说限制，不让用户改恢复包/后台开关或共享连接。详见 `docs/verification/2026-09-26-storage-error-action.md`。
+
+## 文件同步任务更换可写目录（2026-09-26，覆盖上一节的“尚不支持迁移目录”）
+
+- 现场：文件同步位置（连接根/NAS 入口）安全检查失败后页面只给“重新检查”，用户无法继续。
+- 现在 `BackupStorageHelp` 为文件同步任务提供“选择可写入文件夹/更改可写入文件夹”：只读浏览（可新建空目录）→“使用这个文件夹”→确认弹窗（只改这个任务的位置，不改连接、不删旧数据、不自动同步）→“保存位置”。保存后位置文本立即显示新路径，仍需用户另行“检查此位置/开始同步”。
+- `SelectedFolderSyncProfile` 新增 `remoteRootSegments`（默认空=连接根，旧 profile 行为不变）；`SelectedFolderSyncService.inspectInitialSync/run` 经 `RemoteObjectStoreFactory.scopeProtocol` 使用该 scope，并整体包在 `withVelockLocationGuard` 内，防止同步中改目录。保存走 `SelectedFolderSyncProfileRepository.selectSyncFolder`：拒绝陈旧页面、running、非 active；不修改共享连接。
+- 路径校验统一在 `sync_profiles/model/remote_root_segments.dart`；OAuth 连接仍不支持子目录 scope，UI 不提供该入口。
+- 页面文字按时机出现（2026-09-26 用户要求）：首屏只留“保存位置/连接/路径/检查按钮/两行入口/一句可展开说明”；失败后才出现原因与可执行提示；长说明收进“关于这次检查”，点开才展开。文案不删，只改出现时机。
+- 提示必须**供应商中立**（2026-09-26 用户要求）：App 面向各种 WebDAV 服务，不得写死“NAS 入口/共享文件夹”。`collection_not_writable` 统一走 `uncreatableFolderMessage(context)`，措辞为“请进入服务里一个真实存在、且这个账号有权限写入的文件夹；只读入口、共享入口或聚合视图都不行”；`backup_failure_message_test` 断言中英文界面不再出现 NAS 字样。NAS 只可在 WebDAV 表单/连接说明等技术语境中作为例子出现。
+- 旧目录数据不会自动迁移；换到新空目录等于从该位置重新开始，历史完整性门禁不放宽。详见 `docs/verification/2026-09-26-file-sync-folder-relocate.md`。尚未在真实 NAS 上完成“换目录后同步成功”的内容级验收。
+
+## 文件同步改为普通明文镜像（2026-09-27，用户明确要求）
+
+- 用户原话：**「这里根本不需要加密，就单纯的同步软件」**。文件同步（底部「文件同步」tab）不再是加密对象同步，改为普通同步盘：
+  每个**同步位置** = 本机一个文件夹 ⟷ 远端一个文件夹（可在不同连接），可添加多个；远端就是用户真实文件/目录名，NAS 或任何程序都能直接读写。
+- 设计依据：`docs/design/plain-folder-sync.md`（概念、方向、冲突、算法、表结构、界面、分期）。实现：
+  - 模型/存储：`lib/dataset_adapters/plain_folder/`（`plain_folder_sync_profile.dart`、`mirror_models.dart`（planner）、`plain_folder_sync_service.dart`、`plain_folder_provisioner.dart`、executor）；`SyncDatasetKind.plainFolder`（持久化 `plain-folder`），`vaultId` 为空是该 kind 的正确表示（envelope 按 kind 校验）。
+  - 数据库 schema v12 新增 `mirror_entries`（基线）/`mirror_conflicts`/`mirror_run_stats`，见 `lib/infrastructure/database/sync_state_mirror.dart`；运行记录复用 `sync_runs`。
+  - 界面：`lib/features/plain_sync/`（`plain_sync_home.dart` 列表——**添加同步位置是页头右上角的「+」（key `plain-location-add`），不再用列表下方那一整行**（用户 2026-09-27：“这一块也太丑了，挪到右上角”。**卡片不要重复套水平内边距**：`BackupCard` 自带 16pt 水平外边距=页面边距，外面再包一层 `padding: horizontal 16` 会让卡片表面比正文窄 16pt（用户 2026-09-27 现场指出“宽度明显有问题，应该跟上面的文字对齐”）；回归 `plain_sync_home_test.dart` 的「the location card lines up with the page text」断言卡片表面与段落文字左右对齐）；列表为空时仍保留首屏说明卡 + 其中的「添加同步位置」按钮（key `plain-location-create`）、`add_plain_location.dart` 三步向导、`plain_location_detail.dart` 详情、`plain_location_run.dart` 运行/结果/删除确认）。路由：`/files` → `PlainSyncHome`，`/plain-locations/new`，`/plain-locations/:profileId`。
+  - 复用（不要重写）：`RemoteObjectStore`（新增 `isDirectory` 与可选 `RemoteCollectionCreator.createCollection` = 单次 MKCOL）、`SelectedFolderStorage`（新增可选 `StreamingSelectedFolderStorage.writeFileFromStream`）、`BackupFolderPicker`（远端目录浏览/新建）、`withVelockLocationGuard`、`SyncProfileDispatcher`/后台调度（executor 已注册）。明文同步**只支持 WebDAV**；OAuth 云盘明确拒绝。
+- 方向语义：双向（默认）/仅上传（本机是唯一真值）/仅下载（远端是唯一真值，本机对已同步文件的修改被覆盖，本机独有文件不删）。冲突默认**保留两份**（本机版本另存 `名称 (本机冲突 日期 时间).扩展名`），可改以本机/以远端为准。首次同步只合并、**绝不删除**没有基线的路径。
+- 删除保护：超过 1000 项或基线 20%（基线少于 5 条时只看 1000）时扣下删除，**保留基线行**（否则下次会把文件当新文件重新下载，等于静默撤销删除）；界面确认后用 `allowDeletions: true` 再跑一次才真正删除。
+- 旧加密 `selected-folder` 是**已淘汰的协议，界面上彻底不存在**（2026-09-27 用户：“这里还遗留有什么旧版XXX的，我不要这玩意儿啊，旧版就是淘汰的版本功能，不需要保留”）：文件同步 tab 不显示、设置里的「旧版加密文件夹同步 / 管理旧版加密同步（N）」整段删除、`legacyEncryptedProfilesProvider` 已移除，全仓库不再有任何面向用户的「旧版 / legacy」文案（回归 `test/features/sync_profiles/legacy_encrypted_entry_test.dart` 断言设置页连“旧版”两个字都不出现）。
+  同时 `SyncProfileSummary.isBackgroundEligible` **排除 `SyncDatasetKind.selectedFolder`**：既然没有任何入口能查看/暂停/删除它，就不能再让它悄悄在后台跑（回归同上 + `test/background/background_sync_test.dart` 改用 `velockManaged` 做引擎 fixture、用 `plainFolder` 做“无 executor 的 kind”）。
+  **本机 profile 行与远端加密对象都不动**：没有新增删除逻辑，旧任务只是不再被调度、不再被展示。要彻底清掉本机遗留记录或远端加密目录需要另行确认（远端是加密对象，不能转成明文镜像）。
+- 远端写入后必须 `stat` 回读远端时间/etag 再写基线（否则服务器自己的 mtime 会让下一次同步把刚上传的文件当成远端改动下载回来）。本机下载后重新扫描本机元数据再写基线。
+- 文案边界：必须写明「远端是明文，能访问该账号的人都能看到和修改」；同步结果只说上传/下载/删除/冲突数量与时间，不说“已备份”。
+- 端到端验证入口：`tool/local_webdav/start_local_webdav.sh start` 后用 `flutter test test/dataset_adapters/plain_folder/plain_folder_webdav_integration_test.dart`（真实 WsgiDAV：建目录/上传/下载/覆盖/删除/保留两份冲突；服务未启动时自动 skip，不碰用户 NAS）。
+- 真机服务端踩坑：`WebDavObjectStore.list(prefix: '')` 以前会抛 `must be a normalised relative key`，因为空 key 被 `split('/')` 判成非法段——**列连接根/同步位置根本来就不可能成功**。现在 `allowEmpty` 时空 key 放行（只有这一种情况），其余空 key/越界 key 仍 fail closed；`test/providers/webdav/webdav_object_store_test.dart` 有根目录列举与空 key 拒绝的回归。
+- 远端写失败（409/401/403 等冲突或权限类）在同步时翻译为 `plain_folder.remote_folder_unwritable`（“远端文件夹不存在或这个账号不能写入，请重新选择”）；新建向导在创建 profile 前调用 `checkRemoteWritableFor` 预检（`plainRemoteWritableCheckProvider` 可注入，界面测试用 no-op 覆盖），预检失败不写 profile；向导里的失败文案必须说“返回上一步换文件夹”，不能照抄面向详情页的服务文案。
+- 方向/冲突这类“必须读明白才敢选”的说明文字**禁止被单行截断**（用户 2026-09-27 反馈 3/3 页说明被省略号截掉）：选项统一用 `lib/features/plain_sync/ui/plain_option_row.dart` 的 `PlainOptionRow`（单选图标 + 标题 + 完整换行说明），不要再用 `AdaptiveListTile(isThreeLine: true)` 塞长说明；回归在 `test/features/plain_sync/plain_option_row_test.dart`（断言 `maxLines == null`、非 ellipsis、行高大于单行）。
+- **保存成功后绝不能再报“创建失败”**（2026-09-27 现场：连点创建看到「创建同步位置失败，请重试。」，实际 3 个 profile 都已写入）：`AddPlainLocation.create()` 的保存放在 try 内、导航放在 try 外；`leaveWizard()` 能 pop 就 pop，不能 pop（向导本身是首个路由，例如用 `--route=/plain-locations/new` 直接打开）就 `go('/files')`。向导页头必须始终有返回：`goBack()` 先退一步，第 1 步则离开向导；切换步骤要清掉上一次的错误文案。
+- **同一个绑定不许重复创建**（2026-09-27 现场留下 3 个一模一样的 Sync_Local）：`PlainFolderProvisioner.create` 在保存前比对「同一本机授权引用 + 同一连接 + 同一远端子路径段」，命中就抛 `DuplicatePlainLocationException`，界面提示“这个同步位置已经存在：<名字>”。允许同一本机文件夹配不同远端、也允许同一远端配不同本机文件夹（多设备/多备份是正常用法）；已暂停的同名位置不拦新位置。回归 `test/dataset_adapters/plain_folder/plain_folder_provisioner_test.dart`（5 项）。
+- 暂停只停传输，**不冻结设置**：`PlainFolderSyncProfileRepository.update` 允许非 active（暂停）profile 改方向/冲突/名称，仍拒绝陈旧页面、运行中与已删除；暂停/继续本身走 `pause()`/`resume()`，详情页与卡片一致（详情页早期版本用 `update` 改状态，导致“继续”按钮点了没反应）。
+
+## 上线标准复查：明文同步的安全与错误路径（2026-09-27 夜）
+
+用户要求「以格间项目的上线标准」再自查一遍：流程是否最小但完整、有没有大 bug。四路只读审计（引擎正确性 / 失败路径 / 上线就绪 / 跨 App 安全）后逐条修复，规则如下（回归见 `docs/verification/2026-09-27-launch-hardening.md`）：
+
+- **远端列不出来 ≠ 远端是空的**。`WebDavObjectStore.list` 以前把 PROPFIND 404 当空目录返回，引擎随后把「远端什么都没有」当成「用户删了所有远端文件」，于是**静默删本机文件**。现在 404 抛 `RemoteObjectNotFoundException`（引擎映射 `plain_folder.remote_folder_missing`），另外三重保护：远端空 + 本机非空 + 有基线 ⇒ 运行失败且不删；**只有本次真正列过的目录**（`MirrorListingScope`）下面的路径才允许删除；深度截断（`remote_too_deep`）同上。回归 `plain_folder_sync_service_test.dart`（404→code、空listing不删本机）、`mirror_planner_test.dart`（未列过的父目录不可删）。
+- **确认删除只批准用户看过的那批路径**。`run(allowDeletions: true)` 不再等于“批准一切”：删除必须走 `runConfirmedDeletions(profileId, confirmedPaths)`，计划在确认之后变大就重新扣下（`MirrorHeldDeletions.paths`）。界面流程：`runPlainLocation` 自己「跑 → 列出**具体路径**的确认表 → 只批准这些路径再跑」，全部在同一个 busy 窗口内（以前在 `_busy` 为真时递归调用 `_run`，导致「确认删除并继续」**什么都不做**，而再点一次会**未经复核**直接删）。回归 `plain_sync_home_test.dart`（确认表列出路径、只批准这些路径、取消则一次都不删）、`mirror_planner_test.dart`。
+- **上传必须回读校验**：PUT 之后 `stat` 比对远端大小与本机长度，不一致就 best-effort 删掉残件、报 `plain_folder.upload_incomplete`、**不写基线**（否则被截断的远端文件会变成“真相”，下一轮把好的本机文件覆盖或改名成本机冲突）。下载字节只在写成功后计数；运行失败时不再把 `heldDeletionCount` 清零（「有删除等待确认」要留住）。回归见上。
+- **被系统杀掉不能永远卡住**：`sync_runs` 里 state='running' 的孤儿行以前会让位置永久显示「正在同步」，并让改设置/删除永久失败。现在 `main.dart` 与后台 isolate 启动时都调用 `SyncStateDatabase.failInterruptedSyncRuns()`（写 `sync.interrupted`，并清掉死进程的 `profile_locks`），回归 `test/infrastructure/database/sync_state_interrupted_runs_test.dart`。
+- **WebDAV key 是解码后的相对路径**：`Uri.resolve('a#b.png')` 会把 `#` 当 fragment，于是带 `#`/`?` 的文件名被写到**别的路径**（两个这样的名字还会互相覆盖）。现在逐段编码（`_objectUriFor`），MOVE 的 Destination 始终是编码后的 path（不再有 query 分支）。回归 `test/providers/webdav/webdav_object_store_keys_test.dart`，`webdav_destination_path_test.dart` 的 fixture 改为解码 key。
+- **换文件夹要原子**：以前先存 profile、再清基线，两步之间失败就会「提示没保存成功但其实已保存」＋用旧基线删远端文件。现在 `PlainFolderSyncProfileRepository.relocate(...)` 在同一个事务里保存并清 `mirror_entries`/`mirror_conflicts`/`mirror_run_stats`，写之前先做远端可写预检。
+- **目录重叠守卫**：明文位置不得等于/包含/被包含于格间备份目录（`assertPlainScopeAvoidsBackups`），也不得与另一个明文位置互相包含（`assertPlainScopeAvoidsOtherLocations`，抛 `PlainLocationOverlapException`）；**同一个远端文件夹 + 不同本机文件夹仍允许**（多设备是文档化用法），同一本机文件夹 + 同一远端是重复绑定。`PlainFolderProvisioner` 的 `backups` 参数是 required，守卫在写远端探针**之前**跑。
+- **失败文案只有一份**：`plainFailureMessage(context, code, {connectionName})`（`plain_location_presentation.dart`）是明文域唯一映射（离线/超时/证书/401/403/404/409/412/429/507/存储不足/远端文件夹消失/上传不完整/运行中/被系统中断…），**正文永不出现错误码**；`AppFormat.errorSummary` 补 507 与离线，Velock 域共用。原始异常交给 `SyncFailureClassifier.classify` 再翻译（丢包不再报“原因不明”）。
+- **每个同步客户端都有超时**（连接 30s、收发 5min，共享工厂 + 明文/格间服务）：黑洞式断网不会再让运行无限挂起并把人困在页面上。
+- **本机替换不先删目标**：`rename` 本身就是覆盖（Dart/桌面），Android SAF 因为 `renameDocument` 允许 provider 改名成 `name (1).ext`（会变成静默副本），改为**原地写回已有文档**（`replaceDocumentContent`），失败返回 `provider.saf.replace_failed` 且绝不再删除暂存件。SAF 现在也实现 `StreamingSelectedFolderStorage`（大文件不再整份进内存）。
+- **页面标题与返回槽**：导航栏标题允许两行、用 `minHeight` 而不是固定 44pt；返回键后面不再加 8pt（会把 leading 槽撑到 52pt 溢出）；**向导的「第 N 步，共 3 步」固定在正文里**——放在导航栏 trailing 槽会在路由转场逐帧收窄时溢出（debug 条纹）。
+- **英文界面不许出现中文**（`test/l10n/sync_english_pages_test.dart`、`sync_settings_english_test.dart`、`plain_sync_english_test.dart` 会逐屏扫描 Text 与 Semantics）：设置页、连接说明、活动记录、连接详情、百度 token 页、文件同步页全部补齐；唯一允许的是语言选择器里的 `简体中文` 本身。`syncText` 之外的裸中文不再新增。
+- **上架材料**：`ios/Runner/PrivacyInfo.xcprivacy`（DiskSpace/FileTimestamp/UserDefaults required-reason）、`docs/release/app-review-notes.md`（ATS/后台模式/无账号无分析/评审如何看到文件同步）、Android `@string/app_name`＝「Velock Sync」、`sqlite3_flutter_libs`（自 0.6.0 起是空包）已删除。`_provisionNasConnection` 只在 debug 生效；`sync_profile_runner` 的 `VELOCK_SYNC_EVENT` 只在 debug 打印。
+- **已知未做**：`shareddocuments://`（未公开 scheme，建议换 `UIDocumentPickerViewController.directoryURL`）、运行中取消（`RemoteOperationCancellation` 仍未接到界面）、>64MiB 的“同尺寸不同时间”文件仍按延迟校验处理（不会误删，但不会自动收敛）、明文位置不支持云盘（仅 WebDAV）。
+- **`flutter_platform_widgets` 已停止维护**：上游原因是 Flutter 官方把 Material/Cupertino 拆成独立的 `package:material_ui` / `package:cupertino_ui`（3.47 起可用，SDK 内的 `flutter/material.dart`、`flutter/cupertino.dart` 自 3.44 冻结贡献、后续稳定版正式弃用），而该包的全部价值就是在这两个库之间切换，因此维护者不再跟进，10.0.1 是最后一版。**版本已在 pubspec 里钉死为 `10.0.1`（去掉 `^`）**：纯 Dart、MIT、无原生代码，在当前 Flutter 上构建/运行/1087 项测试都通过。关键坑：官方的 `MaterialUiCompatibilityBridge` 只注入主题与本地化，**不能解决跨库类型不匹配**，而这个包的 API 大量出现 SDK 内的 `AppBar`/`ThemeData` 等类型，所以我们一旦自己迁到 `material_ui`/`cupertino_ui`，它会直接编译不过。因此：**升级 Flutter 大版本前先跑全量测试 + 两端构建**；迁移路径（阶段 1 入口级三件套 → 阶段 2 控件级替换后删依赖 → 阶段 3 再迁设计库，或 vendor 到 `packages/`）见 `docs/design/adaptive-widgets-migration.md`。注意 `isApplePlatform` 是我们自己的（`design_tokens.dart:151`），56 处调用不受影响；项目已有 `AdaptiveScaffold`/`WDAppBar`/`AdaptiveIconButton` 等包装层，迁移主要是把约 40 个 `Platform*` 调用点改走自家包装。
+
+## 同步记录状态口径：0 对象不叫「已完成」（2026-09-27）
+
+- 用户现场指出：运行记录弹层写着 `同步记录 · 已完成`，下面却是 `上传对象 0 个 · 0 B` / `传输明细：本次没有传输任何对象`。**完成的是这次运行，不是传输**，两者不能混为一谈。
+- 规则：`sync_runs.state` 不变（仍是 running/completed/failed，所有调度与门禁照旧）；只改用户读到的那句话。`lib/features/sync_profiles/model/sync_run_outcome.dart` 的 `runWindowTransfers` 用运行自己的时间窗取对象，`syncRunConclusionLabel` 给出结论：运行中 / 失败 / **无需传输**（completed 且本次 0 个对象）/ 已完成（本次有对象）/ 未知状态原样显示。
+- **状态必须和它下面的计数同源**：弹层的上传/恢复计数、传输明细、列表行、概览副标题都用同一份 `runWindowTransfers` 结果；不允许再出现“已完成 + 0 个对象”。旧的 `runStateLabel` 已删除（它只看 state，必然重犯）。
+- 文案边界：`无需传输` 只说这次运行没有可传的对象，**不等于**“云端已是最新/已完整备份”（格间尚未发布新批次时也是这个结果）。文件同步域的位置状态另有 `已是最新`，两个词不要互相套用。
+- 未改：活动页「最近同步」（用词是同步完成/同步失败、且不显示对象计数，要同规则需另加跨配置传输历史查询）；首页状态卡「上次备份已完成」（它是“上一次运行结束了”的时间陈述）。
+- 回归：`test/features/sync_profiles/run_conclusion_test.dart`（9 项：时间窗边界、四种结论、未知状态、空运行弹层全屏无“已完成”、有对象仍是已完成、英文不回落中文、真实页面三处口径一致）；渲染证据 `ui_test_results/run-conclusion-20260927/`（`run_conclusion_visual_qa_test.dart`，真实 CJK 字体，未设环境变量时只断言不写文件）。详见 `docs/verification/2026-09-27-run-conclusion-status.md`。
+
+## 连接说明的内容口径（2026-09-27）
+
+- 用户现场（WebDAV 连接说明）：「我感觉这个说明有点不对呢」。核对后确认三类问题：①「条件创建/范围下载/安全存储密码」是适配器内部黑话，用户看不出「不会覆盖我的文件」；②「范围下载」「回收站」是 App **从未调用**的服务端特性（同步引擎不做范围读；Drive 的 delete 是永久删除，不走回收站）；③「断点续传取决于服务器能力」是**错的**——WebDAV `supportsResumableUpload: false`，引擎也不持久化上传会话（`providerCheckpoint` 无人写入），中断必然整份重传。另外该文件当时是纯中文常量，英文界面会显示中文（`sync_english_pages_test.dart` 里有显式技术债记录）。
+- 规则：`lib/providers/provider_capability_summary.dart` 只描述 App 对这种连接**实际实现**的行为，且**不得超出适配器的 `RemoteCapabilities`**（文案与旗标不一致就是 bug）。每个字符串必须本地化，`context` 用 required-but-nullable，调用方不能忘传 locale。
+- 文案结构：功能说明（能做/不覆盖）+ 注意事项（限制）+ **「登录信息」独立一行**（密码/令牌存在系统安全存储，属于 App 的存储方式，不再混进“功能”里当卖点）。
+- WebDAV 现在明说「不支持断点续传：大文件中断后要从头重新上传」；云盘说「大文件按分片上传」但**不说**可恢复上传，并补一句「上传中断后下一次会重新开始」。将来真做了会话续传，文案与测试必须一起改。
+- 回归：`test/providers/provider_capability_summary_test.dart`（7 项，含黑话/未使用特性黑名单、实例化 `WebDavObjectStore` 对齐 `supportsResumableUpload`、英文 locale 全行无中文）；`test/l10n/sync_english_pages_test.dart` 的例外已删除，改为「the connection info sheet paints no Chinese」；`connection_edit_entry_test.dart` 更新断言。渲染证据 `ui_test_results/connection-info-20260927/`。详见 `docs/verification/2026-09-27-connection-info-copy.md`。
+
+## 行图标：卡片里不许只有一行没图标（2026-09-27）
+
+- 用户现场（管理 tab 截图，箭头指着「重新连接格间」）：「这里差一个图标」。该行直接位于有云图标的「更换保存位置」下面，自己却没有 leading。同类缺陷还有概览卡里条件渲染的「查看等待传输的内容」（同卡另外三行都有图标）。
+- 规则：**同一张卡片（AdaptiveListSection）里的可点行，要么都有 leading，要么都没有**；不能因为某行是后加的条件行就漏掉。无关的整卡（例如只有一行的「暂停备份」「详细记录与诊断」）不强制加图标。
+- 图标选择沿用已确立的词汇：连接相关用 `CupertinoIcons.link`（新增连接行、连接详情页头同款），等待传输用 `CupertinoIcons.tray_arrow_down`（与 `_PendingTab` 空状态同款），保存位置用 `cloud`，管理用 `slider_horizontal_3`。别为一次性观感引入新图标词汇。
+- 回归：`test/features/sync_profiles/sync_profile_row_icons_test.dart` 用真实内存数据库渲染概览卡与「管理」tab，逐个断言上述行的 `AdaptiveListTile.leading` 非空（条件行通过预置一个未完成传输让它出现）；渲染证据 `ui_test_results/profile-row-icons-20260927/`。详见 `docs/verification/2026-09-27-row-icons.md`。
+
+## 格间本地改动「立即打包」（2026-09-27）
+
+- 现场：用户在格间「文件」页加入一个文件后，Sync 连点 4 次「立即备份」全是「无需传输」。查设备数据确认：那 4 次运行时 `SyncExchange/Outbox/Ready` 确实为空（`无需传输` 没说谎），但根因在格间——**文件域没有打包出口**：相册导入、凭证/卡/备注、文档、设置页、以及应用启动基线都会调 `exportPendingExchangeChanges`，文件（导入/改名/移动/删除/新建目录）不会，只能等下一次启动基线（现场：09:18:05 加文件 → 09:21:16 重开格间才打包 seq3）。
+- 修复在格间仓库：新增 `SyncPendingChangePackager`（debounce 400ms + 单飞 + 尾随补跑 + 退后台 `flush`），由 `SyncStateRepository.recordNextLocalChangeInTransaction` 单点通知（覆盖 file/file-tag/document/password/card/note），Dashboard 启动时用完整 runtime 安装；启动那次导出改走 `exportNow()`，避免与通知并发的第二次导出争抢同一批 pending。
+- 设备验证：不重启格间，新建文件夹 / 删除文件夹都在 **0.96 s** 内出现 `Outbox/Ready` 批次；随后 Sync「立即备份」把 seq4/seq5 的 operations/envelope/commit 全部上传并写回执。
+- 规则：以后遇到「改了东西但同步说无需传输」，先查该域有没有通知打包器，不要把「无需传输」当成「没有改动」——它只说明这次运行没有可传对象。格间侧新增本地写入者不得绕过 `recordNextLocalChange`。
+- 证据 `ui_test_results/companion-packaging-20260927/`，详见 `docs/verification/2026-09-27-companion-prompt-packaging.md`。

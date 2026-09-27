@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
@@ -16,6 +17,7 @@ import 'package:velock_sync/background/foreground_sync_coordinator.dart';
 import 'package:velock_sync/core/local_data_manager.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/providers/oauth/oauth_callback_link_receiver.dart';
@@ -34,6 +36,17 @@ void main() async {
   oauthCallbackLinkReceiver = OAuthCallbackLinkReceiver.system();
   await LocalDataManager.instance.init();
   await SyncStateDatabase.initialize();
+  // A run row is marked `running` before its transfer starts and closed when it
+  // ends. This process cannot own a run a previous one left behind, so close
+  // them here — otherwise a kill during a sync leaves the location claiming to
+  // be syncing for ever and refuses edits and deletion.
+  try {
+    await SyncStateDatabase.instance.failInterruptedSyncRuns();
+  } on Object catch (error, stackTrace) {
+    // Never block startup on reconciliation; a stuck row is reported by the
+    // surfaces that read it, and the next launch tries again.
+    loge('Interrupted sync run sweep failed: $error', stackTrace: stackTrace);
+  }
   await _provisionNasConnection();
   await initializeBackgroundSync();
   runApp(
@@ -60,6 +73,9 @@ void main() async {
 /// the app's own credential store and state database. It is inert unless a
 /// marker file exists at `<Application Support>/velock-sync/nas_setup.json`.
 Future<void> _provisionNasConnection() async {
+  // Debug-only test hook: it injects a WebDAV connection from a plaintext
+  // marker file, which must never be possible in a shipped build.
+  if (!kDebugMode) return;
   final directory = await getApplicationSupportDirectory();
   final marker = File(p.join(directory.path, 'velock-sync', 'nas_setup.json'));
   if (!await marker.exists()) return;

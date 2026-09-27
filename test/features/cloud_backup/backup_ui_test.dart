@@ -1,3 +1,7 @@
+import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
+import 'package:velock_sync/features/connection/repository/connection_repository.dart';
+import 'package:velock_sync/features/connection/model/connection_model.dart';
+import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -55,9 +59,12 @@ void main() {
     double scale = 1,
     TargetPlatform platform = TargetPlatform.iOS,
     SyncProfileRunService? runService,
+    ConnectionRepository? connections,
   }) => ProviderScope(
     overrides: [
       syncStateDatabaseProvider.overrideWithValue(database),
+      if (connections != null)
+        connectionRepositoryProvider.overrideWithValue(connections),
       syncProfileRepositoryProvider.overrideWithValue(repository),
       velockWizardReadinessServiceProvider.overrideWithValue(const _Ready()),
       if (runService != null)
@@ -164,16 +171,58 @@ void main() {
 
       final primary = find.byKey(const Key('backup-primary-action'));
       await tester.tap(primary);
+      // The in-flight state is an inline spinner on the button, so the tree
+      // never settles while the run is pending: pump explicit frames instead
+      // of pumpAndSettle.
       await tester.pump();
-      expect(find.byKey(const Key('sync-progress-dialog')), findsOneWidget);
 
+      expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
+      expect(find.text('正在传输，请稍候'), findsOneWidget);
+      expect(tester.widget<BackupActionButton>(primary).busy, isTrue);
+      expect(tester.widget<BackupActionButton>(primary).onPressed, isNull);
+      expect(
+        find.descendant(
+          of: primary,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+
+      // The real runner records the failed run before it throws.
+      await database.startSyncRun(
+        runId: 'home-run',
+        profileId: 'velock',
+        startedAt: DateTime.utc(2026, 9, 27),
+      );
+      await database.finishSyncRun(
+        runId: 'home-run',
+        state: 'failed',
+        completedAt: DateTime.utc(2026, 9, 27, 0, 1),
+        errorCode: 'sync.unexpected',
+      );
       pending.completeError(StateError(secret));
       await tester.pumpAndSettle();
 
+      // Only the failure interrupts: it stays until the user acknowledges it.
+      expect(find.text('同步失败'), findsOneWidget);
+      expect(find.byKey(const Key('sync-failure-alert-ok')), findsOneWidget);
+      expect(find.textContaining(secret), findsNothing);
+      await tester.tap(find.byKey(const Key('sync-failure-alert-ok')));
+      await tester.pumpAndSettle();
+
+      // Back to a usable card: no leftover modal, no stuck spinner.
+      expect(find.text('同步失败'), findsNothing);
       expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
       expect(primary, findsOneWidget);
-      expect(find.text('备份详情与管理'), findsOneWidget);
+      expect(tester.widget<BackupActionButton>(primary).busy, isFalse);
+      expect(tester.widget<BackupActionButton>(primary).onPressed, isNotNull);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('正在传输，请稍候'), findsNothing);
       expect(find.text('同步未完成，请检查同步配置后重试。'), findsOneWidget);
+      // Details are a button inside the status card; the old standalone
+      // "backup details and settings" row is gone.
+      expect(find.text('备份详情与管理'), findsNothing);
+      expect(find.text('详情'), findsOneWidget);
       expect(find.textContaining(secret), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -211,7 +260,7 @@ void main() {
 
       expect(find.text('备份已暂停'), findsOneWidget);
       expect(find.text('继续'), findsOneWidget);
-      expect(find.text('暂时无法继续传输，请稍后重试。'), findsOneWidget);
+      expect(find.text('暂时无法继续备份，请稍后重试。'), findsOneWidget);
       expect(find.textContaining(secret), findsNothing);
       expect((await repository.read('velock'))?.state, SyncProfileState.paused);
       expect(tester.takeException(), isNull);
@@ -298,15 +347,42 @@ void main() {
 
       final primary = find.byKey(const Key('backup-primary-action'));
       await tester.tap(primary);
+      // Inline spinner while the run is pending: pump frames, never settle.
       await tester.pump();
-      expect(find.byKey(const Key('sync-progress-dialog')), findsOneWidget);
 
+      expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
+      expect(find.text('正在传输，请稍候'), findsOneWidget);
+      expect(tester.widget<BackupActionButton>(primary).busy, isTrue);
+      expect(tester.widget<BackupActionButton>(primary).onPressed, isNull);
+
+      await database.startSyncRun(
+        runId: 'detail-run',
+        profileId: 'velock',
+        startedAt: DateTime.utc(2026, 9, 27),
+      );
+      await database.finishSyncRun(
+        runId: 'detail-run',
+        state: 'failed',
+        completedAt: DateTime.utc(2026, 9, 27, 0, 1),
+        errorCode: 'sync.unexpected',
+      );
       pending.completeError(StateError(secret));
       await tester.pumpAndSettle();
 
+      expect(find.text('同步失败'), findsOneWidget);
+      expect(find.byKey(const Key('sync-failure-alert-ok')), findsOneWidget);
+      expect(find.textContaining(secret), findsNothing);
+      await tester.tap(find.byKey(const Key('sync-failure-alert-ok')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('同步失败'), findsNothing);
       expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
       expect(find.byKey(const Key('backup-status-title')), findsOneWidget);
       expect(find.text('传输记录'), findsOneWidget);
+      expect(tester.widget<BackupActionButton>(primary).busy, isFalse);
+      expect(tester.widget<BackupActionButton>(primary).onPressed, isNotNull);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('正在传输，请稍候'), findsNothing);
       expect(find.text('同步未完成，请检查同步配置后重试。'), findsOneWidget);
       expect(find.textContaining(secret), findsNothing);
       expect(tester.takeException(), isNull);
@@ -406,6 +482,73 @@ void main() {
       expect(find.byKey(const Key('restore-continue')), findsNothing);
     },
   );
+
+  for (final language in ['zh', 'en']) {
+    testWidgets('folder failure card visual and timestamp $language', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await repository.save(_profile(folder: true));
+      await database.startSyncRun(
+        runId: 'folder-run',
+        profileId: 'folder',
+        startedAt: DateTime(2026, 9, 26, 9, 15),
+      );
+      await database.finishSyncRun(
+        runId: 'folder-run',
+        state: 'failed',
+        completedAt: DateTime(2026, 9, 26, 9, 15, 30),
+        errorCode: 'provider.webdav.atomic_create_unsupported',
+      );
+      await tester.pumpWidget(
+        app(
+          const SyncProfilesHome(kind: SyncDatasetKind.selectedFolder),
+          locale: language,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining(
+          language == 'zh'
+              ? '上次失败：2026-09-26 09:15'
+              : 'Last failure: 2026-09-26 09:15',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          language == 'zh' ? '上次传输未通过' : 'The last transfer failed',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await capture(tester, '05-folder-failure-$language');
+    });
+  }
+
+  for (final language in ['zh', 'en']) {
+    testWidgets('storage help visual $language', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        app(
+          BackupStorageHelp(profile: _profile(folder: true)),
+          locale: language,
+          connections: _VisualConnection(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('storage-check')), findsOneWidget);
+      expect(find.byKey(const Key('storage-sync')), findsNothing);
+      expect(tester.takeException(), isNull);
+      await capture(tester, '06-storage-help-$language');
+    });
+  }
 
   testWidgets(
     'cloud safety failures are actionable without MOVE or raw codes',
@@ -527,4 +670,27 @@ class _ResumeGateRepository extends SyncProfileRepository {
     }
     return super.setState(profileId, state);
   }
+}
+
+class _VisualConnection implements ConnectionRepository {
+  @override
+  Future<ConnectionModel?> getConnectionById(String id) async =>
+      ConnectionModel(
+        id: id,
+        name: 'NAS',
+        source: '',
+        target: '',
+        protocol: WebDavProtocolModel(
+          protocolType: WebDavProtocolType.https,
+          address: 'https://example.test',
+          port: '443',
+          path: '/',
+          credentialRef: 'private',
+        ),
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        status: ConnectionStatus.pending,
+      );
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

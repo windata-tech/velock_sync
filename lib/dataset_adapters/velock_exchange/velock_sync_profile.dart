@@ -1,3 +1,5 @@
+import 'package:velock_sync/sync_profiles/model/remote_root_segments.dart'
+    as remote_root_segments;
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
@@ -181,24 +183,8 @@ class VelockSyncProfile {
   }
 
   /// Validates and defensively copies decoded relative path segments.
-  static List<String> canonicalRemoteRootSegments(Iterable<String> segments) {
-    final values = List<String>.of(segments);
-    for (final segment in values) {
-      if (segment.isEmpty ||
-          segment == '.' ||
-          segment == '..' ||
-          segment.contains('/') ||
-          segment.contains('\\') ||
-          segment.runes.any(
-            (rune) => rune <= 0x1f || (rune >= 0x7f && rune <= 0x9f),
-          )) {
-        throw const FormatException(
-          'Velock profile remote root segments are invalid.',
-        );
-      }
-    }
-    return List<String>.unmodifiable(values);
-  }
+  static List<String> canonicalRemoteRootSegments(Iterable<String> segments) =>
+      remote_root_segments.canonicalRemoteRootSegments(segments);
 
   static List<String> _canonicalTrustedProducerIds(
     Iterable<String> ids, {

@@ -12,10 +12,14 @@ void main() {
   const encodedBasePath =
       '/%E5%85%B1%E4%BA%AB%20%E7%9B%AE%E5%BD%95/base%20'
       '%E5%AD%90%E8%B7%AF%E5%BE%84/';
-  const logicalKey = '对象 名称%20已转义%23%3F%25%2F';
+  // A logical key is a DECODED relative path: `#`, `?`, `%` and spaces are
+  // ordinary name characters here and must be escaped exactly once on the way
+  // out. (The store used to pass keys through `Uri.resolve`, which treated `#`
+  // as a fragment and silently wrote to a different object.)
+  const logicalKey = '对象 名称 已转义#?%';
   const encodedKey =
       '%E5%AF%B9%E8%B1%A1%20%E5%90%8D%E7%A7%B0%20'
-      '%E5%B7%B2%E8%BD%AC%E4%B9%89%23%3F%25%2F';
+      '%E5%B7%B2%E8%BD%AC%E4%B9%89%23%3F%25';
   const expectedTarget = '$encodedBasePath$encodedKey';
 
   late MemoryWebDavAdapter adapter;
@@ -114,14 +118,7 @@ void main() {
       expect(expectedTarget, contains('%23'));
       expect(expectedTarget, contains('%3F'));
       expect(expectedTarget, contains('%25'));
-      expect(expectedTarget, contains('%2F'));
-      for (final doubleEncoded in [
-        '%2520',
-        '%2523',
-        '%253F',
-        '%2525',
-        '%252F',
-      ]) {
+      for (final doubleEncoded in ['%2520', '%2523', '%253F', '%2525']) {
         expect(expectedTarget, isNot(contains(doubleEncoded)));
       }
     },
@@ -163,9 +160,14 @@ void main() {
     expect(adapter.collections, isEmpty);
   });
 
-  test('path-absolute Destination preserves an encoded query', () async {
+  test('a question mark is part of the name, never a query', () async {
+    // A logical key is a decoded relative path produced by a directory listing.
+    // `?` in a file name must therefore be escaped (`%3F`) and stay inside the
+    // path: treating it as a query separator wrote such files to a different
+    // object than the one they were listed under.
     const key = 'query 对象?x=one%26two';
-    const expected = '${encodedBasePath}query%20%E5%AF%B9%E8%B1%A1?x=one%26two';
+    const expected =
+        '${encodedBasePath}query%20%E5%AF%B9%E8%B1%A1%3Fx=one%2526two';
     adapter.beforeRequest = rejectAbsoluteDestinations;
 
     await store.put(
@@ -181,9 +183,9 @@ void main() {
           request.headers['Destination'] == expected,
     );
     final destination = requestDestination(publish);
-    expect(destination.path, '${encodedBasePath}query%20%E5%AF%B9%E8%B1%A1');
-    expect(destination.query, 'x=one%26two');
-    expect(destination.hasQuery, isTrue);
+    expect(destination.path, expected);
+    expect(destination.hasQuery, isFalse);
+    expect(destination.fragment, isEmpty);
     expect(destination.hasScheme, isFalse);
     expect(destination.hasAuthority, isFalse);
     expect(absoluteDestinationRequests, 0);

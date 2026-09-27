@@ -54,7 +54,14 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       await _snapshot;
     } on Object {
       if (mounted) {
-        showMessage(context, '无法保存全局同步设置。');
+        showMessage(
+          context,
+          syncText(
+            context,
+            '无法保存全局同步设置。',
+            'Could not save the global sync settings.',
+          ),
+        );
         _reload();
       }
     } finally {
@@ -69,15 +76,33 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
           .read(syncSettingsServiceProvider)
           .cleanupStaging();
       if (!mounted) return;
+      final runningNote = result.busyProfileCount == 0
+          ? syncText(context, '。', '.')
+          : syncText(
+              context,
+              '，${result.busyProfileCount} 个运行中配置未清理。',
+              '; ${result.busyProfileCount} profiles that were syncing were left alone.',
+            );
       showMessage(
         context,
-        '已释放 ${AppFormat.bytes(result.freedBytes)}；'
-        '保留 ${result.preservedRecoverableBatchCount} 个可恢复批次'
-        '${result.busyProfileCount == 0 ? '。' : '，${result.busyProfileCount} 个运行中配置未清理。'}',
+        '${syncText(context, '已释放', 'Freed')} '
+        '${AppFormat.bytes(result.freedBytes)}'
+        '${syncText(context, '；保留', '; kept')} '
+        '${result.preservedRecoverableBatchCount} '
+        '${syncText(context, '个可恢复批次', 'recoverable batches')}$runningNote',
       );
       _reload();
     } on Object {
-      if (mounted) showMessage(context, '暂存空间清理未完成，请稍后重试。');
+      if (mounted) {
+        showMessage(
+          context,
+          syncText(
+            context,
+            '暂存空间清理未完成，请稍后重试。',
+            'Staging cleanup did not finish. Try again later.',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -92,7 +117,7 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       if (!mounted) return;
       final choice = await showAdaptiveAlert<String>(
         context: context,
-        title: '脱敏诊断',
+        title: syncText(context, '脱敏诊断', 'Sanitized diagnostics'),
         details: SizedBox(
           height: 320,
           child: SingleChildScrollView(
@@ -106,12 +131,12 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
         ),
         actions: [
           AdaptiveAlertAction<String>(
-            label: '复制',
+            label: syncText(context, '复制', 'Copy'),
             value: 'copy',
             key: const Key('copy-sanitized-diagnostics'),
           ),
           AdaptiveAlertAction<String>(
-            label: '完成',
+            label: syncText(context, '完成', 'Done'),
             value: 'done',
             isDefault: true,
             emphasized: true,
@@ -122,7 +147,16 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
         await Clipboard.setData(ClipboardData(text: diagnostics));
       }
     } on Object {
-      if (mounted) showMessage(context, '无法生成脱敏诊断。');
+      if (mounted) {
+        showMessage(
+          context,
+          syncText(
+            context,
+            '无法生成脱敏诊断。',
+            'Could not create the sanitized diagnostics.',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -131,8 +165,12 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
   Future<void> _chooseCellularLimit(SyncGlobalSettings settings) async {
     final selected = await showAdaptiveActionSheet<int>(
       context: context,
-      title: '默认蜂窝网络传输上限',
-      message: '加密内容按单个传输对象限制。',
+      title: syncText(context, '默认蜂窝网络传输上限', 'Default cellular transfer limit'),
+      message: syncText(
+        context,
+        '加密内容按单个传输对象限制。',
+        'Encrypted data is limited per transferred item.',
+      ),
       actions: [
         for (final bytes in const [
           10 * 1024 * 1024,
@@ -191,10 +229,12 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
     AsyncSnapshot<SyncSettingsSnapshot> snapshot,
   ) {
     if (snapshot.connectionState != ConnectionState.done) {
-      return const [
+      return [
         SliverFillRemaining(
           hasScrollBody: false,
-          child: AdaptiveLoadingState(label: '正在加载同步设置'),
+          child: AdaptiveLoadingState(
+            label: syncText(context, '正在加载同步设置', 'Loading sync settings'),
+          ),
         ),
       ];
     }
@@ -202,7 +242,14 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       return [
         SliverFillRemaining(
           hasScrollBody: false,
-          child: AdaptiveErrorState(message: '无法读取同步设置。', onRetry: _reload),
+          child: AdaptiveErrorState(
+            message: syncText(
+              context,
+              '无法读取同步设置。',
+              'Could not read the sync settings.',
+            ),
+            onRetry: _reload,
+          ),
         ),
       ];
     }
@@ -218,16 +265,32 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
     return [
       SliverToBoxAdapter(
         child: AdaptiveListSection(
-          header: '后台同步',
-          footer: const Text('系统会根据网络、电量和各配置策略安排后台任务。'),
+          header: syncText(context, '后台同步', 'Background sync'),
+          footer: Text(
+            syncText(
+              context,
+              '系统会根据网络、电量和各配置策略安排后台任务。',
+              'The system schedules background work using the network, the battery, and each profile’s own policy.',
+            ),
+          ),
           children: [
             AdaptiveSwitchListTile(
               widgetKey: const Key('global-background-enabled'),
-              title: const Text('全局后台同步'),
+              title: Text(
+                syncText(context, '全局后台同步', 'Global background sync'),
+              ),
               subtitle: Text(
                 value.backgroundSupported
-                    ? '${value.backgroundEligibleProfileCount} 个配置已启用后台同步'
-                    : '当前系统或构建不支持后台任务',
+                    ? syncText(
+                        context,
+                        '${value.backgroundEligibleProfileCount} 个配置已启用后台同步',
+                        '${value.backgroundEligibleProfileCount} profiles have background sync on',
+                      )
+                    : syncText(
+                        context,
+                        '当前系统或构建不支持后台任务',
+                        'Background work is not supported on this system or build',
+                      ),
               ),
               value: settings.backgroundEnabled,
               onChanged: _busy || !value.backgroundSupported
@@ -248,9 +311,13 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
                 ),
                 color: statusColor,
               ),
-              title: const Text('系统后台状态'),
+              title: Text(
+                syncText(context, '系统后台状态', 'System background status'),
+              ),
               additionalInfo: Text(
-                value.backgroundSupported ? '可用' : '受限',
+                value.backgroundSupported
+                    ? syncText(context, '可用', 'Available')
+                    : syncText(context, '受限', 'Limited'),
                 style: TextStyle(
                   color: value.backgroundSupported
                       ? AppTone.ok.color(context)
@@ -264,13 +331,30 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       ),
       SliverToBoxAdapter(
         child: AdaptiveListSection(
-          header: '新配置默认策略',
-          footer: const Text('这些选项只影响此后创建的配置；已有配置保持自己的策略。'),
+          header: syncText(context, '新配置默认策略', 'Defaults for new profiles'),
+          // Honest scope: these are the values a new profile starts from, but a
+          // new sync location is stored with background sync off, so the footer
+          // has to name the switch the user still has to turn on.
+          footer: Text(
+            syncText(
+              context,
+              '这些选项只用于此后新建的配置；已有配置保持自己的策略。新建的同步位置默认不开后台同步：还需要在它的详情页打开「后台同步」。',
+              'These options apply only to profiles you create from now on; existing profiles keep their own policy. New sync locations start with background sync off: turn on “Background sync” on the location’s own page.',
+            ),
+          ),
           children: [
             AdaptiveSwitchListTile(
               widgetKey: const Key('default-allow-cellular'),
-              title: const Text('默认允许蜂窝网络'),
-              subtitle: const Text('离开 Wi-Fi 后仍可继续同步。'),
+              title: Text(
+                syncText(context, '默认允许蜂窝网络', 'Allow cellular data by default'),
+              ),
+              subtitle: Text(
+                syncText(
+                  context,
+                  '离开 Wi-Fi 后仍可继续同步。',
+                  'Keeps syncing after you leave Wi-Fi.',
+                ),
+              ),
               value: settings.defaultAllowCellular,
               onChanged: _busy
                   ? null
@@ -279,7 +363,13 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
             ),
             AdaptiveSwitchListTile(
               widgetKey: const Key('default-requires-charging'),
-              title: const Text('默认仅充电时运行'),
+              title: Text(
+                syncText(
+                  context,
+                  '默认仅充电时运行',
+                  'Run only while charging by default',
+                ),
+              ),
               value: settings.defaultRequiresCharging,
               onChanged: _busy
                   ? null
@@ -291,8 +381,20 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
               widgetKey: isApplePlatform(context)
                   ? const Key('default-cellular-limit')
                   : null,
-              title: const Text('默认蜂窝网络传输上限'),
-              subtitle: const Text('加密内容按单个传输对象限制。'),
+              title: Text(
+                syncText(
+                  context,
+                  '默认蜂窝网络传输上限',
+                  'Default cellular transfer limit',
+                ),
+              ),
+              subtitle: Text(
+                syncText(
+                  context,
+                  '加密内容按单个传输对象限制。',
+                  'Encrypted data is limited per transferred item.',
+                ),
+              ),
               additionalInfo: isApplePlatform(context)
                   ? Text(AppFormat.bytes(currentLimit))
                   : null,
@@ -337,35 +439,64 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       ),
       SliverToBoxAdapter(
         child: AdaptiveListSection(
-          header: '删除保护',
+          header: syncText(context, '删除保护', 'Deletion protection'),
           footer: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 gc == null
-                    ? '完成一次包含有效检查点的同步后才会开始安全清理。'
+                    ? syncText(
+                        context,
+                        '完成一次包含有效检查点的同步后才会开始安全清理。',
+                        'Safe cleanup starts after one sync completes with a valid checkpoint.',
+                      )
                     : gc.state == 'completed'
-                    ? '本次检查 ${gc.candidateCount} 个候选，'
-                          '${gc.eligibleCandidateCount} 个满足清理条件，'
-                          '已删除 ${gc.deletedObjectCount} 个对象。'
+                    ? syncText(
+                        context,
+                        '本次检查 ${gc.candidateCount} 个候选，'
+                            '${gc.eligibleCandidateCount} 个满足清理条件，'
+                            '已删除 ${gc.deletedObjectCount} 个对象。',
+                        'This check found ${gc.candidateCount} candidates, '
+                            '${gc.eligibleCandidateCount} met the cleanup rules, '
+                            'and ${gc.deletedObjectCount} objects were deleted.',
+                      )
                     : gc.skipReason == 'checkpoint-missing'
-                    ? '尚未获得可信检查点，本次安全清理已跳过。'
-                    : '本次安全清理已跳过。',
+                    ? syncText(
+                        context,
+                        '尚未获得可信检查点，本次安全清理已跳过。',
+                        'No trusted checkpoint yet, so this safe cleanup was skipped.',
+                      )
+                    : syncText(
+                        context,
+                        '本次安全清理已跳过。',
+                        'This safe cleanup was skipped.',
+                      ),
                 style: AppType.footnote.copyWith(
                   color: context.appSecondaryLabel,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                '实际清理额外保留 7 天缓冲。任一活跃设备未确认前，远端不会清理；'
-                '长期离线不会自动失效，请在格间设置 → 数据同步 → 已授权设备中移除。',
+                syncText(
+                  context,
+                  '实际清理额外保留 7 天缓冲。任一活跃设备未确认前，远端不会清理；'
+                      '长期离线不会自动失效，请在格间设置 → 数据同步 → 已授权设备中移除。',
+                  'Cleanup keeps an extra 7-day buffer. Nothing is removed remotely '
+                      'while any active device has not confirmed it, and a device that '
+                      'stays offline does not expire on its own: remove it in Velock '
+                      'settings → Data sync → Authorized devices.',
+                ),
                 style: AppType.footnote.copyWith(
                   color: context.appSecondaryLabel,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                'Sync 只负责安全清理，不展示最近删除列表、文件名、路径或恢复按钮。',
+                syncText(
+                  context,
+                  'Sync 只负责安全清理，不展示最近删除列表、文件名、路径或恢复按钮。',
+                  'Sync only runs safe cleanup: it shows no recently deleted list, file names, paths, or restore button.',
+                ),
                 style: AppType.footnote.copyWith(
                   color: context.appSecondaryLabel,
                 ),
@@ -378,31 +509,49 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
                 icon: CupertinoIcons.delete,
                 color: AppTone.ok.color(context),
               ),
-              title: const Text('删除保护'),
-              subtitle: const Text('最近 30 天内的删除可恢复。', maxLines: 2),
+              title: Text(syncText(context, '删除保护', 'Deletion protection')),
+              subtitle: Text(
+                syncText(
+                  context,
+                  '最近 30 天内的删除可恢复。',
+                  'Deletions from the last 30 days can be restored.',
+                ),
+                maxLines: 2,
+              ),
               trailing: AdaptiveStatusBadge(
-                label: '已开启',
+                label: syncText(context, '已开启', 'On'),
                 tone: AppTone.ok,
                 icon: CupertinoIcons.check_mark_circled,
               ),
             ),
             AppFormRow(
-              label: '最近清理',
+              label: syncText(context, '最近清理', 'Last cleanup'),
               value: gc?.completedAt == null
-                  ? '尚未执行'
-                  : AppFormat.relativeTime(gc!.completedAt),
+                  ? syncText(context, '尚未执行', 'Not run yet')
+                  : AppFormat.relativeTime(gc!.completedAt, context: context),
             ),
             AppFormRow(
-              label: '等待确认',
-              value: '${gc?.unackedDeviceCount ?? 0} 台设备',
+              label: syncText(context, '等待确认', 'Waiting for confirmation'),
+              value: syncText(
+                context,
+                '${gc?.unackedDeviceCount ?? 0} 台设备',
+                '${gc?.unackedDeviceCount ?? 0} devices',
+              ),
             ),
-            AppFormRow(label: '活跃设备', value: '${gc?.activeDeviceCount ?? 0} 台'),
+            AppFormRow(
+              label: syncText(context, '活跃设备', 'Active devices'),
+              value: syncText(
+                context,
+                '${gc?.activeDeviceCount ?? 0} 台',
+                '${gc?.activeDeviceCount ?? 0} devices',
+              ),
+            ),
           ],
         ),
       ),
       SliverToBoxAdapter(
         child: AdaptiveListSection(
-          header: '暂存空间',
+          header: syncText(context, '暂存空间', 'Staging space'),
           children: [
             AdaptiveListTile(
               leading: AdaptiveIconBadge(
@@ -414,13 +563,17 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
                 style: AppType.rowTitleStrong,
               ),
               subtitle: Text(
-                '${value.staging.batchCount} 个批次 · ${value.staging.fileCount} 个文件。'
-                '清理会保留可恢复批次，并跳过正在同步的配置。',
-                maxLines: 2,
+                syncText(
+                  context,
+                  '${value.staging.batchCount} 个批次 · ${value.staging.fileCount} 个文件。'
+                      '清理会保留可恢复批次，并跳过正在同步的配置。',
+                  '${value.staging.batchCount} batches · ${value.staging.fileCount} files. '
+                      'Cleanup keeps recoverable batches and skips profiles that are syncing right now.',
+                ),
               ),
               trailing: AppSecondaryButton(
                 key: const Key('cleanup-staging'),
-                label: '清理',
+                label: syncText(context, '清理', 'Clean'),
                 onPressed: _busy ? null : _cleanupStaging,
               ),
             ),
@@ -429,7 +582,7 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       ),
       SliverToBoxAdapter(
         child: AdaptiveListSection(
-          header: '隐私与诊断',
+          header: syncText(context, '隐私与诊断', 'Privacy & Diagnostics'),
           children: [
             AdaptiveListTile(
               leading: AdaptiveIconBadge(
@@ -440,11 +593,15 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
                 ),
                 color: AppColors.success,
               ),
-              title: const Text('隐私保护'),
-              subtitle: const Text(
-                '日志和诊断不包含凭据、密钥、原始路径、配置标识、'
-                '格间业务内容或受保护冲突详情。',
-                maxLines: 3,
+              title: Text(syncText(context, '隐私保护', 'Privacy protection')),
+              subtitle: Text(
+                syncText(
+                  context,
+                  '日志和诊断不包含凭据、密钥、原始路径、配置标识、'
+                      '格间业务内容或受保护冲突详情。',
+                  'Logs and diagnostics contain no credentials, keys, original '
+                      'paths, profile identifiers, Velock data, or protected conflict details.',
+                ),
               ),
             ),
             AdaptiveListTile(
@@ -456,8 +613,16 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
                   cupertino: CupertinoIcons.doc_text,
                 ),
               ),
-              title: const Text('导出脱敏诊断'),
-              subtitle: const Text('仅导出版本、系统能力、聚合计数、稳定错误码和暂存用量。', maxLines: 2),
+              title: Text(
+                syncText(context, '导出脱敏诊断', 'Export sanitized diagnostics'),
+              ),
+              subtitle: Text(
+                syncText(
+                  context,
+                  '仅导出版本、系统能力、聚合计数、稳定错误码和暂存用量。',
+                  'Exports only the version, system capabilities, aggregate counts, stable error codes, and staging usage.',
+                ),
+              ),
               showChevron: true,
               onTap: _busy ? null : _showDiagnostics,
             ),
@@ -466,18 +631,20 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       ),
       SliverToBoxAdapter(
         child: AdaptiveListSection(
-          header: '版本与许可',
+          header: syncText(context, '版本与许可', 'Version & Licenses'),
           children: [
-            const AdaptiveListTile(
-              title: Text('协议版本'),
-              subtitle: Text(syncProtocolDisplayVersion),
-            ),
-            const AdaptiveListTile(
-              title: Text('应用版本'),
-              subtitle: Text(syncAppDisplayVersion),
+            AdaptiveListTile(
+              title: Text(syncText(context, '协议版本', 'Protocol version')),
+              subtitle: const Text(syncProtocolDisplayVersion),
             ),
             AdaptiveListTile(
-              title: const Text('关于与开源许可'),
+              title: Text(syncText(context, '应用版本', 'App version')),
+              subtitle: const Text(syncAppDisplayVersion),
+            ),
+            AdaptiveListTile(
+              title: Text(
+                syncText(context, '关于与开源许可', 'About & open-source licenses'),
+              ),
               showChevron: true,
               onTap: () => showLicensePage(
                 context: context,

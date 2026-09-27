@@ -1,3 +1,5 @@
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile_executor.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_profile_executor.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_service.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile_executor.dart';
@@ -16,11 +18,14 @@ class SyncProfileDispatcherFactory {
     required SyncProfileRepository profiles,
     required SelectedFolderSyncService selectedFolderService,
     required VelockSyncRunner velockService,
+    PlainFolderSyncService? plainFolderService,
   }) => SyncProfileDispatcher(
     profiles: profiles,
     executors: [
       SelectedFolderSyncProfileExecutor(selectedFolderService),
       VelockSyncProfileExecutor(velockService),
+      if (plainFolderService != null)
+        PlainFolderSyncProfileExecutor(plainFolderService),
     ],
   );
 }

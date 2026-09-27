@@ -356,6 +356,11 @@ class DurableConflictResolutionService implements ConflictResolutionService {
           profile: profile,
           conflict: conflict,
         )).artifact,
+        // Plain folder locations keep both versions inside the folder itself;
+        // they never create a durable generic conflict to resolve here.
+        SyncDatasetKind.plainFolder => throw const ConflictResolutionFailure(
+          'conflict-resolution-unsupported',
+        ),
       };
       if (artifact.isEmpty) {
         throw const ConflictResolutionFailure('missing-resolution-artifact');
@@ -434,6 +439,7 @@ class DurableConflictResolutionService implements ConflictResolutionService {
               strategy == ConflictResolutionStrategy.keepBoth,
         SyncDatasetKind.velockManaged =>
           strategy == ConflictResolutionStrategy.openInVelock,
+        SyncDatasetKind.plainFolder => false,
       };
 
   String _errorCode(Object error) => switch (error) {

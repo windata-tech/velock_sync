@@ -6,7 +6,7 @@
     <!-- Granted only when this APK and Velock share a signing certificate. -->
     <uses-permission android:name="tech.windata.velock.permission.SYNC_EXCHANGE"/>
     <application
-        android:label="velock_sync"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

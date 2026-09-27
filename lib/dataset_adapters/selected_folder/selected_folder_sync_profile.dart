@@ -1,7 +1,10 @@
 import 'dart:convert';
 
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_access_authorizer.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_location_guard.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
+import 'package:velock_sync/sync_profiles/model/remote_root_segments.dart'
+    as remote_root_segments;
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
@@ -28,6 +31,7 @@ class SelectedFolderSyncProfile {
         defaultBackgroundCellularMaxTransferBytes,
     this.state = SelectedFolderProfileState.active,
     required this.connectionId,
+    this.remoteRootSegments = const [],
     required this.keyId,
     required this.rootKeyRef,
     required this.signingKeyRef,
@@ -47,6 +51,14 @@ class SelectedFolderSyncProfile {
   final int backgroundCellularMaxTransferBytes;
   final SelectedFolderProfileState state;
   final String connectionId;
+
+  /// Decoded relative WebDAV path segments this file-sync task uses.
+  ///
+  /// Empty keeps the connection root, which is the behavior of every profile
+  /// written before a user explicitly chose a writable folder. The connection
+  /// itself is never rewritten: the scope is applied only when this profile's
+  /// remote client is constructed.
+  final List<String> remoteRootSegments;
   final String keyId;
   final String rootKeyRef;
   final String signingKeyRef;
@@ -75,6 +87,8 @@ class SelectedFolderSyncProfile {
       'rootKeyRef': rootKeyRef,
       'rootPath': rootPath,
       'signingKeyRef': signingKeyRef,
+      // Validation happens here because this stays a const constructor.
+      'remoteRootSegments': canonicalRemoteRootSegments(remoteRootSegments),
     },
     createdAt: createdAt,
   ).toJson();
@@ -103,6 +117,7 @@ class SelectedFolderSyncProfile {
             ? SelectedFolderProfileState.active
             : SelectedFolderProfileState.paused,
         connectionId: envelope.connectionId,
+        remoteRootSegments: _remoteRootSegments(dataset),
         keyId: _string(dataset, 'keyId'),
         rootKeyRef: _string(dataset, 'rootKeyRef'),
         signingKeyRef: _string(dataset, 'signingKeyRef'),
@@ -130,6 +145,7 @@ class SelectedFolderSyncProfile {
         defaultValue: defaultBackgroundCellularMaxTransferBytes,
       ),
       connectionId: _string(value, 'connectionId'),
+      remoteRootSegments: _remoteRootSegments(value),
       keyId: _string(value, 'keyId'),
       rootKeyRef: _string(value, 'rootKeyRef'),
       signingKeyRef: _string(value, 'signingKeyRef'),
@@ -165,12 +181,30 @@ class SelectedFolderSyncProfile {
     return value;
   }
 
+  /// A missing field keeps the connection root, matching every profile written
+  /// before the user could explicitly choose a writable folder.
+  static List<String> _remoteRootSegments(Map<String, dynamic> value) {
+    final field = value['remoteRootSegments'];
+    if (field == null) return const [];
+    if (field is! List || field.any((item) => item is! String)) {
+      throw const FormatException(
+        'Sync profile remote root segments are invalid.',
+      );
+    }
+    return canonicalRemoteRootSegments(field.cast<String>());
+  }
+
+  /// Validates and defensively copies a user-confirmed relocation.
+  static List<String> canonicalRemoteRootSegments(Iterable<String> segments) =>
+      remote_root_segments.canonicalRemoteRootSegments(segments);
+
   SelectedFolderSyncProfile copyWith({
     bool? backgroundEnabled,
     bool? backgroundAllowCellular,
     bool? backgroundRequiresCharging,
     int? backgroundCellularMaxTransferBytes,
     SelectedFolderProfileState? state,
+    List<String>? remoteRootSegments,
   }) => SelectedFolderSyncProfile(
     profileId: profileId,
     datasetId: datasetId,
@@ -189,6 +223,7 @@ class SelectedFolderSyncProfile {
         this.backgroundCellularMaxTransferBytes,
     state: state ?? this.state,
     connectionId: connectionId,
+    remoteRootSegments: remoteRootSegments ?? this.remoteRootSegments,
     keyId: keyId,
     rootKeyRef: rootKeyRef,
     signingKeyRef: signingKeyRef,
@@ -241,6 +276,31 @@ class SelectedFolderSyncProfileRepository {
     }
     await _database.setSyncProfileState(profileId: profileId, state: 'removed');
   }
+
+  /// Explicit user-confirmed relocation of one file-sync task's cloud folder.
+  ///
+  /// Keeps the local folder, keys, trust and run history untouched: only this
+  /// profile's own relative remote scope changes, never the shared connection.
+  /// A running task must finish first, and a profile that changed since the
+  /// page was opened is rejected instead of silently overwritten.
+  Future<SelectedFolderSyncProfile> selectSyncFolder({
+    required SelectedFolderSyncProfile expected,
+    required List<String> segments,
+  }) => withVelockLocationGuard(_database, expected.profileId, () async {
+    final canonical = SelectedFolderSyncProfile.canonicalRemoteRootSegments(
+      segments,
+    );
+    final current = await read(expected.profileId);
+    if (current == null ||
+        current.state != SelectedFolderProfileState.active ||
+        jsonEncode(current.toJson()) != jsonEncode(expected.toJson()) ||
+        await _database.hasRunningSyncRun(expected.profileId)) {
+      throw StateError('Sync task changed or is running. Reopen and try again.');
+    }
+    final updated = current.copyWith(remoteRootSegments: canonical);
+    await save(updated);
+    return updated;
+  });
 
   SelectedFolderSyncProfile? _decode(SyncProfilePayloadRecord record) {
     final decoded = jsonDecode(record.payload);

@@ -23,6 +23,7 @@ enum BackupAction {
   manage,
   resolve,
   reviewHistory,
+  checkStorage,
 }
 
 class BackupPresentation {
@@ -31,12 +32,14 @@ class BackupPresentation {
     this.action, {
     this.errorCode,
     this.completedAt,
+    this.failedAt,
     this.availability,
   });
   final BackupStage stage;
   final BackupAction action;
   final String? errorCode;
   final DateTime? completedAt;
+  final DateTime? failedAt;
   final VelockWizardAvailability? availability;
 
   factory BackupPresentation.from({
@@ -89,8 +92,13 @@ class BackupPresentation {
         BackupStage.needsAttention,
         run?.errorCode == 'remote.velock_history_incomplete'
             ? BackupAction.reviewHistory
+            : _needsStorageCheck(run?.errorCode)
+            ? BackupAction.checkStorage
             : BackupAction.manage,
         errorCode: run?.errorCode,
+        failedAt: run?.state == 'failed'
+            ? run?.completedAt ?? run?.startedAt
+            : null,
       );
     }
     if (state == SyncProfileState.paused) {
@@ -109,10 +117,13 @@ class BackupPresentation {
         BackupStage.needsAttention,
         code == 'remote.velock_history_incomplete'
             ? BackupAction.reviewHistory
+            : _needsStorageCheck(code)
+            ? BackupAction.checkStorage
             : needsStorage
             ? BackupAction.manage
             : BackupAction.transfer,
         errorCode: code,
+        failedAt: run?.completedAt ?? run?.startedAt,
       );
     }
     if (pendingIncoming > 0) {
@@ -142,3 +153,7 @@ class BackupPresentation {
     );
   }
 }
+
+bool _needsStorageCheck(String? code) =>
+    code == 'provider.webdav.atomic_create_unsupported' ||
+    code == 'provider.webdav.collection_not_writable';

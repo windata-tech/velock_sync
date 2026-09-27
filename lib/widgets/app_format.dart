@@ -108,22 +108,29 @@ abstract final class AppFormat {
     if (normalized == 'provider.webdav.atomic_create_unsupported') {
       return _optionalSyncText(
         context,
-        '这个云端位置不能安全保存备份，已停止传输以保护已有数据。请检查云端服务设置或联系服务提供方。',
-        'This cloud location cannot safely save backups. Transfers stopped to protect existing data. Check storage settings or contact the provider.',
+        '上次传输未通过云端安全写入检查，已停止以保护已有数据。请检查此任务的保存位置和服务设置。',
+        'The last transfer failed the cloud safe-write check and stopped to protect existing data. Check this task’s location and storage settings.',
       );
     }
     if (normalized == 'provider.webdav.collection_not_writable') {
-      return _optionalSyncText(
-        context,
-        '当前选中的位置不能新建备份文件夹。请打开共享文件夹，选择一个有写入权限的实际文件夹，不要只选 NAS 入口。',
-        'The selected location cannot create a backup folder. Open the shared folder and choose an actual folder with write access; do not select only the NAS entry point.',
-      );
+      return uncreatableFolderMessage(context);
     }
     if (normalized == 'remote.velock_history_incomplete') {
       return _optionalSyncText(
         context,
         '远端缺少历史备份，同步未完成。请连接原来的完整备份目录；不要删除旧备份或重置同步数据。',
         'Remote backup history is incomplete. Reconnect the original complete backup folder. Do not delete the old backup or reset sync data.',
+      );
+    }
+    if (normalized.contains('507') ||
+        normalized.contains('quota') ||
+        normalized.contains('insufficient_storage') ||
+        normalized.contains('no_space') ||
+        normalized.contains('out_of_space')) {
+      return _optionalSyncText(
+        context,
+        '云端空间不足，请清理云端文件或扩容后重试。',
+        "The cloud drive is out of space. Free up space or add more, then try again.",
       );
     }
     if (normalized.contains('401') || normalized.contains('unauthor')) {
@@ -159,6 +166,13 @@ abstract final class AppFormat {
         context,
         '连接超时，请检查网络后重试。',
         "Connection timed out. Check the network and retry.",
+      );
+    }
+    if (normalized.contains('offline') || normalized.contains('no_network')) {
+      return _optionalSyncText(
+        context,
+        '没有网络连接，连上网络后再试。',
+        "There is no network connection. Connect to the internet and try again.",
       );
     }
     if (normalized.contains('network') ||
@@ -267,6 +281,18 @@ extension AppFormatContext on BuildContext {
   String relativeTime(DateTime? value) => AppFormat.relativeTime(value);
   String bytesLabel(num? value) => AppFormat.bytes(value);
 }
+
+/// One shared, provider-neutral sentence for a location that cannot hold files.
+///
+/// The app is used with many WebDAV servers (NAS, Nextcloud, cloud drives,
+/// gateways such as FN Connect). Naming one vendor's "shared folder" or entry
+/// point confuses everyone else, so this describes only what the user must find:
+/// a real folder whose account may create files in it.
+String uncreatableFolderMessage(BuildContext? context) => _optionalSyncText(
+  context,
+  '当前选中的位置无法创建文件夹。请进入服务里一个真实存在、且这个账号有权限写入的文件夹；只读入口、共享入口或聚合视图都不行。',
+  'The selected location cannot create folders. Open a real folder in the service that this account may write to; read-only entry points, share entries and aggregate views will not work.',
+);
 
 // Omitted context preserves the legacy Chinese-only formatter API.
 String _optionalSyncText(BuildContext? context, String zh, String en) =>

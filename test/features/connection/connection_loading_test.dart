@@ -188,7 +188,10 @@ void main() {
             await tester.pumpAndSettle();
             expect(find.text('连接说明'), findsOneWidget);
             expect(find.text('这些是连接方式的技术说明，不是当前服务器的检测结果。'), findsOneWidget);
-            expect(find.text('断点续传取决于服务器能力；当前适配器会安全重试不可变对象。'), findsOneWidget);
+            expect(
+              find.textContaining('不支持断点续传：大文件中断后要从头重新上传'),
+              findsOneWidget,
+            );
             expect(browser.goCalls, isEmpty);
             await tester.ensureVisible(find.text('关闭'));
             await tester.pumpAndSettle();

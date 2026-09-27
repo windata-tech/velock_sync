@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher label. Without this the home screen, Recents and Settings show
+         the package name ("velock_sync") while iOS shows "Velock Sync". -->
+    <string name="app_name">Velock Sync</string>
+</resources>

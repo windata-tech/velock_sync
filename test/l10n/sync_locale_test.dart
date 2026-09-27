@@ -10,6 +10,8 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:velock_sync/core/app_repository.dart';
 import 'package:velock_sync/core/local_data_manager.dart';
 import 'package:velock_sync/core/state/common.dart';
+import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/sync_profiles/ui/new_sync_profile.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
@@ -17,6 +19,7 @@ import 'package:velock_sync/l10n/sync_language.dart';
 import 'package:velock_sync/l10n/sync_language_setting.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/execution/sync_profile_dispatcher.dart';
+import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/app_format.dart';
@@ -213,6 +216,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Back up Velock data'), findsOneWidget);
       expect(find.byKey(const Key('new-velock-backup')), findsOneWidget);
+      // Scope note: this loop only covers the two screens mounted above, and
+      // `NewSyncProfile` is not reachable from the running app. The guard for
+      // the pages a user really opens (settings, activity, connection help,
+      // connection detail, Baidu token) lives in
+      // `test/l10n/sync_english_pages_test.dart`.
       for (final text in tester.widgetList<Text>(find.byType(Text))) {
         expect(RegExp(r'[\u4e00-\u9fff]').hasMatch(text.data ?? ''), isFalse);
       }
@@ -279,42 +287,102 @@ void main() {
     },
   );
 
-  testWidgets('sync progress uses English while preserving its identifier', (
-    tester,
-  ) async {
-    final pending = Completer<SyncProfileDispatchResult>();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          syncLanguageBootstrapProvider.overrideWithValue(SyncLanguage.english),
-          syncProfileRunServiceProvider.overrideWithValue(_Run(pending.future)),
-        ],
-        child: _LanguageHost(
-          child: Consumer(
-            builder: (context, ref, _) => Scaffold(
-              body: TextButton(
-                onPressed: () => runSyncWithProgress(context, ref, 'profile'),
-                child: const Text('Run'),
-              ),
+  testWidgets(
+    'pending transfer shows English inline progress on the stable primary action',
+    (tester) async {
+      final pending = Completer<SyncProfileDispatchResult>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            syncLanguageBootstrapProvider.overrideWithValue(
+              SyncLanguage.english,
             ),
-          ),
+            syncProfileRunServiceProvider.overrideWithValue(
+              _Run(pending.future),
+            ),
+          ],
+          child: const _LanguageHost(child: _InlineProgressHost()),
         ),
-      ),
-    );
-    await tester.tap(find.text('Run'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(find.byKey(const Key('sync-progress-dialog')), findsOneWidget);
-    expect(find.text('Syncing…'), findsOneWidget);
-    pending.complete(
-      const SyncProfileDispatchResult(
-        profileId: 'profile',
-        status: SyncProfileDispatchStatus.completed,
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
-  });
+      );
+      await tester.pumpAndSettle();
+
+      final primary = find.byKey(const Key('backup-primary-action'));
+      expect(primary, findsOneWidget);
+      expect(find.text('Back up now'), findsOneWidget);
+
+      await tester.tap(primary);
+      // The inline spinner animates forever, so pump explicit frames while the
+      // transfer state must be visible.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // The identifier stays stable while the in-flight state is localized.
+      expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
+      expect(primary, findsOneWidget);
+      expect(find.text('Transferring your data'), findsOneWidget);
+      expect(find.text('Transferring…'), findsOneWidget);
+      expect(tester.widget<BackupActionButton>(primary).busy, isTrue);
+      expect(
+        find.descendant(
+          of: primary,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+
+      pending.complete(
+        const SyncProfileDispatchResult(
+          profileId: 'profile',
+          status: SyncProfileDispatchStatus.completed,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // A finished run shows no dialog, and the action is usable again.
+      expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
+      expect(find.text('Transferring your data'), findsNothing);
+      expect(find.text('Back up now'), findsOneWidget);
+      expect(tester.widget<BackupActionButton>(primary).busy, isFalse);
+      expect(tester.widget<BackupActionButton>(primary).onPressed, isNotNull);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+/// Drives the shared runner exactly like the home/detail screens do: the status
+/// card is busy for as long as the run is in flight, with no modal dialog.
+class _InlineProgressHost extends ConsumerStatefulWidget {
+  const _InlineProgressHost();
+  @override
+  ConsumerState<_InlineProgressHost> createState() => _InlineProgressHostState();
+}
+
+class _InlineProgressHostState extends ConsumerState<_InlineProgressHost> {
+  bool _running = false;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: ListView(
+      children: [
+        BackupStatusCard(
+          name: 'Velock',
+          presentation: BackupPresentation.from(
+            state: SyncProfileState.active,
+            running: _running,
+          ),
+          onAction: () async {
+            setState(() => _running = true);
+            try {
+              await runSyncWithProgress(context, ref, 'profile');
+            } finally {
+              if (mounted) setState(() => _running = false);
+            }
+          },
+        ),
+      ],
+    ),
+  );
 }
 
 class _Run implements SyncProfileRunService {

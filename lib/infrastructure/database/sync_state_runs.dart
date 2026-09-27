@@ -195,6 +195,43 @@ final class RunQueries {
     return rows.isNotEmpty;
   }
 
+  /// Closes every run this process cannot still own.
+  ///
+  /// A run row is written as `running` before the transfer starts and closed
+  /// when it ends. If the process is killed in between (system suspension, the
+  /// user swiping the app away, an out-of-memory kill) nothing closes it, and
+  /// an orphaned row poisons the profile for ever: the card claims it is still
+  /// syncing, and editing or deleting the location is refused while
+  /// `hasRunningSyncRun` stays true. Called once at startup, before any surface
+  /// reads the database, because at that moment this process cannot own a run
+  /// that a previous process left behind.
+  Future<int> failInterruptedSyncRuns({
+    String errorCode = 'sync.interrupted',
+    DateTime? completedAt,
+  }) async {
+    if (errorCode.isEmpty) {
+      throw ArgumentError.value(errorCode, 'errorCode', 'must not be empty');
+    }
+    final now = (completedAt ?? DateTime.now()).toUtc();
+    final updated = db.select(
+      'UPDATE sync_runs SET state = ?, completed_at = ?, error_code = ?, '
+      'error_category = ? WHERE state = ? RETURNING run_id',
+      [
+        'failed',
+        now.millisecondsSinceEpoch,
+        errorCode,
+        'interrupted',
+        'running',
+      ],
+    );
+    if (updated.isNotEmpty) {
+      // The matching leases belong to the dead process as well; leaving them
+      // would only add a five minute wait before the next run may start.
+      db.execute('DELETE FROM profile_locks');
+    }
+    return updated.length;
+  }
+
   /// Closes runs that were interrupted by process termination before their
   /// normal completion callback ran. This is used only for an explicit local
   /// profile removal, so a removed profile cannot leave a permanent "running"

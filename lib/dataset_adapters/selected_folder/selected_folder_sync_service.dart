@@ -10,7 +10,9 @@ import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_inc
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_scanner.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_storage.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_location_guard.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/infrastructure/secure_storage/device_signing_key_store.dart';
@@ -86,7 +88,19 @@ class SelectedFolderSyncService {
 
   /// Inspects only the remote root state needed for a first-sync confirmation.
   /// The result has no remote names, paths, credentials, or content.
-  Future<InitialSyncAssessment> inspectInitialSync(String profileId) async {
+  ///
+  /// The same location guard the folder-update path uses keeps the inspected
+  /// scope from being relocated between the read and the remote request.
+  Future<InitialSyncAssessment> inspectInitialSync(String profileId) =>
+      withVelockLocationGuard(
+        _database,
+        profileId,
+        () => _inspectInitialSyncUnlocked(profileId),
+      );
+
+  Future<InitialSyncAssessment> _inspectInitialSyncUnlocked(
+    String profileId,
+  ) async {
     final profile = await _profiles.read(profileId);
     if (profile == null) {
       throw StateError('Selected Folder sync profile not found.');
@@ -102,7 +116,10 @@ class SelectedFolderSyncService {
     }
     return InitialSyncAssessor().assess(
       vaultId: profile.vaultId,
-      remote: await _remoteForConnection(connection.protocol),
+      remote: await _remoteForConnection(
+        connection.protocol,
+        profile.remoteRootSegments,
+      ),
     );
   }
 
@@ -110,6 +127,20 @@ class SelectedFolderSyncService {
     String profileId, {
     BatchLimits uploadLimits = const BatchLimits(),
     DownloadLimits downloadLimits = const DownloadLimits(),
+  }) => withVelockLocationGuard(
+    _database,
+    profileId,
+    () => _runUnlocked(
+      profileId,
+      uploadLimits: uploadLimits,
+      downloadLimits: downloadLimits,
+    ),
+  );
+
+  Future<SyncProfileRunResult> _runUnlocked(
+    String profileId, {
+    required BatchLimits uploadLimits,
+    required DownloadLimits downloadLimits,
   }) async {
     final profile = await _profiles.read(profileId);
     if (profile == null) {
@@ -131,7 +162,10 @@ class SelectedFolderSyncService {
     if (rootKey == null || signingKey == null) {
       throw StateError('Selected Folder profile key material is unavailable.');
     }
-    final remote = await _remoteForConnection(connection.protocol);
+    final remote = await _remoteForConnection(
+      connection.protocol,
+      profile.remoteRootSegments,
+    );
     final keyDeriver = GenericVaultKeyDeriver(rootKey);
     final blobCipher = GenericVaultBlobCipher(
       keyDeriver: keyDeriver,
@@ -205,15 +239,23 @@ class SelectedFolderSyncService {
     }
   }
 
+  /// Applies this profile's own remote scope without editing the connection.
   Future<RemoteObjectStore> _remoteForConnection(
     ProtocolModel protocol,
-  ) async => switch (protocol) {
-    WebDavProtocolModel(:final credentialRef) => _remoteFactory(
-      protocol: protocol,
-      password: await _connections.readWebDavPassword(credentialRef),
-    ),
-    OAuthProtocolModel() => _connections.createOAuthRemote(protocol),
-  };
+    List<String> remoteRootSegments,
+  ) async {
+    final scopedProtocol = RemoteObjectStoreFactory.scopeProtocol(
+      protocol,
+      remoteRootSegments,
+    );
+    return switch (scopedProtocol) {
+      WebDavProtocolModel(:final credentialRef) => _remoteFactory(
+        protocol: scopedProtocol,
+        password: await _connections.readWebDavPassword(credentialRef),
+      ),
+      OAuthProtocolModel() => _connections.createOAuthRemote(scopedProtocol),
+    };
+  }
 
   Future<_SelectedFolderStorageSession> _storageFor(
     SelectedFolderSyncProfile profile,

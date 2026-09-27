@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:velock_sync/core/local_data_manager.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_service.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
@@ -320,6 +322,9 @@ Future<bool> runEnabledBackgroundProfiles({
     if (!globalSettings.backgroundEnabled) return true;
     await SyncStateDatabase.initialize();
     final database = SyncStateDatabase.instance;
+    // This engine gets a fresh process as well: a run left behind by a killed
+    // process must not block the profiles this task is about to consider.
+    await database.failInterruptedSyncRuns();
     final supportDirectory = await getApplicationSupportDirectory();
     final connections = ConnectionRepository(
       LocalDataManager.instance,
@@ -354,6 +359,11 @@ Future<bool> runEnabledBackgroundProfiles({
         profiles: profiles,
         selectedFolderService: selectedFolderService,
         velockService: velockService,
+        plainFolderService: PlainFolderSyncService(
+          database: database,
+          profiles: PlainFolderSyncProfileRepository(database),
+          connections: connections,
+        ),
       ),
       networkPolicy: networkPolicy ?? ConnectivityBackgroundNetworkPolicy(),
       powerPolicy: powerPolicy ?? PlatformBackgroundPowerPolicy(),

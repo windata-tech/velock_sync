@@ -7,6 +7,7 @@ import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/providers/webdav/webdav_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
+import 'package:velock_sync/sync_core/model/sync_failure.dart';
 
 import '../contracts/object_store_contract.dart';
 import '../contracts/object_store_contract_fixture.dart';
@@ -42,6 +43,149 @@ void main() {
         expect(adapter.lastOptions, isNull);
       },
     );
+
+    test(
+      'marks PROPFIND collection entries as directories and files as not',
+      () async {
+        adapter.response = ResponseBody.fromString(
+          '''<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+          <d:response><d:href>/root/mirror/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
+          <d:response><d:href>/root/mirror/photos/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype><d:getlastmodified>Mon, 14 Jul 2026 12:00:00 GMT</d:getlastmodified></d:prop></d:propstat></d:response>
+          <d:response><d:href>/root/mirror/notes.txt</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>12</d:getcontentlength></d:prop></d:propstat></d:response>
+          <d:response><d:href>/root/mirror/plain.bin</d:href><d:propstat><d:prop><d:getcontentlength>3</d:getcontentlength></d:prop></d:propstat></d:response>
+        </d:multistatus>''',
+          207,
+        );
+
+        final page = await store.list(prefix: 'mirror');
+
+        expect(
+          page.items.map((item) => item.logicalKey),
+          ['mirror/notes.txt', 'mirror/photos', 'mirror/plain.bin'],
+        );
+        final photos = page.items.singleWhere(
+          (item) => item.logicalKey == 'mirror/photos',
+        );
+        expect(photos.isDirectory, isTrue);
+        expect(
+          page.items
+              .where((item) => item.logicalKey != 'mirror/photos')
+              .map((item) => item.isDirectory),
+          everyElement(isFalse),
+        );
+      },
+    );
+
+    test('creates one collection per MKCOL without creating parents', () async {
+      adapter.mkcolHandler = (options) async {
+        expect(options.headers['Authorization'], startsWith('Basic '));
+        return ResponseBody.fromBytes(const [], 201);
+      };
+
+      await store.createCollection('mirror/photos');
+
+      expect(
+        adapter.requests
+            .map((request) => '${request.method} ${request.uri.path}')
+            .toList(),
+        ['MKCOL /root/mirror/photos'],
+      );
+      expect(adapter.lastOptions!.followRedirects, isFalse);
+    });
+
+    test('rejects a cancelled collection creation before MKCOL', () async {
+      final cancellation = RemoteOperationCancellation()..cancel();
+
+      await expectLater(
+        store.createCollection('mirror/photos', cancellation: cancellation),
+        throwsA(isA<RemoteOperationCancelledException>()),
+      );
+      expect(adapter.lastOptions, isNull);
+    });
+
+    for (final statusCode in [405, 409]) {
+      test(
+        'maps MKCOL $statusCode to a not-writable collection failure',
+        () async {
+          adapter.mkcolHandler = (options) async =>
+              ResponseBody.fromBytes(const [], statusCode);
+
+          await expectLater(
+            store.createCollection('mirror/photos'),
+            throwsA(
+              isA<SyncFailureException>()
+                  .having(
+                    (error) => error.syncFailure.errorCode,
+                    'code',
+                    'provider.webdav.collection_not_writable',
+                  )
+                  .having(
+                    (error) => error.syncFailure.providerStatusCode,
+                    'providerStatusCode',
+                    statusCode,
+                  )
+                  .having(
+                    (error) => error.syncFailure.retryable,
+                    'retryable',
+                    isTrue,
+                  ),
+            ),
+          );
+        },
+      );
+    }
+
+    test('does not follow a redirected MKCOL as success', () async {
+      adapter.mkcolHandler = (options) async => ResponseBody.fromBytes(
+        const [],
+        301,
+        headers: const {
+          'location': ['https://other.example.test/mirror/photos'],
+        },
+      );
+
+      await expectLater(
+        store.createCollection('mirror/photos'),
+        throwsA(
+          isA<ProviderRequestException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            301,
+          ),
+        ),
+      );
+    });
+
+    for (final statusCode in [200, 202, 204, 404]) {
+      test('accepts DELETE of a collection answered with $statusCode', () async {
+        adapter.response = ResponseBody.fromBytes(const [], statusCode);
+
+        await store.delete('mirror/photos');
+
+        expect(adapter.lastOptions!.method, 'DELETE');
+        expect(adapter.lastOptions!.uri.path, '/root/mirror/photos');
+      });
+    }
+
+    test('does not treat a 207 DELETE report as success', () async {
+      adapter.response = ResponseBody.fromString(
+        '''<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+          <d:response><d:href>/root/mirror/photos/a.jpg</d:href><d:status>HTTP/1.1 403 Forbidden</d:status></d:response>
+        </d:multistatus>''',
+        207,
+      );
+
+      await expectLater(
+        store.delete('mirror/photos'),
+        throwsA(
+          isA<ProviderRequestException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            207,
+          ),
+        ),
+      );
+    });
 
     test(
       'maps stat to HEAD without exposing a credential in the logical key',
@@ -116,6 +260,45 @@ void main() {
       expect(
         page.items.single.logicalKey,
         'velock-sync/v1/vault/devices/source/commits/00000000000000000001-batch.commit',
+      );
+    });
+
+    test('lists the store root when the caller asks for an empty prefix', () async {
+      adapter.response = ResponseBody.fromString(
+        '''<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+          <d:response><d:href>/root/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
+          <d:response><d:href>/root/photos/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
+          <d:response><d:href>/root/notes.txt</d:href><d:propstat><d:prop><d:getcontentlength>5</d:getcontentlength><d:resourcetype/></d:prop></d:propstat></d:response>
+        </d:multistatus>''',
+        207,
+      );
+
+      final page = await store.list(prefix: '');
+
+      // The root request must hit the base collection itself, not a child path.
+      expect(adapter.lastOptions!.uri.path, '/root/');
+      expect(
+        page.items.map((item) => item.logicalKey),
+        containsAll(<String>['photos', 'notes.txt']),
+      );
+      expect(
+        page.items.firstWhere((item) => item.logicalKey == 'photos').isDirectory,
+        isTrue,
+      );
+      expect(
+        page.items.firstWhere((item) => item.logicalKey == 'notes.txt').isDirectory,
+        isFalse,
+      );
+    });
+
+    test('still rejects an empty key outside an explicit root listing', () async {
+      // read() is a stream generator, so its ArgumentError arrives as a stream
+      // error; put() and stat() fail synchronously.
+      await expectLater(store.read('').drain<void>(), throwsArgumentError);
+      await expectLater(store.stat(''), throwsArgumentError);
+      expect(
+        () => store.put('', Stream.value(<int>[1]), contentLength: 1),
+        throwsArgumentError,
       );
     });
 

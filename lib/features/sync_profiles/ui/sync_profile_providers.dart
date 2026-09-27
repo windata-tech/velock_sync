@@ -12,6 +12,8 @@ import 'package:uuid/uuid.dart';
 import 'package:velock_sync/core/app_repository.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_service.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_pairing_control_channel.dart';
@@ -394,6 +396,11 @@ class _ForegroundSyncProfileRunService implements SyncProfileRunService {
       profiles: _profiles,
       selectedFolderService: selectedFolderService,
       velockService: velockService,
+      plainFolderService: PlainFolderSyncService(
+        database: _database,
+        profiles: PlainFolderSyncProfileRepository(_database),
+        connections: connections,
+      ),
     );
   }
 }

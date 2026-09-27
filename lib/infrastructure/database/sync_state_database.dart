@@ -20,6 +20,8 @@ import 'package:velock_sync/infrastructure/database/sync_state_transfers.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_locks.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_batches.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_folder_scan.dart';
+import 'package:velock_sync/infrastructure/database/sync_state_mirror.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_conflicts.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_devices.dart';
 
@@ -30,8 +32,9 @@ import 'package:velock_sync/infrastructure/database/sync_state_devices.dart';
 /// (`sync_state_*.dart`); every public method keeps its original signature
 /// so callers are unaffected by the split.
 class SyncStateDatabase {
-  SyncStateDatabase._(this._database)
-    : _connections = ConnectionQueries(_database),
+  SyncStateDatabase._(this._database, {Object? executionScopeKey})
+    : executionScopeKey = executionScopeKey ?? Object(),
+      _connections = ConnectionQueries(_database),
       _profiles = ProfileQueries(_database),
       _runs = RunQueries(_database),
       _transfers = TransferQueries(_database),
@@ -39,10 +42,15 @@ class SyncStateDatabase {
       _batches = BatchQueries(_database),
       _folderScan = FolderScanQueries(_database),
       _conflicts = ConflictQueries(_database),
-      _devices = DeviceQueries(_database);
+      _devices = DeviceQueries(_database),
+      _mirror = MirrorQueries(_database);
   static late SyncStateDatabase _instance;
 
   final Database _database;
+
+  /// Same on-disk DB => same in-isolate dispatch scope. In-memory DBs stay
+  /// isolated, even if tests or profiles happen to reuse the same IDs.
+  final Object executionScopeKey;
 
   final ConnectionQueries _connections;
   final ProfileQueries _profiles;
@@ -53,6 +61,7 @@ class SyncStateDatabase {
   final FolderScanQueries _folderScan;
   final ConflictQueries _conflicts;
   final DeviceQueries _devices;
+  final MirrorQueries _mirror;
 
   static SyncStateDatabase get instance => _instance;
 
@@ -65,7 +74,10 @@ class SyncStateDatabase {
   static Future<SyncStateDatabase> open(File file) async {
     await file.parent.create(recursive: true);
     final database = sqlite3.open(file.path);
-    final state = SyncStateDatabase._(database);
+    final state = SyncStateDatabase._(
+      database,
+      executionScopeKey: p.normalize(file.absolute.path),
+    );
     state._migrate();
     return state;
   }
@@ -215,6 +227,11 @@ class SyncStateDatabase {
   /// normal completion callback ran. This is used only for an explicit local
   /// profile removal, so a removed profile cannot leave a permanent "running"
   /// record that blocks future cleanup.
+  /// Closes runs left `running` by a previous process (see the mixed-in run
+  /// store). Startup calls this before the first read.
+  Future<int> failInterruptedSyncRuns({String errorCode = 'sync.interrupted'}) =>
+      _runs.failInterruptedSyncRuns(errorCode: errorCode);
+
   Future<int> failRunningSyncRunsForProfile({
     required String profileId,
     required String errorCode,
@@ -730,6 +747,71 @@ class SyncStateDatabase {
   }) async => _devices.readTrustedDevicePublicKeys(vaultId: vaultId);
 
   Future<void> close() async => _database.close();
+
+  // --- Plain folder mirror (unencrypted) state -----------------------------
+
+  Future<Map<String, MirrorBaselineEntry>> readMirrorEntries(
+    String profileId,
+  ) async => _mirror.readMirrorEntries(profileId);
+
+  Future<void> upsertMirrorEntries(
+    String profileId,
+    Iterable<MirrorBaselineEntry> entries,
+  ) async => _mirror.upsertMirrorEntries(profileId, entries);
+
+  Future<void> deleteMirrorEntries(
+    String profileId,
+    Iterable<String> relativePaths,
+  ) async => _mirror.deleteMirrorEntries(profileId, relativePaths);
+
+  Future<void> clearMirrorEntries(String profileId) async =>
+      _mirror.clearMirrorEntries(profileId);
+
+  /// Saves a relocated plain folder location and drops the mirror state of the
+  /// old binding in one transaction.
+  Future<void> relocateMirrorProfile({
+    required String profileId,
+    required String datasetId,
+    required String targetId,
+    required String state,
+    required String payload,
+    bool resetBaseline = true,
+  }) async => _mirror.relocateMirrorProfile(
+    profileId: profileId,
+    datasetId: datasetId,
+    targetId: targetId,
+    state: state,
+    payload: payload,
+    resetBaseline: resetBaseline,
+  );
+
+  Future<void> recordMirrorConflicts(
+    String profileId,
+    Iterable<MirrorPlannedConflict> conflicts, {
+    DateTime? detectedAt,
+  }) async => _mirror.recordMirrorConflicts(
+    profileId,
+    conflicts,
+    detectedAt ?? DateTime.now().toUtc(),
+  );
+
+  Future<List<MirrorConflictRecord>> readMirrorConflicts(
+    String profileId, {
+    int limit = 50,
+  }) async => _mirror.readMirrorConflicts(profileId, limit: limit);
+
+  Future<int> countMirrorConflicts(String profileId) async =>
+      _mirror.countMirrorConflicts(profileId);
+
+  /// Keeps the informational conflict log bounded for a long-lived location.
+  Future<void> trimMirrorConflicts(String profileId, {int keep = 200}) async =>
+      _mirror.trimMirrorConflicts(profileId, keep: keep);
+
+  Future<void> saveMirrorRunStats(MirrorRunStats stats) async =>
+      _mirror.saveMirrorRunStats(stats);
+
+  Future<MirrorRunStats?> readLatestMirrorRunStats(String profileId) async =>
+      _mirror.readLatestMirrorRunStats(profileId);
 
   void _migrate() => migrateSyncStateSchema(_database, kSyncStateSchemaVersion);
 }

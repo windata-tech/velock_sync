@@ -14,6 +14,8 @@ import 'package:velock_sync/widgets/adaptive_dialogs.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
 import 'backup_widgets.dart';
+import 'velock_backup_location.dart';
+import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace_shared.dart';
 
 Future<void> showBackupHistoryHelp(
   BuildContext context,
@@ -24,120 +26,231 @@ Future<void> showBackupHistoryHelp(
       : MaterialPageRoute(builder: (_) => BackupHistoryHelp(profile: profile)),
 );
 
-/// Explanation and read-only inspection, NOT a repair or migration operation.
-/// Never clears failure state, changes a destination, reconnects or starts a run.
-class BackupHistoryHelp extends ConsumerWidget {
+/// Viewing and browsing are read-only; relocation requires explicit confirmation.
+class BackupHistoryHelp extends ConsumerStatefulWidget {
   const BackupHistoryHelp({super.key, required this.profile});
   final SyncProfileEnvelope profile;
+  @override
+  ConsumerState<BackupHistoryHelp> createState() => _BackupHistoryHelpState();
+}
+
+class _BackupHistoryHelpState extends ConsumerState<BackupHistoryHelp> {
+  late SyncProfileEnvelope profile = widget.profile;
+  bool busy = false;
+  bool locationSaved = false;
+  bool backupRequested = false;
+  String? feedback;
+
+  String pathFor(ConnectionModel connection, List<String> segments) {
+    final scoped = RemoteObjectStoreFactory.scopeProtocol(
+      connection.protocol,
+      segments,
+    );
+    return switch (scoped) {
+      WebDavProtocolModel() =>
+        '/${RemoteObjectStoreFactory.webDavUri(scoped).pathSegments.where((s) => s.isNotEmpty).join('/')}',
+      OAuthProtocolModel() => syncText(
+        context,
+        '此连接中已选择的云端文件夹',
+        'The cloud folder selected for this connection',
+      ),
+    };
+  }
+
+  Future<void> selectFolder(ConnectionModel connection) async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      feedback = null;
+    });
+    try {
+      final result = await changeVelockBackupLocation(
+        context,
+        ref,
+        profile: profile,
+        connection: connection,
+      );
+      if (!mounted) return;
+      final updated = result.profile;
+      if (updated == null) {
+        if (result.saveFailed) {
+          setState(() {
+            feedback = syncText(
+              context,
+              '目录未保存。请确认备份没有正在运行，再试一次。',
+              'Folder not saved. Make sure no backup is running, then try again.',
+            );
+          });
+        }
+        return;
+      }
+      setState(() {
+        profile = updated;
+        locationSaved = true;
+        backupRequested = false;
+      });
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> startBackup() async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      backupRequested = true;
+      feedback = null;
+    });
+    try {
+      final result = await runSyncWithProgress(context, ref, profile.profileId);
+      if (mounted && result != null) await presentSyncResult(context, result);
+    } on Object {
+      if (mounted) {
+        setState(() {
+          feedback = syncText(
+            context,
+            '本次备份未完成，请返回查看备份状态。',
+            'Backup did not complete. Go back to view its status.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final connection = ref.watch(
       connectionDetailProvider(profile.connectionId),
     );
-    return AdaptiveScaffold(
-      title: syncText(context, '备份为什么停止', 'Why backup stopped'),
-      body: Material(
-        type: MaterialType.transparency,
-        child: ListView(
-          key: const Key('backup-history-help'),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          children: [
-            BackupCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    syncText(
-                      context,
-                      '需要以前的备份才能继续',
-                      'Earlier backup records are needed',
-                    ),
-                    style: const TextStyle(
-                      fontSize: 23,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    syncText(
-                      context,
-                      '当前云端位置缺少这份备份以前的记录。Sync 已停止本次备份，不能把它当作成功。',
-                      'Earlier records for this backup are missing from the cloud location. Sync stopped this backup rather than reporting success.',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    syncText(
-                      context,
-                      '这不是让你重新授权，也与后台同步开关无关。',
-                      'This is not an authorization issue or a background-sync setting.',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            BackupCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    syncText(context, '先核对保存位置', 'Check the saved location'),
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  connection.when(
-                    loading: () => Text(
-                      syncText(context, '正在读取保存位置…', 'Loading saved location…'),
-                    ),
-                    error: (_, _) => Text(
+    return PopScope(
+      canPop: !busy,
+      child: AdaptiveScaffold(
+        title: syncText(context, '找回备份位置', 'Find your backup'),
+        body: Material(
+          type: MaterialType.transparency,
+          child: ListView(
+            key: const Key('backup-history-help'),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            children: [
+              BackupCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       syncText(
                         context,
-                        '暂时无法读取保存位置。返回后刷新再试。',
-                        'The saved location could not be loaded. Go back and refresh.',
+                        locationSaved ? '备份位置已更新' : '请选择原来的备份文件夹',
+                        locationSaved
+                            ? 'Backup location updated'
+                            : 'Select your original backup folder',
+                      ),
+                      style: const TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    data: (value) => value == null
-                        ? Text(
-                            syncText(
-                              context,
-                              '当前连接已不存在，无法核对保存位置。',
-                              'This connection no longer exists, so its location cannot be checked.',
-                            ),
-                          )
-                        : _location(context, value),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Text(
+                      syncText(
+                        context,
+                        locationSaved
+                            ? (backupRequested
+                                  ? '位置已保存。备份结果请返回备份页查看。'
+                                  : '本次只保存目录，尚未开始备份。')
+                            : '上次备份提示缺少旧记录。请核对原目录；确认目录不会启动同步。',
+                        locationSaved
+                            ? (backupRequested
+                                  ? 'Location saved. Go back to view the backup result.'
+                                  : 'Only the folder was saved. Backup has not started.')
+                            : 'The last backup reported missing history. Check the original folder; confirming it will not start sync.',
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            BackupCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    syncText(
-                      context,
-                      '如果你刚换了文件夹',
-                      'If you recently changed folders',
+              BackupCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      syncText(context, '当前备份位置', 'Current backup location'),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 12),
+                    connection.when(
+                      loading: () => Text(
+                        syncText(
+                          context,
+                          '正在读取保存位置…',
+                          'Loading saved location…',
+                        ),
+                      ),
+                      error: (_, _) => Text(
+                        syncText(
+                          context,
+                          '暂时无法读取保存位置。返回后刷新再试。',
+                          'Could not load the location. Go back and refresh.',
+                        ),
+                      ),
+                      data: (value) => value == null
+                          ? Text(
+                              syncText(
+                                context,
+                                '当前连接已不存在，无法核对保存位置。',
+                                'This connection no longer exists, so its location cannot be checked.',
+                              ),
+                            )
+                          : location(value),
                     ),
+                    if (feedback != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        feedback!,
+                        key: const Key('backup-history-feedback'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (locationSaved)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.page,
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    syncText(
-                      context,
-                      '新文件夹不会自动带上旧备份。需要找回原来完整的备份；新建空文件夹、重新连接格间，都不能补齐这些记录。',
-                      'A new folder does not automatically contain earlier backups. The original complete backup is needed; creating an empty folder or reconnecting Velock cannot replace the missing records.',
-                    ),
+                  child: Column(
+                    children: [
+                      BackupActionButton(
+                        key: const Key('backup-history-done'),
+                        label: syncText(context, '完成', 'Done'),
+                        onPressed: busy
+                            ? null
+                            : () {
+                                if (Navigator.of(context).canPop()) {
+                                  Navigator.of(context).pop();
+                                } else {
+                                  context.go('/');
+                                }
+                              },
+                      ),
+                      const SizedBox(height: 12),
+                      BackupActionButton(
+                        key: const Key('backup-history-start-backup'),
+                        label: syncText(context, '开始备份', 'Start backup'),
+                        secondary: true,
+                        busy: busy,
+                        onPressed: busy ? null : startBackup,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  BackupActionButton(
+                ),
+              if (!locationSaved)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.page,
+                  ),
+                  child: BackupActionButton(
                     key: const Key('backup-history-missing-original'),
                     label: syncText(
                       context,
@@ -145,53 +258,44 @@ class BackupHistoryHelp extends ConsumerWidget {
                       'Can’t find the original backup?',
                     ),
                     secondary: true,
-                    onPressed: () => showAdaptiveAlert<void>(
-                      context: context,
-                      title: syncText(
-                        context,
-                        '先保留本机数据和旧备份',
-                        'Keep local data and any old backup',
-                      ),
-                      message: syncText(
-                        context,
-                        '当前版本还不能把本机全部数据重新整理成一份完整备份，自动补到新文件夹。\n\n如果找不到完整旧备份，这份备份暂时无法继续；反复重试或重新授权也不能解决。\n\n请保留格间中的本机数据和可能存在的旧备份，不要卸载格间、重置同步或删除旧目录。',
-                        'This version cannot yet rebuild a complete backup from all local data into a new folder.\n\nWithout the original complete backup, this backup cannot continue. Repeated retries or authorization will not fix it.\n\nKeep local data in Velock and any old backups. Do not uninstall Velock, reset sync, or delete old folders.',
-                      ),
-                      actions: [
-                        AdaptiveAlertAction<void>(
-                          label: syncText(context, '知道了', 'OK'),
-                          isDefault: true,
-                        ),
-                      ],
-                    ),
+                    onPressed: busy
+                        ? null
+                        : () => showAdaptiveAlert<void>(
+                            context: context,
+                            title: syncText(
+                              context,
+                              '先保留本机数据和旧备份',
+                              'Keep local data and any old backup',
+                            ),
+                            message: syncText(
+                              context,
+                              '当前版本还不能把本机全部数据重新整理成一份完整备份，自动补到新文件夹。\n\n如果找不到完整旧备份，这份备份暂时无法继续；反复重试或重新授权也不能解决。\n\n请保留格间中的本机数据和可能存在的旧备份，不要卸载格间、重置同步或删除旧目录。',
+                              'This version cannot yet rebuild a complete backup from all local data into a new folder.\n\nWithout the original complete backup, this backup cannot continue. Repeated retries or authorization will not fix it.\n\nKeep local data in Velock and any old backups. Do not uninstall Velock, reset sync, or delete old folders.',
+                            ),
+                            actions: [
+                              AdaptiveAlertAction<void>(
+                                label: syncText(context, '知道了', 'OK'),
+                                isDefault: true,
+                              ),
+                            ],
+                          ),
                   ),
-                ],
-              ),
-            ),
-          ],
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _location(BuildContext context, ConnectionModel connection) {
+  Widget location(ConnectionModel connection) {
     String folder;
     try {
-      final scoped = RemoteObjectStoreFactory.scopeProtocol(
-        connection.protocol,
+      folder = pathFor(
+        connection,
         VelockSyncProfile.fromEnvelope(profile).remoteRootSegments,
       );
-      folder = switch (scoped) {
-        WebDavProtocolModel() =>
-          '/${RemoteObjectStoreFactory.webDavUri(scoped).pathSegments.where((s) => s.isNotEmpty).join('/')}',
-        OAuthProtocolModel() => syncText(
-          context,
-          '此连接中已选择的云端文件夹',
-          'The cloud folder selected for this connection',
-        ),
-      };
     } on Object {
-      // Bad configuration must not be presented as a valid root folder.
       return Text(
         syncText(
           context,
@@ -203,39 +307,40 @@ class BackupHistoryHelp extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          syncText(
-            context,
-            '连接：${connection.name}',
-            'Connection: ${connection.name}',
-          ),
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
+        Text(connection.name),
         const SizedBox(height: 6),
         SelectableText(folder, key: const Key('backup-history-location-path')),
-        const SizedBox(height: 12),
-        Text(
-          syncText(
-            context,
-            '确认这是不是以前备份使用的位置。浏览只用于核对，不会更换保存位置或修复备份。',
-            'Check whether this is the location used for earlier backups. Browsing only inspects files; it does not change the location or repair the backup.',
+        const SizedBox(height: 20),
+        if (connection.protocol is WebDavProtocolModel)
+          BackupActionButton(
+            key: const Key('backup-history-browse-location'),
+            secondary: locationSaved,
+            label: syncText(
+              context,
+              locationSaved ? '重新选择目录' : '选择原备份文件夹',
+              locationSaved
+                  ? 'Choose another folder'
+                  : 'Select original backup folder',
+            ),
+            onPressed: busy ? null : () => selectFolder(connection),
+          )
+        else ...[
+          Text(
+            syncText(
+              context,
+              '此云盘暂不支持在这里更换目录。可以先核对文件。',
+              'Changing folders here is not supported for this cloud. You can inspect its files.',
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        BackupActionButton(
-          key: const Key('backup-history-browse-location'),
-          label: syncText(context, '浏览云端文件', 'Browse cloud files'),
-          onPressed: () =>
-              context.push('/connections/connection/${profile.connectionId}'),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          syncText(
-            context,
-            '浏览从此云端连接的起始目录打开，请按上面的路径核对。',
-            'Browsing starts at this connection’s root. Follow the path shown above.',
+          BackupActionButton(
+            label: syncText(context, '查看云端文件', 'View cloud files'),
+            onPressed: busy
+                ? null
+                : () => context.push(
+                    '/connections/connection/${profile.connectionId}',
+                  ),
           ),
-        ),
+        ],
       ],
     );
   }

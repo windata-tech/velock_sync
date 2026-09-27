@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
+import 'package:velock_sync/widgets/velock_brand_mark.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
@@ -36,31 +37,72 @@ class BackupActionButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.secondary = false,
+    this.busy = false,
   });
   final String label;
   final VoidCallback? onPressed;
   final bool secondary;
+
+  /// Shows an inline spinner and blocks re-entry while the action runs, so a
+  /// long transfer never needs a modal progress dialog.
+  final bool busy;
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    child: CupertinoButton(
-      color: secondary
-          ? context.appPrimary.withValues(alpha: .09)
-          : context.appPrimary,
-      borderRadius: BorderRadius.circular(14),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      onPressed: onPressed,
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: secondary ? context.appPrimary : Colors.white,
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-        ),
+  Widget build(BuildContext context) {
+    final color = secondary
+        ? context.appPrimary.withValues(alpha: .09)
+        : context.appPrimary;
+    return SizedBox(
+      width: double.infinity,
+      child: CupertinoButton(
+        color: color,
+        borderRadius: BorderRadius.circular(14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        onPressed: busy ? null : onPressed,
+        // The idle button keeps its original single-Text layout: wrapping it in
+        // a Row unconditionally shifted the surrounding lists by a hair and
+        // broke hit tests on sibling rows.
+        child: busy
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        secondary ? context.appPrimary : Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Flexible(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: secondary ? context.appPrimary : Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: secondary ? context.appPrimary : Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class BackupWelcomeCard extends StatelessWidget {
@@ -134,12 +176,20 @@ class BackupStatusCard extends StatelessWidget {
     required this.onAction,
     this.isVelock = true,
     this.actionLabel,
+    this.secondaryLabel,
+    this.onSecondary,
+    this.secondaryKey,
   });
   final BackupPresentation presentation;
   final String name;
   final VoidCallback? onAction;
   final bool isVelock;
   final String? actionLabel;
+
+  /// Optional second action shown beside the primary one, inside the card.
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
+  final Key? secondaryKey;
 
   @override
   Widget build(BuildContext context) {
@@ -167,9 +217,13 @@ class BackupStatusCard extends StatelessWidget {
         context,
         presentation.action == BackupAction.reviewHistory
             ? '云端备份不完整'
+            : presentation.action == BackupAction.checkStorage
+            ? '云端位置需要检查'
             : '有一件事需要你处理',
         presentation.action == BackupAction.reviewHistory
             ? 'Cloud backup is incomplete'
+            : presentation.action == BackupAction.checkStorage
+            ? 'Cloud location needs checking'
             : 'Your attention is needed',
       ),
       BackupStage.needsVelock => syncText(
@@ -192,10 +246,11 @@ class BackupStatusCard extends StatelessWidget {
         '已下载，等待格间恢复',
         'Downloaded. Open Velock to restore',
       ),
+      // The stage is shared, but each domain names its own task.
       BackupStage.lastTransferCompleted => syncText(
         context,
-        '上次传输已完成',
-        'Last transfer completed',
+        isVelock ? '上次备份已完成' : '上次同步已完成',
+        isVelock ? 'Last backup completed' : 'Last sync completed',
       ),
     };
     final description = switch (stage) {
@@ -288,6 +343,11 @@ class BackupStatusCard extends StatelessWidget {
             '查看原因和下一步',
             'See why and what to do',
           ),
+          BackupAction.checkStorage => syncText(
+            context,
+            '检查保存位置',
+            'Check cloud location',
+          ),
           BackupAction.manage => syncText(context, '查看并处理', 'Review and fix'),
           BackupAction.resolve => syncText(
             context,
@@ -316,6 +376,7 @@ class BackupStatusCard extends StatelessWidget {
                     ? CupertinoIcons.checkmark_shield
                     : CupertinoIcons.cloud_upload,
                 color: color,
+                branded: isVelock,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -353,6 +414,17 @@ class BackupStatusCard extends StatelessWidget {
               color: context.appSecondaryLabel,
             ),
           ),
+          if (presentation.failedAt != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              syncText(
+                context,
+                '上次失败：${AppFormat.stamp(presentation.failedAt)}',
+                'Last failure: ${AppFormat.stamp(presentation.failedAt)}',
+              ),
+              style: TextStyle(fontSize: 14, color: color),
+            ),
+          ],
           if (presentation.completedAt != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -361,11 +433,37 @@ class BackupStatusCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 24),
-          BackupActionButton(
-            key: const Key('backup-primary-action'),
-            label: action,
-            onPressed: stage == BackupStage.transferring ? null : onAction,
-          ),
+          if (secondaryLabel == null)
+            BackupActionButton(
+              key: const Key('backup-primary-action'),
+              label: action,
+              busy: stage == BackupStage.transferring,
+              onPressed: stage == BackupStage.transferring ? null : onAction,
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: BackupActionButton(
+                    key: const Key('backup-primary-action'),
+                    label: action,
+                    busy: stage == BackupStage.transferring,
+                    onPressed: stage == BackupStage.transferring
+                        ? null
+                        : onAction,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: BackupActionButton(
+                    key: secondaryKey,
+                    label: secondaryLabel!,
+                    secondary: true,
+                    onPressed: onSecondary,
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -374,18 +472,7 @@ class BackupStatusCard extends StatelessWidget {
 
 String backupFailureMessage(BuildContext context, String? code) {
   if (code == 'provider.webdav.collection_not_writable') {
-    return syncText(
-      context,
-      '当前选中的位置不能新建备份文件夹。请打开共享文件夹，选择一个有写入权限的实际文件夹，不要只选 NAS 入口。',
-      'The selected location cannot create a backup folder. Open the shared folder and choose an actual folder with write access; do not select only the NAS entry point.',
-    );
-  }
-  if (code == 'provider.webdav.atomic_create_unsupported') {
-    return syncText(
-      context,
-      '这个云端位置不能安全保存备份，已停止传输以保护已有数据。请检查云端服务设置，或联系服务提供方。',
-      'This cloud location cannot safely save backups. Transfers stopped to protect existing data. Check the storage settings or contact its provider.',
-    );
+    return uncreatableFolderMessage(context);
   }
   if (code == null || code.isEmpty) {
     return syncText(
@@ -398,17 +485,34 @@ String backupFailureMessage(BuildContext context, String? code) {
 }
 
 class _CloudMark extends StatelessWidget {
-  const _CloudMark({required this.icon, required this.color});
+  const _CloudMark({
+    required this.icon,
+    required this.color,
+    this.branded = false,
+  });
   final IconData icon;
   final Color color;
+
+  /// Velock shows its real brand mark here instead of a generic shield; the
+  /// state colour stays on the badge and the text around it.
+  final bool branded;
+
   @override
   Widget build(BuildContext context) => Container(
     width: 56,
     height: 56,
+    alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: color.withValues(alpha: .10),
+      color: branded
+          ? context.appGroupedSurface
+          : color.withValues(alpha: .10),
       borderRadius: BorderRadius.circular(18),
+      border: branded
+          ? Border.all(color: context.appSeparator.withValues(alpha: .25))
+          : null,
     ),
-    child: Icon(icon, color: color, size: 28),
+    child: branded
+        ? const VelockBrandMark(size: 32)
+        : Icon(icon, color: color, size: 28),
   );
 }

@@ -3637,4 +3637,102 @@ final class CrossAppUITests: XCTestCase {
         } while Date() < deadline
         return .timedOut
     }
+
+    /// Read-only on-device check of the file-sync storage page: the writable
+    /// folder entry must exist on the real app, and a new folder may be chosen
+    /// as long as the confirmation is never accepted. No sync, no relocation,
+    /// no server write is performed by this test.
+    func testFileSyncStorageFolderEntryIsUsable() {
+        let artifactRoot = ProcessInfo.processInfo.environment["E2E_ARTIFACT_DIR"]
+        func capture(_ name: String) {
+            attachScreenshot(name)
+            guard let root = artifactRoot else { return }
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(
+                to: URL(fileURLWithPath: root).appendingPathComponent(name + ".png"))
+        }
+        func text(_ needle: String) -> XCUIElement {
+            syncApp.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS %@", needle)).firstMatch
+        }
+        func tapText(_ needle: String, timeout: TimeInterval = 10) -> Bool {
+            let element = text(needle)
+            guard element.waitForExistence(timeout: timeout) && element.isHittable else {
+                print("FOLDER_ENTRY_MISSING \(needle)")
+                capture("folder-entry-missing")
+                return false
+            }
+            element.tap()
+            RunLoop.current.run(until: Date().addingTimeInterval(1.2))
+            return true
+        }
+
+        syncApp.launch()
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+        tapHomeTab("文件同步", normalizedX: 0.5, screenshotName: "file-sync-tab")
+
+        if text("检查保存位置").waitForExistence(timeout: 5) {
+            _ = tapText("检查保存位置")
+        } else if tapText("文件同步") {
+            _ = tapText("检查保存位置")
+        }
+        capture("storage-help-open")
+
+        XCTAssertTrue(
+            text("保存位置").waitForExistence(timeout: 10),
+            "Storage page did not open: \(syncApp.debugDescription)")
+        XCTAssertTrue(
+            text("选择可写入文件夹").waitForExistence(timeout: 10),
+            "The writable folder entry is missing on the real page")
+        XCTAssertFalse(
+            text("尚不支持直接迁移").exists,
+            "The stale 'migration not supported' copy is still shown")
+
+        guard tapText("选择可写入文件夹") else { return }
+        capture("writable-folder-picker")
+
+        // Browsing is read-only: this only lists the connection's folders.
+        let share = syncApp.buttons["USB_HDD_8T"].firstMatch
+        XCTAssertTrue(
+            share.waitForExistence(timeout: 20),
+            "The connection folder list did not load: \(syncApp.debugDescription)")
+        capture("writable-folder-connection-root")
+        share.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+
+        let folder = syncApp.buttons["111"].firstMatch
+        XCTAssertTrue(
+            folder.waitForExistence(timeout: 20),
+            "The user's 111 folder is not visible: \(syncApp.debugDescription)")
+        XCTAssertTrue(
+            syncApp.buttons["222"].firstMatch.exists,
+            "The user's 222 folder is not visible")
+        capture("writable-folder-inside-share")
+
+        // Selecting and confirming is verified, but never accepted: no profile
+        // is saved, no sync runs and no server write happens in this test.
+        folder.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        let useThisFolder = text("使用这个文件夹")
+        XCTAssertTrue(
+            useThisFolder.waitForExistence(timeout: 10) && useThisFolder.isHittable,
+            "The picker cannot confirm a folder")
+        useThisFolder.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+
+        XCTAssertTrue(
+            text("更改这个任务的保存位置？").waitForExistence(timeout: 10),
+            "The relocation confirmation did not appear: \(syncApp.debugDescription)")
+        XCTAssertTrue(
+            text("不会删除或迁移旧文件夹里的数据").exists,
+            "The confirmation does not state that old data is kept")
+        capture("relocation-confirmation")
+        if text("取消").waitForExistence(timeout: 5) {
+            text("取消").tap()
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        }
+        XCTAssertTrue(
+            text("保存位置").exists,
+            "Cancelling left the storage page")
+        capture("relocation-cancelled")
+    }
 }

@@ -102,6 +102,11 @@ void main() {
           Navigator.of(context).push(_routeTo(page()));
           await tester.pumpAndSettle();
           expect(find.byType(AppBackButton), findsOneWidget);
+          expect(
+            tester.getTopLeft(find.byIcon(Icons.chevron_left_rounded)).dx,
+            closeTo(6, 0.01),
+            reason: 'Sliver headers must not double-inset the visible arrow',
+          );
           expect(find.byType(BackButton), findsNothing);
           expect(find.byType(CupertinoNavigationBarBackButton), findsNothing);
           await tester.tap(find.byType(AppBackButton));
@@ -125,6 +130,12 @@ void main() {
 
         expect(find.byType(AppBackButton), findsOneWidget);
         expect(find.byIcon(Icons.chevron_left_rounded), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byIcon(Icons.chevron_left_rounded)).dx,
+          closeTo(6, 0.01),
+          reason:
+              'Icon box starts at 6; visible tip aligns with the 16px page edge',
+        );
         expect(find.byTooltip('Back'), findsOneWidget);
         expect(find.byType(BackButton), findsNothing);
         expect(find.byType(CupertinoNavigationBarBackButton), findsNothing);
@@ -148,6 +159,51 @@ void main() {
         expect(find.byType(AppBackButton), findsNothing);
       },
     );
+
+    testWidgets('$platform chevron is at least 30px inside the 44px target', (
+      tester,
+    ) async {
+      var calls = 0;
+      await tester.pumpWidget(
+        _app(
+          platform: platform,
+          home: PlatformScaffold(
+            appBar: WDAppBar(
+              title: const Text('Header'),
+              leading: AppBackButton(onPressed: () => calls++),
+            ),
+            body: const SizedBox.shrink(),
+          ),
+        ),
+      );
+
+      // The rounded Material glyph carries internal whitespace in its
+      // design grid, so the icon box must stay large enough for the
+      // visible chevron while the touch target keeps its 44px floor.
+      expect(AppBackButton.iconSize, greaterThanOrEqualTo(30));
+      expect(AppBackButton.touchTargetSize, greaterThanOrEqualTo(44));
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.chevron_left_rounded)).size,
+        greaterThanOrEqualTo(30),
+      );
+      final target = tester.getSize(find.byType(AppBackButton));
+      expect(target.width, greaterThanOrEqualTo(44));
+      expect(target.height, greaterThanOrEqualTo(44));
+
+      // Enlarging the glyph must not change the affordance semantics or
+      // its behavior.
+      expect(find.byTooltip('Back'), findsOneWidget);
+      expect(find.bySemanticsLabel('Back'), findsOneWidget);
+      final semantics = tester.getSemantics(find.bySemanticsLabel('Back'));
+      expect(semantics.flagsCollection.isButton, isTrue);
+      expect(semantics.label, 'Back');
+
+      await tester.tap(find.byType(AppBackButton));
+      await tester.pump();
+
+      expect(calls, 1);
+      expect(tester.takeException(), isNull);
+    });
 
     for (final localizedCase in const [
       (locale: Locale('en'), label: 'Back'),

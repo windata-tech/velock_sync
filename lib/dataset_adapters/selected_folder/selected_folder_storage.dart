@@ -52,6 +52,15 @@ abstract interface class SelectedFolderStorage {
   Future<void> delete(String relativePath);
 }
 
+/// Optional capability of a [SelectedFolderStorage] that can write one file
+/// from a replayable byte stream without buffering the whole payload in memory.
+/// Storages that cannot stream - for example a platform channel that only
+/// accepts a completed local file - deliberately do not implement it, so
+/// callers must fall back to [SelectedFolderStorage.writeFileAtomically].
+abstract interface class StreamingSelectedFolderStorage {
+  Future<void> writeFileFromStream(String relativePath, Stream<List<int>> data);
+}
+
 abstract interface class SelectedFolderReadableFile {
   Future<int> length();
 
@@ -76,7 +85,8 @@ class SelectedFolderStorageEntry {
 
 /// Existing desktop and iOS/macOS directory implementation of the storage
 /// contract. Android SAF deliberately has a separate implementation.
-class LocalSelectedFolderStorage implements SelectedFolderStorage {
+class LocalSelectedFolderStorage
+    implements SelectedFolderStorage, StreamingSelectedFolderStorage {
   LocalSelectedFolderStorage(this.root, {FileIdentityResolver? fileIdentity})
     : _fileIdentity = fileIdentity ?? _noFileIdentity;
 
@@ -129,8 +139,27 @@ class LocalSelectedFolderStorage implements SelectedFolderStorage {
     await target.parent.create(recursive: true);
     final temporary = File('${target.path}.velock-tmp');
     await temporary.writeAsBytes(bytes, flush: true);
-    if (await target.exists()) await target.delete();
-    await temporary.rename(target.path);
+    await _publishStagedFile(temporary, target);
+  }
+
+  @override
+  Future<void> writeFileFromStream(
+    String relativePath,
+    Stream<List<int>> data,
+  ) async {
+    final target = File(_path(relativePath));
+    await target.parent.create(recursive: true);
+    final temporary = File('${target.path}.velock-tmp');
+    var published = false;
+    try {
+      await streamIntoFile(temporary, data);
+      await _publishStagedFile(temporary, target);
+      published = true;
+    } finally {
+      // A failed or interrupted stream must keep the previous file and must
+      // not leave a partially written staging file behind.
+      if (!published && await temporary.exists()) await temporary.delete();
+    }
   }
 
   @override
@@ -169,6 +198,38 @@ class LocalSelectedFolderStorage implements SelectedFolderStorage {
 }
 
 Future<String?> _noFileIdentity(FileSystemEntity _) async => null;
+
+/// Publishes the fully written [temporary] file under the real target name.
+///
+/// The destination must never be deleted first: `rename` already replaces an
+/// existing file in one step - "if [newPath] identifies an existing file or
+/// link, that entity is removed first" (dart:io `File.rename`, on every
+/// platform this app ships, so no Windows-only delete is needed) - while a
+/// separate `delete` leaves a window where the file has no name at all: a crash
+/// or process kill inside it destroys the real name and keeps the payload only
+/// under the staging name, which no scan treats as that file, so the next run
+/// sees a local deletion and can remove the remote copy too.
+Future<void> _publishStagedFile(File temporary, File target) =>
+    temporary.rename(target.path);
+
+/// Streams [data] into [file] and flushes it to disk. Errors of the source
+/// stream and of the sink itself are both reported to the caller. The file is
+/// closed before this future completes, so a caller may hand its path to
+/// another process or platform channel.
+Future<void> streamIntoFile(File file, Stream<List<int>> data) async {
+  final sink = file.openWrite();
+  try {
+    await sink.addStream(data);
+    await sink.flush();
+  } catch (_) {
+    // The sink is already failed; closing it must not mask that error.
+    try {
+      await sink.close();
+    } catch (_) {}
+    rethrow;
+  }
+  await sink.close();
+}
 
 class _LocalReadableFile implements SelectedFolderReadableFile {
   const _LocalReadableFile(this._file);

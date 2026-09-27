@@ -545,12 +545,17 @@ class AppDetailSheetRow {
   const AppDetailSheetRow({
     required this.label,
     required this.value,
+    this.trailing,
     this.tone = AppTone.neutral,
     this.monospace = false,
   });
 
   final String label;
   final String value;
+
+  /// Optional right-aligned column pinned to the sheet's trailing edge, so
+  /// amounts of different widths still line up row by row.
+  final String? trailing;
   final AppTone tone;
   final bool monospace;
 }
@@ -658,6 +663,22 @@ class _AppDetailSheetBody extends StatelessWidget {
                               ),
                         ),
                       ),
+                      if (row.trailing != null) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        Text(
+                          row.trailing!,
+                          textAlign: TextAlign.right,
+                          style: (row.monospace ? AppType.mono : AppType.body)
+                              .copyWith(
+                                color: row.tone == AppTone.neutral
+                                    ? Theme.of(context).colorScheme.onSurface
+                                    : row.tone.color(context),
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

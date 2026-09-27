@@ -1,3 +1,4 @@
+import 'velock_location_guard.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -105,6 +106,22 @@ class VelockSyncService implements VelockSyncRunner {
     String profileId, {
     BatchLimits uploadLimits = const BatchLimits(),
     DownloadLimits downloadLimits = const DownloadLimits(),
+  }) async {
+    return withVelockLocationGuard(
+      _database,
+      profileId,
+      () => _runGuarded(
+        profileId,
+        uploadLimits: uploadLimits,
+        downloadLimits: downloadLimits,
+      ),
+    );
+  }
+
+  Future<SyncProfileRunResult> _runGuarded(
+    String profileId, {
+    required BatchLimits uploadLimits,
+    required DownloadLimits downloadLimits,
   }) async {
     // Failures raised while preparing the run (missing connection, revoked
     // pairing, unreachable remote during the root README write, …) happen
@@ -300,7 +317,15 @@ class VelockSyncService implements VelockSyncRunner {
     required WebDavProtocolModel protocol,
     required String? password,
   }) => WebDavObjectStore(
-    dio: Dio(),
+    // Same rule as the shared factory: no silent infinite hang on a stalled
+    // socket, so a stuck transfer becomes a reported failure.
+    dio: Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(minutes: 5),
+        sendTimeout: const Duration(minutes: 5),
+      ),
+    ),
     baseUri: _webDavUri(protocol),
     username: protocol.username,
     password: password,

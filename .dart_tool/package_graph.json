@@ -31,7 +31,6 @@
         "riverpod_annotation",
         "shared_preferences",
         "sqlite3",
-        "sqlite3_flutter_libs",
         "url_launcher",
         "uuid",
         "webdav_client_plus",
@@ -276,11 +275,6 @@
         "meta",
         "petitparser"
       ]
-    },
-    {
-      "name": "sqlite3_flutter_libs",
-      "version": "0.6.0+eol",
-      "dependencies": []
     },
     {
       "name": "sqlite3",

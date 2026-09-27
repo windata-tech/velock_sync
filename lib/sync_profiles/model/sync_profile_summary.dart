@@ -113,5 +113,11 @@ class SyncProfileSummary {
   bool get isIsolated => isolationReason != null;
   bool get isRunnable =>
       !isIsolated && state == SyncProfileState.active && kind != null;
-  bool get isBackgroundEligible => isRunnable && backgroundPolicy.enabled;
+  /// The encrypted folder-sync kind is retired: it has no entry anywhere in the
+  /// app any more, so scheduling it would keep a task running that the user can
+  /// no longer see, pause or delete. Its rows and remote data stay untouched.
+  bool get isBackgroundEligible =>
+      isRunnable &&
+      backgroundPolicy.enabled &&
+      kind != SyncDatasetKind.selectedFolder;
 }

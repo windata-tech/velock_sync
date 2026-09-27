@@ -18,6 +18,7 @@ import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/sync_profiles/execution/sync_profile_dispatcher.dart';
 import 'package:velock_sync/sync_core/crypto/vault_recovery_package.dart';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
+import 'package:velock_sync/features/sync_profiles/model/sync_run_outcome.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
@@ -304,24 +305,18 @@ String firstSyncResultMessage(
   return _syncResultMessage(result, context: context);
 }
 
+/// Runs one profile now and returns its dispatch result.
+///
+/// There is deliberately no modal progress dialog: the transfer state belongs
+/// to the action button and the status card that started it (`BackupStage.
+/// transferring` drives the button's inline spinner), and a blocking scrim hid
+/// the very state the user was watching. Failures still get the persistent
+/// acknowledged alert through [presentSyncFailureAlert].
 Future<SyncProfileDispatchResult?> runSyncWithProgress(
   BuildContext context,
   WidgetRef ref,
   String profileId,
-) async {
-  showAdaptiveBlockingProgress(
-    context,
-    key: const Key('sync-progress-dialog'),
-    message: _optionalSyncText(context, '正在同步…', "Syncing…"),
-  );
-  try {
-    return await ref.read(syncProfileRunServiceProvider).runNow(profileId);
-  } finally {
-    if (context.mounted) {
-      Navigator.of(context, rootNavigator: true).pop();
-    }
-  }
-}
+) => ref.read(syncProfileRunServiceProvider).runNow(profileId);
 
 Future<bool> confirmSyncProfileRemoval(
   BuildContext context,
@@ -347,6 +342,14 @@ Future<void> presentSyncResult(
     await _offerOpenVelock(context, pending);
     return;
   }
+  if (result.didFail) {
+    if (!context.mounted) return;
+    await presentSyncFailureAlert(
+      context: context,
+      error: result.error ?? const Object(),
+    );
+    return;
+  }
   showMessage(context, _syncResultMessage(result, context: context));
 }
 
@@ -359,7 +362,70 @@ Future<void> presentFirstSyncResult(
     await _offerOpenVelock(context, pending);
     return;
   }
+  if (result?.didFail == true) {
+    if (!context.mounted) return;
+    await presentSyncFailureAlert(
+      context: context,
+      error: result!.error ?? const Object(),
+    );
+    return;
+  }
   showMessage(context, firstSyncResultMessage(result, context: context));
+}
+
+/// Persistent, acknowledged failure presentation shared by
+/// [presentSyncResult] and [presentFirstSyncResult].
+///
+/// Failures use the platform-adaptive alert instead of the transient
+/// [showMessage] toast: there is no timer and no retry side effect, so the
+/// readable localized failure text stays on screen until the user
+/// acknowledges it with the explicit OK action; barrier taps are ignored.
+///
+/// Callers catching a thrown exception (for example around
+/// [runSyncWithProgress]) can present it directly:
+///
+/// ```dart
+/// on Object catch (error) {
+///   await presentSyncFailureAlert(context: context, error: error);
+/// }
+/// ```
+///
+/// The exception is only classified by [SyncFailureClassifier]; its
+/// diagnostic text never reaches the user.
+Future<void> presentSyncFailureAlert({
+  required BuildContext context,
+  required Object error,
+  Key? okKey,
+}) async {
+  final failure = SyncFailureClassifier.classify(error);
+  await showAdaptiveAlert<void>(
+    context: context,
+    title: _optionalSyncText(context, '同步失败', "Sync failed"),
+    message: _syncFailureAlertMessage(failure, context: context),
+    barrierDismissible: false,
+    actions: [
+      AdaptiveAlertAction<void>(
+        label: _optionalSyncText(context, '知道了', 'OK'),
+        key: okKey ?? const Key('sync-failure-alert-ok'),
+        isDefault: true,
+        emphasized: true,
+      ),
+    ],
+  );
+}
+
+/// Readable localized body of the failure alert: the human summary for the
+/// classified [SyncFailure], with a dedicated sentence for HTTP 409
+/// conflicts.
+String _syncFailureAlertMessage(SyncFailure failure, {BuildContext? context}) {
+  if (failure.providerStatusCode == 409) {
+    return _optionalSyncText(
+      context,
+      '远端同步目录存在冲突（HTTP 409）。请确认没有其他设备同时同步，或检查远端目录后重试。',
+      "Remote sync folder conflict (HTTP 409). Check that no other device is syncing, or check the remote folder and retry.",
+    );
+  }
+  return AppFormat.errorSummary(failure.errorCode, context: context);
 }
 
 Future<void> _offerOpenVelock(BuildContext context, int pending) async {
@@ -399,6 +465,13 @@ String _syncResultMessage(
   SyncProfileDispatchResult result, {
   BuildContext? context,
 }) {
+  if (result.isAlreadyRunning) {
+    return _optionalSyncText(
+      context,
+      '同步已在进行中，无需重复启动。',
+      'Sync is already in progress. No need to start it again.',
+    );
+  }
   if (result.didFail) {
     final failure = SyncFailureClassifier.classify(result.error!);
     if (failure.providerStatusCode == 409) {
@@ -475,9 +548,8 @@ Future<void> showSyncedObjectsSheet(
               '${transfer.direction == TransferJobDirection.upload ? '上传' : '恢复'}',
           "${_syncedKindLabel(remoteInventoryKind(transfer.logicalKey), context: context)} · ${transfer.direction == TransferJobDirection.upload ? 'Upload' : 'Restore'}",
         ),
-        value:
-            '${AppFormat.bytes(transfer.completedBytes)} · '
-            '${AppFormat.stamp(transfer.completedAt)}',
+        value: AppFormat.stamp(transfer.completedAt),
+        trailing: AppFormat.bytes(transfer.completedBytes),
       ),
   ],
   footnote: _optionalSyncText(
@@ -494,14 +566,13 @@ Future<void> showRunDetails(
   SyncRunRecord run, {
   List<TransferJobRecord> history = const [],
 }) {
-  final runEnd = run.completedAt;
-  final transferred = [
-    for (final transfer in history)
-      if (transfer.completedAt != null &&
-          !transfer.completedAt!.isBefore(run.startedAt) &&
-          (runEnd == null || !transfer.completedAt!.isAfter(runEnd)))
-        transfer,
-  ];
+  final transferred = runWindowTransfers(run, history);
+  // "上传对象 0 个" must never sit under a status that claims a transfer.
+  final conclusion = syncRunConclusionLabel(
+    run,
+    transfers: transferred,
+    context: context,
+  );
   final uploaded = transferred
       .where((transfer) => transfer.direction == TransferJobDirection.upload)
       .toList(growable: false);
@@ -559,8 +630,8 @@ Future<void> showRunDetails(
     context,
     title: _optionalSyncText(
       context,
-      '同步记录 · ${runStateLabel(run.state, context: context)}',
-      "Sync run · ${runStateLabel(run.state, context: context)}",
+      '同步记录 · $conclusion',
+      "Sync run · $conclusion",
     ),
     rows: [
       AppDetailSheetRow(
@@ -573,7 +644,7 @@ Future<void> showRunDetails(
       ),
       AppDetailSheetRow(
         label: _optionalSyncText(context, '结果', "Result"),
-        value: runStateLabel(run.state, context: context),
+        value: conclusion,
         tone: failed ? AppTone.danger : AppTone.ok,
       ),
       if (failed)
@@ -1327,6 +1398,11 @@ String kindLabel(SyncDatasetKind? kind, {BuildContext? context}) =>
         '格间备份',
         "Velock backup",
       ),
+      SyncDatasetKind.plainFolder => _optionalSyncText(
+        context,
+        '文件夹同步',
+        "Folder sync",
+      ),
       null => _optionalSyncText(context, '不可用', "Unavailable"),
     };
 
@@ -1341,6 +1417,11 @@ IconData adaptiveKindIcon(BuildContext context, SyncDatasetKind? kind) =>
         context,
         material: Icons.shield_outlined,
         cupertino: CupertinoIcons.shield,
+      ),
+      SyncDatasetKind.plainFolder => adaptiveIcon(
+        context,
+        material: Icons.folder_copy_outlined,
+        cupertino: CupertinoIcons.folder,
       ),
       null => adaptiveIcon(
         context,
@@ -1466,13 +1547,6 @@ String transferStateLabel(
   TransferJobState.completed => _optionalSyncText(context, '已完成', "Completed"),
   TransferJobState.failed => _optionalSyncText(context, '失败', "Failed"),
   TransferJobState.cancelled => _optionalSyncText(context, '已取消', "Cancelled"),
-};
-
-String runStateLabel(String state, {BuildContext? context}) => switch (state) {
-  'running' => _optionalSyncText(context, '运行中', "Running"),
-  'completed' => _optionalSyncText(context, '已完成', "Completed"),
-  'failed' => _optionalSyncText(context, '失败', "Failed"),
-  _ => state,
 };
 
 /// One short line under a profile name.

@@ -68,6 +68,12 @@ void main() {
 
     await tester.tap(find.text('管理'));
     await tester.pumpAndSettle();
+
+    // The manage tab owns relocating the backup; the overview tab keeps the
+    // read-only "where is it" row, so the two entries are not duplicates.
+    expect(find.byKey(const Key('manage-change-location')), findsOneWidget);
+    expect(find.text('更换保存位置'), findsOneWidget);
+    expect(find.text('云端保存位置'), findsNothing);
     await tester.ensureVisible(find.text('断开此连接'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('断开此连接'));

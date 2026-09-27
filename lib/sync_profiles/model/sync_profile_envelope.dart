@@ -99,7 +99,7 @@ class SyncProfileEnvelope {
       kind: kind,
       profileId: _requiredString(value, 'profileId'),
       datasetId: _requiredString(value, 'datasetId'),
-      vaultId: _requiredString(value, 'vaultId'),
+      vaultId: _vaultId(value, kind),
       deviceId: _requiredString(value, 'deviceId'),
       displayName: _requiredString(value, 'displayName'),
       connectionId: _requiredString(value, 'connectionId'),
@@ -118,6 +118,19 @@ class SyncProfileEnvelope {
     final field = value[key];
     if (field is! String || field.isEmpty) {
       throw FormatException('Sync profile $key is invalid.');
+    }
+    return field;
+  }
+
+  /// Encrypted kinds must name their vault. A plain folder location has no
+  /// vault at all, so an empty value is its correct representation.
+  static String _vaultId(Map<String, dynamic> value, SyncDatasetKind kind) {
+    final field = value['vaultId'];
+    if (field is! String) {
+      throw const FormatException('Sync profile vaultId is invalid.');
+    }
+    if (field.isEmpty && kind != SyncDatasetKind.plainFolder) {
+      throw const FormatException('Sync profile vaultId is invalid.');
     }
     return field;
   }

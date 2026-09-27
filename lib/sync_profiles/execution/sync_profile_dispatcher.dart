@@ -1,3 +1,4 @@
+import 'package:velock_sync/sync_core/engine/sync_upload_engine.dart';
 import 'package:velock_sync/sync_core/contracts/sync_dataset_adapter.dart';
 import 'package:velock_sync/sync_core/engine/sync_download_engine.dart';
 import 'package:velock_sync/sync_core/engine/sync_profile_runner.dart';
@@ -27,6 +28,7 @@ class SyncProfileDispatchResult {
   final Object? error;
 
   bool get didRun => status == SyncProfileDispatchStatus.completed;
+  bool get isAlreadyRunning => error is SyncRunBusyException;
   bool get didFail => status == SyncProfileDispatchStatus.failed;
 }
 
@@ -42,14 +44,18 @@ class SyncProfileDispatcher {
 
   final SyncProfileRepository _profiles;
   final Map<SyncDatasetKind, SyncProfileExecutor> _executors;
-  final Map<String, Future<SyncProfileDispatchResult>> _inFlight = {};
+  // Resume/network triggers construct another dispatcher in this isolate.
+  // Share active work by database + profile, not by dispatcher instance.
+  static final Map<(Object, String), Future<SyncProfileDispatchResult>>
+  _inFlight = {};
 
   Future<SyncProfileDispatchResult> dispatch(
     String profileId, {
     BatchLimits uploadLimits = const BatchLimits(),
     DownloadLimits downloadLimits = const DownloadLimits(),
   }) {
-    final existing = _inFlight[profileId];
+    final scope = (_profiles.executionScopeKey, profileId);
+    final existing = _inFlight[scope];
     if (existing != null) return existing;
     late final Future<SyncProfileDispatchResult> run;
     run =
@@ -58,9 +64,9 @@ class SyncProfileDispatcher {
           uploadLimits: uploadLimits,
           downloadLimits: downloadLimits,
         ).whenComplete(() {
-          _inFlight.remove(profileId);
+          _inFlight.remove(scope);
         });
-    _inFlight[profileId] = run;
+    _inFlight[scope] = run;
     return run;
   }
 
@@ -113,6 +119,14 @@ class SyncProfileDispatcher {
         profileId: profileId,
         status: SyncProfileDispatchStatus.completed,
         run: run,
+      );
+    } on SyncRunBusyException catch (error) {
+      // Another isolate owns this operation. Do not retry, overwrite its run
+      // record, or call a concurrent request a failed transfer.
+      return SyncProfileDispatchResult(
+        profileId: profileId,
+        status: SyncProfileDispatchStatus.skippedNotRunnable,
+        error: error,
       );
     } on Object catch (error) {
       return SyncProfileDispatchResult(

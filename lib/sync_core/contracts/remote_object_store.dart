@@ -44,6 +44,20 @@ abstract interface class RemoteObjectStore {
   });
 }
 
+/// Optional capability for providers that can create a real directory or
+/// collection at [logicalKey].
+///
+/// A store that does not implement this interface must be treated as unable to
+/// create directories. Implementations create exactly one collection: creating
+/// missing parents in order is the caller's responsibility, and a provider that
+/// cannot create the collection must fail closed instead of reporting success.
+abstract interface class RemoteCollectionCreator {
+  Future<void> createCollection(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  });
+}
+
 /// Cooperative cancellation owned by the sync engine rather than any one HTTP
 /// client. Adapters use it to cancel in-flight requests and retry backoff.
 class RemoteOperationCancellation {
@@ -83,12 +97,20 @@ class RemoteObjectMetadata {
     required this.size,
     required this.updatedAt,
     this.etag,
+    this.isDirectory = false,
   });
 
   final String logicalKey;
   final int size;
   final DateTime updatedAt;
   final String? etag;
+
+  /// Whether this entry is a collection (directory) rather than an object.
+  ///
+  /// Providers that cannot distinguish the two keep the default `false`; a
+  /// plain-mirror caller must therefore verify directory support instead of
+  /// assuming that every entry is a file.
+  final bool isDirectory;
 }
 
 class RemoteObjectPage {

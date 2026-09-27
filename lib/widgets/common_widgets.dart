@@ -24,13 +24,21 @@ void showPlatformMessage(BuildContext context, String message) {
 /// Shared back affordance used by Sync page headers.
 ///
 /// The button deliberately renders only a chevron: it does not include a
-/// previous-page title, an arrow stem, or a circular background. Callers can
-/// pass `null` to render the same affordance in a disabled state.
+/// previous-page title, an arrow stem, or a circular background. The rounded
+/// Material glyph carries internal whitespace inside its design grid, so the
+/// icon box is 32 to keep the visible chevron legible; the 44px touch target
+/// around it stays unchanged. Callers can pass `null` to render the same
+/// affordance in a disabled state.
 class AppBackButton extends StatelessWidget {
   const AppBackButton({super.key, required this.onPressed, this.semanticLabel});
 
   static const double touchTargetSize = 44;
-  static const double iconSize = 20;
+  static const double iconSize = 32;
+
+  // The 32px glyph's visible tip is ~16px inside the 44px target.
+  // Headers must start this target at the safe-area edge, NOT add another
+  // 16px navigation inset. This aligns the ink with AppSpacing.page.
+  static const double headerInset = 0;
 
   final VoidCallback? onPressed;
   final String? semanticLabel;
@@ -90,6 +98,9 @@ class WDAppBar extends PlatformAppBar {
          title: showTitle ? title : null,
          material: (context, _) => MaterialAppBarData(
            leading: _leadingFor(context, leading),
+           leadingWidth: _leadingFor(context, leading) is AppBackButton
+               ? AppBackButton.touchTargetSize
+               : null,
            automaticallyImplyLeading: false,
            centerTitle: false,
            elevation: 0,
@@ -99,6 +110,12 @@ class WDAppBar extends PlatformAppBar {
          ),
          cupertino: (context, _) => CupertinoNavigationBarData(
            leading: _leadingFor(context, leading),
+           padding: _leadingFor(context, leading) is AppBackButton
+               ? const EdgeInsetsDirectional.only(
+                   start: AppBackButton.headerInset,
+                   end: AppSpacing.page,
+                 )
+               : null,
            automaticallyImplyLeading: false,
            backgroundColor: context.appNavigationBarBackground,
            border: Border(

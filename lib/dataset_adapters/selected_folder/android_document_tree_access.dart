@@ -21,6 +21,12 @@ abstract interface class AndroidDocumentTreeAccess {
     required String relativePath,
   });
 
+  /// Copies one completed app-private file into the tree.
+  ///
+  /// An existing document with the same name is replaced without ever losing
+  /// that name. When the replacement cannot be finished the platform channel
+  /// fails with the `provider.saf.replace_failed` code and keeps the staged
+  /// payload under a `.velock-tmp-` document name instead of deleting it.
   Future<void> writeFileFromPath({
     required String treeUri,
     required String relativePath,
@@ -130,14 +136,18 @@ class MethodChannelAndroidDocumentTreeAccess
 
 /// SAF implementation that copies at most one source file into app cache for
 /// the duration of encryption. It never materializes the user-selected tree.
-class AndroidDocumentTreeStorage implements SelectedFolderStorage {
+class AndroidDocumentTreeStorage
+    implements SelectedFolderStorage, StreamingSelectedFolderStorage {
   AndroidDocumentTreeStorage({
     required this.treeUri,
     required AndroidDocumentTreeAccess access,
-  }) : _access = access;
+    Directory? cacheDirectory,
+  }) : _access = access,
+       _cacheDirectory = cacheDirectory ?? Directory.systemTemp;
 
   final String treeUri;
   final AndroidDocumentTreeAccess _access;
+  final Directory _cacheDirectory;
 
   @override
   String get rootReference => treeUri;
@@ -185,14 +195,44 @@ class AndroidDocumentTreeStorage implements SelectedFolderStorage {
   }
 
   @override
-  Future<void> writeFileAtomically(String relativePath, List<int> bytes) async {
+  Future<void> writeFileAtomically(String relativePath, List<int> bytes) {
     validateSelectedFolderRelativePath(relativePath);
-    final temporaryDirectory = await Directory.systemTemp.createTemp(
+    return _writeThroughCache(
+      relativePath,
+      (staged) => staged.writeAsBytes(bytes, flush: true),
+    );
+  }
+
+  @override
+  Future<void> writeFileFromStream(
+    String relativePath,
+    Stream<List<int>> data,
+  ) {
+    validateSelectedFolderRelativePath(relativePath);
+    // The SAF channel only accepts a completed local file, so a streamed
+    // payload is spooled to app-private cache instead of being collected in
+    // Dart memory: the whole mirror download path, its keep-both conflict copy
+    // and the channel's own copy then stay bounded by the file size on disk.
+    return _writeThroughCache(
+      relativePath,
+      (staged) => streamIntoFile(staged, data),
+    );
+  }
+
+  /// Materializes one payload in app cache - [Directory.systemTemp] is the
+  /// application cache directory on Android, and the native side refuses any
+  /// source outside it - and hands that path to the SAF copy. The cache file is
+  /// removed on every path, successful or not.
+  Future<void> _writeThroughCache(
+    String relativePath,
+    Future<void> Function(File staged) write,
+  ) async {
+    final temporaryDirectory = await _cacheDirectory.createTemp(
       'velock-saf-write-',
     );
     final temporary = File('${temporaryDirectory.path}/payload');
     try {
-      await temporary.writeAsBytes(bytes, flush: true);
+      await write(temporary);
       await _access.writeFileFromPath(
         treeUri: treeUri,
         relativePath: relativePath,

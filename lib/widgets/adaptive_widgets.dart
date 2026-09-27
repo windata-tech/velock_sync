@@ -12,7 +12,7 @@ import 'app_components.dart';
 import 'common_widgets.dart';
 
 export 'adaptive_dialogs.dart'
-    show showAdaptiveBlockingProgress, showAdaptiveConfirmation;
+    show showAdaptiveConfirmation;
 
 IconData adaptiveIcon(
   BuildContext context, {
@@ -63,6 +63,12 @@ class AdaptiveSliverScaffold extends StatelessWidget {
                   ? CupertinoSliverNavigationBar(
                       automaticallyImplyLeading: false,
                       leading: backButton,
+                      padding: backButton == null
+                          ? null
+                          : const EdgeInsetsDirectional.only(
+                              start: AppBackButton.headerInset,
+                              end: AppSpacing.page,
+                            ),
                       largeTitle: Text(title),
                       trailing: trailing,
                       backgroundColor: CupertinoColors.systemGroupedBackground,
@@ -96,6 +102,9 @@ class AdaptiveSliverScaffold extends StatelessWidget {
             ? SliverAppBar.large(
                 automaticallyImplyLeading: false,
                 leading: backButton,
+                leadingWidth: backButton == null
+                    ? null
+                    : AppBackButton.touchTargetSize,
                 title: Text(title),
                 pinned: true,
                 actions: actions,
@@ -105,6 +114,9 @@ class AdaptiveSliverScaffold extends StatelessWidget {
             : SliverAppBar(
                 automaticallyImplyLeading: false,
                 leading: backButton,
+                leadingWidth: backButton == null
+                    ? null
+                    : AppBackButton.touchTargetSize,
                 title: showTitle ? Text(title) : null,
                 pinned: true,
                 actions: actions,
@@ -183,9 +195,21 @@ class _CompactCupertinoTopBarDelegate extends SliverPersistentHeaderDelegate {
               ),
             ),
             child: Padding(
-              padding: EdgeInsets.only(top: topPadding, left: 8, right: 8),
-              child: SizedBox(
-                height: 44,
+              padding: EdgeInsetsDirectional.only(
+                top: topPadding,
+                start: leading is AppBackButton ? AppBackButton.headerInset : 8,
+                // The back button is already a 44pt touch target whose ink sits
+                // at the page edge; adding the usual 8pt gap after it made the
+                // leading slot 52pt wide and overflowed the navigation bar (the
+                // debug stripes) for some fonts and text scales.
+                end: leading is AppBackButton ? 0 : 8,
+              ),
+              child: ConstrainedBox(
+                // A minimum height, not a fixed one: at accessibility text
+                // sizes a 17pt title needs more than 44pt and used to be
+                // clipped, and long titles were ellipsised where the user most
+                // needs to know where they are.
+                constraints: const BoxConstraints(minHeight: 44),
                 child: Row(
                   children: [
                     ?leading,
@@ -193,7 +217,9 @@ class _CompactCupertinoTopBarDelegate extends SliverPersistentHeaderDelegate {
                       Expanded(
                         child: Text(
                           title!,
-                          maxLines: 1,
+                          // Two lines, so a long title or a large accessibility
+                          // text size still tells the user where they are.
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: CupertinoTheme.of(
                             context,
@@ -574,11 +600,18 @@ class AdaptiveIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isApplePlatform(context)) {
+      // A disabled CupertinoButton repaints its child with
+      // `CupertinoColors.quaternaryLabel`, which strips the icon's own colour
+      // (a green shield or a blue glyph turns grey). Keep the glyph as it is
+      // and dim the whole control with opacity instead — that is what the
+      // system does for inactive artwork.
       final button = CupertinoButton(
         padding: EdgeInsets.zero,
         minimumSize: const Size.square(AppSizes.listAction),
         onPressed: onPressed,
-        child: icon,
+        child: onPressed == null
+            ? Opacity(opacity: AppOpacity.disabled, child: icon)
+            : icon,
       );
       return tooltip == null
           ? button
@@ -1134,7 +1167,12 @@ class AdaptiveActionMenu<T> extends StatelessWidget {
             padding: EdgeInsets.zero,
             minimumSize: const Size.square(AppSizes.listAction),
             onPressed: enabled ? () => _showCupertinoActions(context) : null,
-            child: icon ?? const Icon(CupertinoIcons.ellipsis_circle),
+            // Same rule as AdaptiveIconButton: disabled artwork is faded, not
+            // repainted grey by the button.
+            child: Opacity(
+              opacity: enabled ? 1 : AppOpacity.disabled,
+              child: icon ?? const Icon(CupertinoIcons.ellipsis_circle),
+            ),
           ),
         ),
       );

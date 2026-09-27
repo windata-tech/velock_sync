@@ -464,17 +464,70 @@ class MainActivity : FlutterActivity() {
                     input.copyTo(output)
                 } ?: throw IOException("Unable to write document tree file.")
             }
-            if (existing != null && !existing.delete()) {
-                throw IOException("Unable to replace document tree file.")
-            }
-            if (!temporary.renameTo(name)) {
-                throw IOException("Unable to finalize document tree file.")
-            }
         } catch (error: Exception) {
+            // Nothing was published yet: the destination still holds its
+            // previous content, so the unfinished staging document can go.
             temporary.delete()
             throw error
         }
+
+        // Publishing must never remove the existing document first. A process
+        // kill between a delete and a rename would destroy the file's only real
+        // name and keep the payload under a staging name that no scan treats as
+        // that file, so the next sync would delete the remote copy as well.
+        try {
+            if (existing == null) {
+                // A provider may refuse a rename, or store the document under
+                // another name to avoid a conflict
+                // (DocumentsProvider#renameDocument), so the published name is
+                // verified before the write is reported as done.
+                val published = try {
+                    temporary.renameTo(name) && temporary.name == name
+                } catch (error: RuntimeException) {
+                    false
+                }
+                if (!published) {
+                    // Move a document the provider stored under another name
+                    // back to its ignored staging name: the destination name
+                    // was never taken, so nothing is lost.
+                    if (temporary.name != temporaryName) temporary.renameTo(temporaryName)
+                    throw SafReplaceFailedException("Unable to publish document tree file: $name")
+                }
+            } else {
+                // DocumentsContract rename is not an atomic replace: AOSP's
+                // FileSystemProvider renames onto the unique name "name (1).ext"
+                // instead of overwriting. Copying into the existing document
+                // replaces its content while the document id and the real name
+                // stay in place for the whole write.
+                replaceDocumentContent(existing, temporary)
+                temporary.delete()
+            }
+        } catch (error: SafReplaceFailedException) {
+            // The staging document may hold the only complete payload: it is
+            // left in place under its ignored name instead of being deleted.
+            throw error
+        } catch (error: Exception) {
+            throw SafReplaceFailedException(
+                "Unable to replace document tree file: ${error.message ?: name}",
+                error,
+            )
+        }
         null
+    }
+
+    /// Copies one staged document over an existing document of the same tree.
+    ///
+    /// The destination is truncated in place, so its document id and display
+    /// name never disappear, and the complete payload stays available under the
+    /// staging name until this returns.
+    private fun replaceDocumentContent(target: DocumentFile, staged: DocumentFile) {
+        val input = contentResolver.openInputStream(staged.uri)
+            ?: throw IOException("Unable to read the staged document tree file.")
+        input.use { stream ->
+            val output = contentResolver.openOutputStream(target.uri, "wt")
+                ?: throw IOException("Unable to write document tree file.")
+            output.use { sink -> stream.copyTo(sink) }
+        }
     }
 
     private fun deleteEntry(arguments: Any?, result: MethodChannel.Result) = onDocumentExecutor(result) {
@@ -491,6 +544,8 @@ class MainActivity : FlutterActivity() {
         documentExecutor.execute {
             try {
                 respondSuccess(result, action())
+            } catch (error: SafReplaceFailedException) {
+                respondError(result, "provider.saf.replace_failed", error)
             } catch (error: Exception) {
                 respondError(result, "SAF_OPERATION", error)
             }
@@ -671,3 +726,11 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_DOCUMENT_TREE = 5194
     }
 }
+
+/// A document tree write could not be published under the requested name.
+///
+/// The destination name is never removed to make room, so it still holds its
+/// previous content and the staged payload stays in the tree under a
+/// `.velock-tmp-` name. Reported to Dart as `provider.saf.replace_failed`.
+private class SafReplaceFailedException(message: String, cause: Throwable? = null) :
+    IOException(message, cause)

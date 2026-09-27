@@ -3,7 +3,12 @@
 /// from an enum name.
 enum SyncDatasetKind {
   selectedFolder('selected-folder'),
-  velockManaged('velock-managed');
+  velockManaged('velock-managed'),
+
+  /// Plain (unencrypted) folder mirror: one local folder bound to one remote
+  /// folder. The remote side holds the user's real files under their real
+  /// names; there is no vault, key material or recovery package.
+  plainFolder('plain-folder');
 
   const SyncDatasetKind(this.persistedValue);
 

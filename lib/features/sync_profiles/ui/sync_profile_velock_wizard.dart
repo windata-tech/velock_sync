@@ -1149,11 +1149,11 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                         syncText(
                           context,
                           widget.restoring
-                              ? '请选择原来保存格间备份的网盘或 NAS，不要使用空目录。'
-                              : '使用自己的网盘或 NAS，Sync 会先检查它是否可以安全保存数据。',
+                              ? '请选择原来保存格间备份的网盘、NAS 或其他 WebDAV 服务，不要使用空目录。'
+                              : '使用自己的网盘、NAS 或其他 WebDAV 服务，Sync 会先检查它是否可以安全保存数据。',
                           widget.restoring
-                              ? 'Choose the cloud folder or NAS that holds your original Velock backup, not an empty folder.'
-                              : 'Use your own cloud drive or NAS. Sync checks safe storage access first.',
+                              ? 'Choose the cloud folder, NAS or other WebDAV service that holds your original Velock backup, not an empty folder.'
+                              : 'Use your own cloud drive, NAS or other WebDAV service. Sync checks safe storage access first.',
                         ),
                       ),
                       const SizedBox(height: 22),
@@ -1179,6 +1179,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                               ? 'Choose another folder'
                               : 'Choose an existing location',
                         ),
+                        busy: _checkingVelock,
                         onPressed: _checkingVelock
                             ? null
                             : () => _continueVelockProfile(

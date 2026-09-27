@@ -285,9 +285,11 @@ void main() {
         ),
       );
       await profiles.save(
+        // Eligible, but this run registers no executor for it: the dispatcher
+        // must skip it without failing the batch.
         _profile(
           'unsupported',
-          kind: SyncDatasetKind.velockManaged,
+          kind: SyncDatasetKind.plainFolder,
           background: const SyncProfileBackgroundPolicy(enabled: true),
         ),
       );
@@ -391,7 +393,7 @@ class _BackgroundExecutor implements SyncProfileExecutor {
   final List<SyncProfileExecutionRequest> requests = [];
 
   @override
-  SyncDatasetKind get kind => SyncDatasetKind.selectedFolder;
+  SyncDatasetKind get kind => _liveKind;
 
   @override
   Future<SyncProfileRunResult> run(SyncProfileExecutionRequest request) async {
@@ -407,9 +409,13 @@ class _BackgroundExecutor implements SyncProfileExecutor {
   }
 }
 
+/// The encryption-era `selectedFolder` kind is retired and no longer
+/// schedulable, so the dispatcher tests run against the live Velock kind.
+const _liveKind = SyncDatasetKind.velockManaged;
+
 SyncProfileEnvelope _profile(
   String profileId, {
-  SyncDatasetKind kind = SyncDatasetKind.selectedFolder,
+  SyncDatasetKind kind = _liveKind,
   SyncProfileState state = SyncProfileState.active,
   SyncProfileBackgroundPolicy background = const SyncProfileBackgroundPolicy(),
 }) => SyncProfileEnvelope(

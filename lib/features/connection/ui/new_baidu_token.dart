@@ -8,6 +8,7 @@ import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/core/state/common.dart';
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_credentials.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
@@ -59,7 +60,9 @@ class NewBaiduToken extends HookConsumerWidget {
             ? null
             : DateTime.tryParse(expiryText)?.toUtc();
         if (expiryText.isNotEmpty && expiresAt == null) {
-          throw const FormatException('过期时间格式无效');
+          throw FormatException(
+            syncText(context, '过期时间格式无效', 'Invalid expiry format'),
+          );
         }
         final scopes = scopesController.text
             .split(RegExp(r'[ ,]+'))
@@ -67,7 +70,13 @@ class NewBaiduToken extends HookConsumerWidget {
             .where((value) => value.isNotEmpty)
             .toSet();
         if (!scopes.contains('netdisk')) {
-          throw const FormatException('scope 必须包含 netdisk');
+          throw FormatException(
+            syncText(
+              context,
+              'scope 必须包含 netdisk',
+              'Scope must include netdisk',
+            ),
+          );
         }
 
         await ref
@@ -87,7 +96,14 @@ class NewBaiduToken extends HookConsumerWidget {
               ),
             );
         if (context.mounted) {
-          showPlatformMessage(context, '百度网盘凭据已保存到系统安全存储。');
+          showPlatformMessage(
+            context,
+            syncText(
+              context,
+              '百度网盘凭据已保存到系统安全存储。',
+              'Baidu Netdisk credentials were saved to system secure storage.',
+            ),
+          );
           context.pop();
         }
       } on FormatException catch (error) {
@@ -98,7 +114,14 @@ class NewBaiduToken extends HookConsumerWidget {
           stackTrace: stackTrace,
         );
         if (context.mounted) {
-          showPlatformMessage(context, '凭据保存失败，请重试。');
+          showPlatformMessage(
+            context,
+            syncText(
+              context,
+              '凭据保存失败，请重试。',
+              'Could not save the credentials. Try again.',
+            ),
+          );
         }
       } finally {
         isSaving.value = false;
@@ -107,7 +130,9 @@ class NewBaiduToken extends HookConsumerWidget {
 
     return PlatformScaffold(
       appBar: WDAppBar(
-        title: const Text('配置百度网盘 Token'),
+        title: Text(
+          syncText(context, '配置百度网盘 Token', 'Configure Baidu Netdisk token'),
+        ),
         trailingActions: [
           PlatformTextButton(
             padding: EdgeInsets.zero,
@@ -115,7 +140,7 @@ class NewBaiduToken extends HookConsumerWidget {
               AppRoutes.connectionHelp.name,
               queryParameters: {'provider': 'baiduNetdisk'},
             ),
-            child: const Text('说明'),
+            child: Text(syncText(context, '说明', 'About')),
           ),
           PlatformTextButton(
             padding: EdgeInsets.zero,
@@ -126,9 +151,9 @@ class NewBaiduToken extends HookConsumerWidget {
                     width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text(
-                    '保存',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                : Text(
+                    syncText(context, '保存', 'Save'),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
           ),
         ],
@@ -151,7 +176,11 @@ class NewBaiduToken extends HookConsumerWidget {
                   AppSpacing.sm,
                 ),
                 child: Text(
-                  '这里保存的是百度 OAuth 凭据，不会创建可同步连接。当前项目尚未接入百度网盘对象存储适配器；保存后可供后续适配器或受信任的 Token Broker 使用。',
+                  syncText(
+                    context,
+                    '这里保存的是百度 OAuth 凭据，不会创建可同步连接。当前项目尚未接入百度网盘对象存储适配器；保存后可供后续适配器或受信任的 Token Broker 使用。',
+                    'This page stores Baidu OAuth credentials; it does not create a connection you can sync with. The project has no Baidu storage adapter yet, so what you save here is kept for a later adapter or a trusted token broker.',
+                  ),
                   style: TextStyle(
                     color: context.appSecondaryLabel,
                     height: 1.45,
@@ -177,7 +206,13 @@ class NewBaiduToken extends HookConsumerWidget {
                         ),
                         mode: LaunchMode.externalApplication,
                       ),
-                      child: const Text('打开百度开放平台控制台'),
+                      child: Text(
+                        syncText(
+                          context,
+                          '打开百度开放平台控制台',
+                          'Open the Baidu developer console',
+                        ),
+                      ),
                     ),
                     PlatformTextButton(
                       padding: EdgeInsets.zero,
@@ -185,63 +220,108 @@ class NewBaiduToken extends HookConsumerWidget {
                         AppRoutes.connectionHelp.name,
                         queryParameters: {'provider': 'baiduNetdisk'},
                       ),
-                      child: const Text('查看填写说明'),
+                      child: Text(
+                        syncText(context, '查看填写说明', 'Read the setup notes'),
+                      ),
                     ),
                   ],
                 ),
               ),
               AdaptiveListSection(
-                header: '应用信息',
+                header: syncText(context, '应用信息', 'App details'),
                 children: [
                   _BaiduField(
                     controller: appKeyController,
                     label: 'AppKey',
-                    helperText: '百度控制台创建应用后得到的应用标识。',
+                    helperText: syncText(
+                      context,
+                      '百度控制台创建应用后得到的应用标识。',
+                      'The app identifier shown in the Baidu console after you create an app.',
+                    ),
                     validator: (value) => value == null || value.trim().isEmpty
-                        ? '请输入 AppKey'
+                        ? syncText(context, '请输入 AppKey', 'Enter the AppKey')
                         : null,
                   ),
                   _BaiduField(
                     controller: secretKeyController,
-                    label: 'SecretKey（可选）',
-                    helperText:
-                        '设备码换 Token 和刷新 Token 时需要；简化模式只粘贴 Access Token 时可留空。',
+                    label: syncText(
+                      context,
+                      'SecretKey（可选）',
+                      'SecretKey (optional)',
+                    ),
+                    helperText: syncText(
+                      context,
+                      '设备码换 Token 和刷新 Token 时需要；简化模式只粘贴 Access Token 时可留空。',
+                      'Needed to exchange a device code or refresh a token; leave it empty in implicit mode when you only paste an access token.',
+                    ),
                     obscureText: true,
                   ),
                 ],
               ),
               AdaptiveListSection(
-                header: '令牌',
+                header: syncText(context, '令牌', 'Tokens'),
                 children: [
                   _BaiduField(
                     controller: accessTokenController,
                     label: 'Access Token',
-                    helperText: '必填。不要把它发送给他人，也不要放进截图、同步包或普通日志。',
+                    helperText: syncText(
+                      context,
+                      '必填。不要把它发送给他人，也不要放进截图、同步包或普通日志。',
+                      'Required. Never send it to anyone or put it in a screenshot, sync package or ordinary log.',
+                    ),
                     obscureText: true,
                     validator: (value) => value == null || value.trim().isEmpty
-                        ? '请输入 Access Token'
+                        ? syncText(
+                            context,
+                            '请输入 Access Token',
+                            'Enter the Access Token',
+                          )
                         : null,
                   ),
                   _BaiduField(
                     controller: refreshTokenController,
-                    label: 'Refresh Token（可选）',
-                    helperText: '授权码/设备码模式通常会返回；百度要求每次刷新后使用新返回的 refresh_token。',
+                    label: syncText(
+                      context,
+                      'Refresh Token（可选）',
+                      'Refresh Token (optional)',
+                    ),
+                    helperText: syncText(
+                      context,
+                      '授权码/设备码模式通常会返回；百度要求每次刷新后使用新返回的 refresh_token。',
+                      'Usually returned in authorization-code and device-code modes; Baidu requires the newly returned refresh_token after every refresh.',
+                    ),
                     obscureText: true,
                   ),
                   _BaiduField(
                     controller: expiresAtController,
-                    label: 'Access Token 过期时间（可选）',
-                    helperText: 'ISO 8601，例如 2026-08-07T12:00:00Z；不知道时可以留空。',
+                    label: syncText(
+                      context,
+                      'Access Token 过期时间（可选）',
+                      'Access Token expiry (optional)',
+                    ),
+                    helperText: syncText(
+                      context,
+                      'ISO 8601，例如 2026-08-07T12:00:00Z；不知道时可以留空。',
+                      'ISO 8601, for example 2026-08-07T12:00:00Z; leave it empty if you do not know it.',
+                    ),
                     keyboardType: TextInputType.datetime,
                   ),
                   _BaiduField(
                     controller: scopesController,
                     label: 'Scope',
-                    helperText: '用逗号或空格分隔，至少包含 basic,netdisk。',
+                    helperText: syncText(
+                      context,
+                      '用逗号或空格分隔，至少包含 basic,netdisk。',
+                      'Separate with commas or spaces, and include at least basic,netdisk.',
+                    ),
                     validator: (value) =>
                         value == null ||
                             !value.split(RegExp(r'[ ,]+')).contains('netdisk')
-                        ? 'Scope 必须包含 netdisk'
+                        ? syncText(
+                            context,
+                            'Scope 必须包含 netdisk',
+                            'Scope must include netdisk',
+                          )
                         : null,
                   ),
                 ],
@@ -255,8 +335,16 @@ class NewBaiduToken extends HookConsumerWidget {
                 ),
                 child: Text(
                   savedCredentials.data == null
-                      ? '凭据尚未配置。'
-                      : '当前设备已有一组百度凭据；再次保存会覆盖原配置。',
+                      ? syncText(
+                          context,
+                          '凭据尚未配置。',
+                          'No credentials are set up yet.',
+                        )
+                      : syncText(
+                          context,
+                          '当前设备已有一组百度凭据；再次保存会覆盖原配置。',
+                          'This device already holds a set of Baidu credentials; saving again replaces them.',
+                        ),
                   style: TextStyle(
                     color: context.appSecondaryLabel,
                     height: 1.4,
@@ -306,7 +394,9 @@ class _BaiduField extends StatelessWidget {
         isDense: true,
         labelText: label,
         helperText: helperText,
-        helperMaxLines: 3,
+        // The English helper lines are longer than the Chinese ones; they wrap
+        // to as many lines as they need instead of being cut off.
+        helperMaxLines: null,
         helperStyle: TextStyle(
           color: context.appSecondaryLabel,
           fontSize: 12,

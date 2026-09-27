@@ -18,7 +18,7 @@ import 'package:xml/xml.dart';
 ///
 /// Authentication is supplied only at construction time from secure storage;
 /// this object neither persists nor logs credentials.
-class WebDavObjectStore implements RemoteObjectStore {
+class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
   WebDavObjectStore({
     required Dio dio,
     required Uri baseUri,
@@ -100,7 +100,13 @@ class WebDavObjectStore implements RemoteObjectStore {
       ),
       cancellation: cancellation,
     );
-    if (response.statusCode == 404) return const RemoteObjectPage(items: []);
+    if (response.statusCode == 404) {
+      // "The folder is gone" and "the folder is empty" must not be the same
+      // answer: the mirror plans deletions from this listing, so an unmounted
+      // share or a renamed folder would look like "the user deleted everything
+      // remotely" and the local copies would be removed.
+      throw RemoteObjectNotFoundException(prefix);
+    }
 
     final document = XmlDocument.parse(response.data!);
     final itemsByKey = <String, RemoteObjectMetadata>{};
@@ -124,6 +130,7 @@ class WebDavObjectStore implements RemoteObjectStore {
         _firstDescendantText(responseElement, 'getlastmodified'),
       );
       final etag = _firstDescendantText(responseElement, 'getetag');
+      final isDirectory = _isCollectionResponse(responseElement);
       itemsByKey.putIfAbsent(
         logicalKey,
         () => RemoteObjectMetadata(
@@ -132,6 +139,7 @@ class WebDavObjectStore implements RemoteObjectStore {
           updatedAt:
               modified ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
           etag: etag,
+          isDirectory: isDirectory,
         ),
       );
     }
@@ -336,10 +344,10 @@ class WebDavObjectStore implements RemoteObjectStore {
           headers: {
             // RFC 4918 allows a path-absolute Destination. Keeping the encoded
             // path avoids reverse proxies comparing an external authority with
-            // the origin host, while retaining the configured base path.
-            'Destination': destinationUri.hasQuery
-                ? '${destinationUri.path}?${destinationUri.query}'
-                : destinationUri.path,
+            // the origin host, while retaining the configured base path. A
+            // logical key is a decoded relative path, so it has no query part:
+            // `?` and `#` inside a name are escaped like any other character.
+            'Destination': destinationUri.path,
             'Overwrite': 'F',
           },
           validateStatus: (status) =>
@@ -353,6 +361,48 @@ class WebDavObjectStore implements RemoteObjectStore {
       ),
       cancellation: cancellation,
     );
+  }
+
+  /// Creates exactly one collection with a single MKCOL request.
+  ///
+  /// No redirect is followed and no parent is created implicitly: the caller
+  /// creates parents in order. Only HTTP 201 proves the collection was created;
+  /// 405/409 keep the existing collection-not-writable classification rather
+  /// than being reported as an already-existing directory.
+  @override
+  Future<void> createCollection(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    final response = await _request(
+      () => _dio.requestUri<void>(
+        _objectUri(logicalKey),
+        cancelToken: dioCancelTokenFor(cancellation),
+        options: _options(
+          method: 'MKCOL',
+          // A redirect must never turn one logical collection into a write at a
+          // different location, so it is surfaced as a failure instead.
+          followRedirects: false,
+          validateStatus: (status) =>
+              status == 201 || status == 405 || status == 409 || status == 429,
+        ),
+      ),
+      cancellation: cancellation,
+    );
+    if (kDebugMode) {
+      debugPrint(
+        'WEBDAV_DIAG method=MKCOL key=$logicalKey status=${response.statusCode}',
+      );
+    }
+    if (response.statusCode == 405 || response.statusCode == 409) {
+      throw _CollectionNotWritable(response.statusCode!);
+    }
+    // Every other status is rejected by validateStatus, so only 201 can reach
+    // this point; keep the guard so an unexpected response is never success.
+    if (response.statusCode != 201) {
+      throw _CollectionNotWritable(response.statusCode!);
+    }
   }
 
   Future<String> _createPrivateCollection(
@@ -550,8 +600,17 @@ class WebDavObjectStore implements RemoteObjectStore {
         _objectUri(logicalKey),
         cancelToken: dioCancelTokenFor(cancellation),
         options: _options(
+          // Widened for collections: servers answer a successful collection
+          // DELETE with 200, 202 or 204, and a concurrently removed target with
+          // 404. 207 Multi-Status is deliberately NOT accepted: it reports
+          // per-member results and may contain failures, so treating it as
+          // success could hide a partially deleted collection.
           validateStatus: (status) =>
-              status == 204 || status == 404 || status == 429,
+              status == 200 ||
+              status == 202 ||
+              status == 204 ||
+              status == 404 ||
+              status == 429,
         ),
       ),
       cancellation: cancellation,
@@ -564,6 +623,7 @@ class WebDavObjectStore implements RemoteObjectStore {
     ResponseType? responseType,
     Map<String, String>? headers,
     ValidateStatus? validateStatus,
+    bool? followRedirects,
   }) {
     final requestHeaders = <String, String>{...headers ?? {}};
     if (username != null &&
@@ -578,6 +638,7 @@ class WebDavObjectStore implements RemoteObjectStore {
       responseType: responseType,
       headers: requestHeaders,
       validateStatus: validateStatus,
+      followRedirects: followRedirects,
     );
   }
 
@@ -615,18 +676,46 @@ class WebDavObjectStore implements RemoteObjectStore {
     final validatedKey = logicalKey.endsWith('/')
         ? logicalKey.substring(0, logicalKey.length - 1)
         : logicalKey;
+    // An empty key is only legal when the caller explicitly allows it (listing
+    // the store root); every other key must still be a normalised relative path.
+    final isEmptyRoot = allowEmpty && validatedKey.isEmpty;
     if (logicalKey.startsWith('/') ||
         (!allowEmpty && validatedKey.isEmpty) ||
-        validatedKey
-            .split('/')
-            .any((part) => part.isEmpty || part == '.' || part == '..')) {
+        (!isEmptyRoot &&
+            validatedKey
+                .split('/')
+                .any((part) => part.isEmpty || part == '.' || part == '..'))) {
       throw ArgumentError.value(
         logicalKey,
         'logicalKey',
         'must be a normalised relative key',
       );
     }
-    return _baseUri.resolve(logicalKey);
+    return _objectUriFor(
+      validatedKey,
+      // `list('a/b/')` asks for the collection itself; keep that shape.
+      trailingSlash: validatedKey.isNotEmpty && logicalKey.endsWith('/'),
+    );
+  }
+
+  /// Builds the request URI segment by segment.
+  ///
+  /// `Uri.resolve('a#b.png')` treats `#b.png` as a fragment, so a file whose
+  /// name contains `#` or `?` used to be written to, read from and deleted at
+  /// the WRONG remote path (and two such names collided). Encoding each segment
+  /// keeps the name intact and still leaves `/` as the separator.
+  Uri _objectUriFor(String validatedKey, {bool trailingSlash = false}) {
+    if (validatedKey.isEmpty) return _baseUri;
+    final segments = <String>[
+      ..._baseUri.pathSegments.where((segment) => segment.isNotEmpty),
+      ...validatedKey.split('/'),
+      if (trailingSlash) '',
+    ];
+    return _baseUri.replace(
+      pathSegments: segments,
+      query: null,
+      fragment: null,
+    );
   }
 
   RemoteObjectMetadata _metadata(String key, Headers headers) {
@@ -661,6 +750,23 @@ class WebDavObjectStore implements RemoteObjectStore {
     return value.path.endsWith('/')
         ? value
         : value.replace(path: '${value.path}/');
+  }
+
+  /// True when the PROPFIND response advertises a DAV collection
+  /// (`<resourcetype><collection/></resourcetype>`). A missing or empty
+  /// `resourcetype` stays a file, matching the historical parser behaviour.
+  static bool _isCollectionResponse(XmlElement responseElement) {
+    final resourceType = responseElement.descendants
+        .whereType<XmlElement>()
+        .cast<XmlElement?>()
+        .firstWhere(
+          (element) => element?.name.local == 'resourcetype',
+          orElse: () => null,
+        );
+    return resourceType?.childElements.any(
+          (element) => element.name.local == 'collection',
+        ) ??
+        false;
   }
 
   static String? _firstDescendantText(XmlElement parent, String localName) {

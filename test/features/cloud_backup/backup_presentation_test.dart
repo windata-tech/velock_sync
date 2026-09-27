@@ -48,6 +48,22 @@ void main() {
     ),
   );
 
+  test('failure timestamp belongs to this run and is absent on success', () {
+    expect(
+      state(
+        run: 'failed',
+        error: 'provider.webdav.atomic_create_unsupported',
+      ).failedAt,
+      DateTime.utc(2026, 9, 25, 12),
+    );
+    expect(
+      state(run: 'failed', completedAt: false).failedAt,
+      DateTime.utc(2026, 9, 25),
+    );
+    expect(state(run: 'completed').failedAt, isNull);
+    expect(state(run: 'running').failedAt, isNull);
+  });
+
   test('a saved connection and bytes never prove completed backup', () {
     expect(state().stage, BackupStage.notStarted);
   });
@@ -156,15 +172,55 @@ void main() {
       BackupAction.resolve,
     );
   });
-  test('unsafe cloud storage asks for repair, not endless retries', () {
-    expect(
-      state(
-        run: 'failed',
-        error: 'provider.webdav.atomic_create_unsupported',
-      ).action,
-      BackupAction.manage,
-    );
-  });
+  test(
+    'unsafe cloud storage opens a specific check, not generic management',
+    () {
+      expect(
+        state(
+          run: 'failed',
+          error: 'provider.webdav.atomic_create_unsupported',
+        ).action,
+        BackupAction.checkStorage,
+      );
+    },
+  );
+  test(
+    'storage errors have one entry with running and conflict safety priority',
+    () {
+      for (final code in [
+        'provider.webdav.atomic_create_unsupported',
+        'provider.webdav.collection_not_writable',
+      ]) {
+        for (final profileState in [
+          SyncProfileState.active,
+          SyncProfileState.error,
+          SyncProfileState.blockedByConfiguration,
+        ]) {
+          expect(
+            state(state: profileState, run: 'failed', error: code).action,
+            BackupAction.checkStorage,
+          );
+        }
+        expect(
+          state(run: 'failed', error: code, running: true).stage,
+          BackupStage.transferring,
+        );
+        expect(
+          state(run: 'failed', error: code, conflicts: 1).action,
+          BackupAction.resolve,
+        );
+        expect(
+          state(
+            state: SyncProfileState.accessRequired,
+            run: 'failed',
+            error: code,
+          ).action,
+          BackupAction.manage,
+        );
+      }
+    },
+  );
+
   test('network failure remains retryable', () {
     expect(
       state(run: 'failed', error: 'network.timeout').action,

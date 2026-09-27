@@ -1,8 +1,9 @@
 /// The two product domains have separate destinations; they never share a list.
 library;
 
+import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
+
 import 'dart:async';
-import 'package:velock_sync/sync_core/model/sync_failure.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -37,6 +38,8 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
     with WidgetsBindingObserver {
   late Future<_HomeData> _profiles;
   final Set<String> _running = {};
+  Timer? _runRefresh;
+  int _loadGeneration = 0;
   bool get _isVelock => widget.kind == SyncDatasetKind.velockManaged;
 
   @override
@@ -48,6 +51,8 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
 
   @override
   void dispose() {
+    _runRefresh?.cancel();
+    _loadGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -58,6 +63,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
   }
 
   Future<_HomeData> _load() async {
+    final generation = ++_loadGeneration;
     final all = await ref.read(syncProfileRepositoryProvider).listSummaries();
     final profiles = all
         .where((p) => p.kind == widget.kind && !p.isIsolated)
@@ -79,6 +85,14 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
         snapshots[p.profileId] = await ref
             .read(syncStateDatabaseProvider)
             .readSyncedDataSnapshot(p.profileId);
+      }
+    }
+    if (mounted && generation == _loadGeneration) {
+      _runRefresh?.cancel();
+      if (profiles.any((p) => p.activity?.latestRun?.state == 'running')) {
+        _runRefresh = Timer(const Duration(seconds: 1), () {
+          if (mounted) _refresh();
+        });
       }
     }
     return _HomeData(
@@ -119,6 +133,14 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
       case BackupAction.openVelock:
         await openVelockForBackup(context, ref);
         return;
+      case BackupAction.checkStorage:
+        final saved = await ref
+            .read(syncProfileRepositoryProvider)
+            .read(profile.profileId);
+        if (!mounted) return;
+        if (saved != null) await showBackupStorageHelp(context, saved);
+        if (mounted) _refresh();
+        return;
       case BackupAction.reviewHistory:
         final saved = await ref
             .read(syncProfileRepositoryProvider)
@@ -144,8 +166,12 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
               context,
               syncText(
                 context,
-                '暂时无法继续传输，请稍后重试。',
-                'Could not resume transfer. Please try again.',
+                _isVelock
+                    ? '暂时无法继续备份，请稍后重试。'
+                    : '暂时无法继续同步，请稍后重试。',
+                _isVelock
+                    ? 'Could not resume the backup. Please try again.'
+                    : 'Could not resume the sync. Please try again.',
               ),
             );
           }
@@ -161,16 +187,16 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
             ref,
             profile.profileId,
           );
-          if (mounted) await presentFirstSyncResult(context, result);
+          if (mounted) {
+            setState(() => _running.remove(profile.profileId));
+            _refresh();
+            await presentFirstSyncResult(context, result);
+          }
         } on Object catch (error) {
           if (mounted) {
-            showMessage(
-              context,
-              backupFailureMessage(
-                context,
-                SyncFailureClassifier.classify(error).errorCode,
-              ),
-            );
+            setState(() => _running.remove(profile.profileId));
+            _refresh();
+            await presentSyncFailureAlert(context: context, error: error);
           }
         } finally {
           if (mounted) {
@@ -208,7 +234,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
   }
 
   List<Widget> _slivers(AsyncSnapshot<_HomeData> snapshot) {
-    if (snapshot.connectionState != ConnectionState.done) {
+    if (snapshot.connectionState != ConnectionState.done && !snapshot.hasData) {
       return [
         SliverFillRemaining(
           hasScrollBody: false,
@@ -244,37 +270,18 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
                 BackupWelcomeCard(
                   onStart: () => _open(AppRoutes.velockDatasetWizard.path),
                 ),
-              for (final profile in data.profiles) ...[
+              for (final profile in data.profiles)
+                // Details live inside the card, exactly like a plain sync
+                // location: a separate row for the same destination was noise.
                 BackupStatusCard(
                   name: profile.displayName ?? 'Velock',
                   presentation: _presentation(profile, data),
                   onAction: () =>
                       _action(profile, _presentation(profile, data)),
+                  secondaryLabel: syncText(context, '详情', 'Details'),
+                  secondaryKey: Key('velock-backup-details-${profile.profileId}'),
+                  onSecondary: () => _open('/sync-profiles/${profile.profileId}'),
                 ),
-                AdaptiveListSection(
-                  children: [
-                    AdaptiveListTile(
-                      leading: const Icon(CupertinoIcons.slider_horizontal_3),
-                      title: Text(
-                        syncText(
-                          context,
-                          '备份详情与管理',
-                          'Backup details and settings',
-                        ),
-                      ),
-                      subtitle: Text(
-                        syncText(
-                          context,
-                          '保存位置、需要处理的事项和详细记录',
-                          'Cloud location, items needing attention and history',
-                        ),
-                      ),
-                      showChevron: true,
-                      onTap: () => _open('/sync-profiles/${profile.profileId}'),
-                    ),
-                  ],
-                ),
-              ],
               AdaptiveListSection(
                 children: [
                   AdaptiveListTile(
@@ -339,12 +346,55 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
                     ],
                   ),
                 ),
-              if (data.profiles.isNotEmpty)
+              if (data.profiles.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 0, 22, 12),
+                  child: Text(
+                    syncText(
+                      context,
+                      '文件夹同步与格间备份是独立任务，状态分别记录。',
+                      'Folder sync and Velock backup are separate tasks with independent status.',
+                    ),
+                    style: TextStyle(color: context.appSecondaryLabel),
+                  ),
+                ),
+                for (final profile in data.profiles) ...[
+                  BackupStatusCard(
+                    name:
+                        profile.displayName ??
+                        syncText(context, '同步文件夹', 'Synced folder'),
+                    presentation: _presentation(profile, data),
+                    isVelock: false,
+                    onAction: () =>
+                        _action(profile, _presentation(profile, data)),
+                  ),
+                  AdaptiveListSection(
+                    children: [
+                      AdaptiveListTile(
+                        leading: const Icon(CupertinoIcons.slider_horizontal_3),
+                        title: Text(
+                          syncText(
+                            context,
+                            '同步详情与管理',
+                            'Sync details and settings',
+                          ),
+                        ),
+                        subtitle: Text(
+                          syncText(
+                            context,
+                            '保存位置、需要处理的事项和详细记录',
+                            'Cloud location, items needing attention and history',
+                          ),
+                        ),
+                        showChevron: true,
+                        onTap: () =>
+                            _open('/sync-profiles/${profile.profileId}'),
+                      ),
+                    ],
+                  ),
+                ],
                 AdaptiveListSection(
-                  header: syncText(context, '我的文件夹', 'My folders'),
                   children: [
-                    for (final profile in data.profiles)
-                      _ProfileTile(summary: profile, onChanged: _refresh),
                     AdaptiveListTile(
                       widgetKey: const Key('selected-folder-create'),
                       leading: const Icon(CupertinoIcons.add),
@@ -354,6 +404,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
                     ),
                   ],
                 ),
+              ],
             ],
             if (data.isolated.isNotEmpty)
               AdaptiveListSection(
@@ -543,6 +594,7 @@ class _ProfileTile extends ConsumerWidget {
             summary.profileId,
           );
           if (!context.mounted || result == null) return;
+          onChanged();
           await presentSyncResult(context, result);
         case _ProfileAction.pause:
           await ref
@@ -576,8 +628,13 @@ class _ProfileTile extends ConsumerWidget {
           ),
         );
       }
-    } on Object {
+    } on Object catch (error) {
       if (context.mounted) {
+        if (action == _ProfileAction.syncNow) {
+          onChanged();
+          await presentSyncFailureAlert(context: context, error: error);
+          return;
+        }
         showMessage(
           context,
           syncText(

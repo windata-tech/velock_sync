@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:velock_sync/features/plain_sync/ui/plain_sync_home.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
@@ -27,6 +28,10 @@ import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/protocol_provider.dart';
 import 'package:velock_sync/features/connection/ui/new_oauth.dart';
+import 'package:velock_sync/features/connection/model/connection_model.dart';
+import 'package:velock_sync/features/connection/state/connection_provider.dart';
+import 'package:velock_sync/features/connection/state/files_provider.dart';
+import 'package:velock_sync/features/connection/ui/connection.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace.dart';
@@ -204,6 +209,74 @@ void main() {
     }
   }
 
+  testWidgets('cloud location opens the backup folder, not the connection root', (
+    tester,
+  ) async {
+    final profile = VelockSyncProfile(
+      profileId: 'nav-location',
+      datasetId: 'dataset',
+      vaultId: 'vault',
+      deviceId: 'device',
+      displayName: 'Navigation backup',
+      connectionId: 'cloud',
+      pairedProducerId: 'producer',
+      pairedProducerPublicKeyId: 'key-ref',
+      exchangeBindingId: 'binding',
+      remoteRootSegments: const ['USB_HDD_8T', '111'],
+      backgroundPolicy: const SyncProfileBackgroundPolicy(),
+      state: SyncProfileState.active,
+      createdAt: DateTime.utc(2026, 9, 26),
+    ).toEnvelope();
+    await container.read(syncProfileRepositoryProvider).save(profile);
+    final scope = ProviderContainer(
+      parent: container,
+      overrides: [
+        velockWizardReadinessServiceProvider.overrideWithValue(
+          _NavigationReady(),
+        ),
+        connectionDetailProvider('cloud').overrideWith(_FakeConnection.new),
+        remoteFileBrowserProvider(
+          connectionModel: _cloudConnection,
+        ).overrideWith(_FakeBrowser.new),
+      ],
+    );
+    addTearDown(scope.dispose);
+
+    // Start on the tabbed shell and push the detail, exactly like the app does.
+    final router = await mount(tester, scope: scope);
+    router.push('/sync-profiles/nav-location');
+    await tester.pumpAndSettle();
+    expect(find.byType(SyncProfileDetail), findsOneWidget);
+
+    // The row names the folder that actually holds this backup.
+    expect(
+      tester.widget<Text>(find.byKey(const Key('backup-location-path'))).data,
+      '/USB_HDD_8T/111',
+    );
+
+    final row = find.text('云端保存位置');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+
+    // ... and hands that folder to the browser instead of the connection root.
+    expect(
+      router
+          .routerDelegate
+          .currentConfiguration
+          .matches
+          .map((match) => match.matchedLocation)
+          .last,
+      '/connections/connection/cloud',
+    );
+    expect(find.byType(Connection), findsOneWidget);
+    // The browser receives the backup's own folder, not the connection root.
+    final browser = tester.widget<Connection>(find.byType(Connection));
+    expect(browser.id, 'cloud');
+    expect(browser.initialSegments, ['USB_HDD_8T', '111']);
+  });
+
   testWidgets('pushed detail returns without leaving another detail behind', (
     tester,
   ) async {
@@ -256,12 +329,10 @@ void main() {
         await tester.tap(find.descendant(of: nav, matching: find.text('文件同步')));
         await tester.pumpAndSettle();
         expect(router.routeInformationProvider.value.uri.path, '/files');
-        expect(
-          tester.widget<SyncProfilesHome>(find.byType(SyncProfilesHome)).kind,
-          SyncDatasetKind.selectedFolder,
-        );
+        // The files tab now hosts plain folder sync locations.
+        expect(find.byType(PlainSyncHome), findsOneWidget);
         expect(find.text('从云端恢复'), findsNothing);
-        expect(find.byKey(const Key('selected-folder-create')), findsOneWidget);
+        expect(find.byKey(const Key('plain-location-create')), findsOneWidget);
         await tester.tap(find.descendant(of: nav, matching: find.text('设置')));
         await tester.pumpAndSettle();
         expect(router.routeInformationProvider.value.uri.path, '/settings');
@@ -269,7 +340,7 @@ void main() {
         await tester.tap(find.descendant(of: nav, matching: find.text('格间')));
         await tester.pumpAndSettle();
         expect(find.text('开始备份'), findsOneWidget);
-        expect(find.byKey(const Key('selected-folder-create')), findsNothing);
+        expect(find.byKey(const Key('plain-location-create')), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
@@ -664,4 +735,34 @@ class _NavigationReady implements VelockWizardReadinessService {
   @override
   Future<VelockWizardReadiness> inspect({String? syncAppInstanceId}) async =>
       const VelockWizardReadiness(VelockWizardAvailability.ready);
+}
+
+final _cloudConnection = ConnectionModel(
+  id: 'cloud',
+  name: 'Cloud',
+  source: 'cloud',
+  target: 'cloud',
+  protocol: const WebDavProtocolModel(
+    protocolType: WebDavProtocolType.https,
+    address: 'https://example.invalid',
+    port: '443',
+    path: '/',
+  ),
+  createdAt: DateTime(2026),
+  updatedAt: DateTime(2026),
+  status: ConnectionStatus.active,
+);
+
+class _FakeConnection extends ConnectionDetail {
+  @override
+  Future<ConnectionModel?> build(String id) async => _cloudConnection;
+}
+
+class _FakeBrowser extends RemoteFileBrowser {
+  @override
+  Future<FileBrowserState> build({
+    required ConnectionModel connectionModel,
+  }) async => const FileBrowserState(path: '/', rootPath: '/', files: []);
+  @override
+  Future<void> go(String value) async {}
 }

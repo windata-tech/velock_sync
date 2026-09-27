@@ -57,8 +57,8 @@ class _VelockRecoveryGuideState extends ConsumerState<VelockRecoveryGuide> {
                     Text(
                       syncText(
                         context,
-                        '接收云端的新内容，请在现有备份中继续传输，然后打开格间。不会重新创建连接或覆盖你的账号。',
-                        'Continue the existing transfer to receive cloud changes, then open Velock. No new connection is created and your account is not replaced.',
+                        '接收云端的新内容，请先继续完成现有备份，然后打开格间。不会重新创建连接或覆盖你的账号。',
+                        'Continue the existing backup to receive cloud changes, then open Velock. No new connection is created and your account is not replaced.',
                       ),
                     ),
                     const SizedBox(height: 20),

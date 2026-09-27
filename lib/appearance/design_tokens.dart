@@ -129,6 +129,9 @@ abstract final class AppOpacity {
   static const groupedBorder = 0.07;
   static const groupedDivider = 0.08;
   static const navigationRule = 0.12;
+  /// Opacity for a control that cannot be used right now. Disabled artwork
+  /// keeps its own colour and is faded, instead of being repainted with a grey
+  /// "disabled" colour (which loses the icon's identity).
   static const disabled = 0.45;
 }
 

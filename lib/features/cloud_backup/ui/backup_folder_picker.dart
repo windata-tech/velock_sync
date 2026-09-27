@@ -333,7 +333,10 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
       title: syncText(
         context,
         widget.restoring ? '找到原备份文件夹' : '选择备份文件夹',
-        widget.restoring ? 'Find your backup folder' : 'Choose a backup folder',
+        // The English title must stay short: the navigation bar gives the title
+        // the space the leading and trailing slots leave over, and the length
+        // of the title is what pushes a long one into an ellipsis.
+        widget.restoring ? 'Find the backup folder' : 'Choose a folder',
       ),
       body: SafeArea(
         child: Material(

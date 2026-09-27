@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,91 @@ import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 
 void main() {
+  test(
+    'different foreground/resume dispatchers share one run for the same disk DB',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('dispatch-scope-');
+      final db1 = await SyncStateDatabase.open(File('${dir.path}/state.db'));
+      final db2 = await SyncStateDatabase.open(File('${dir.path}/state.db'));
+      addTearDown(() async {
+        await db1.close();
+        await db2.close();
+        await dir.delete(recursive: true);
+      });
+      final repo1 = SyncProfileRepository(db1),
+          repo2 = SyncProfileRepository(db2);
+      await repo1.save(_profile('p'));
+      final gate = Completer<SyncProfileRunResult>();
+      final background = _FakeExecutor(onRun: (_) => gate.future);
+      final foreground = _FakeExecutor();
+      final first = SyncProfileDispatcher(
+        profiles: repo1,
+        executors: [background],
+      ).dispatch('p');
+      final second = SyncProfileDispatcher(
+        profiles: repo2,
+        executors: [foreground],
+      ).dispatch('p');
+      expect(identical(first, second), isTrue);
+      gate.complete(_completedRun());
+      final results = await Future.wait([first, second]);
+      expect(results.every((r) => r.didRun), isTrue);
+      expect(background.requests, hasLength(1));
+      expect(foreground.requests, isEmpty);
+      await SyncProfileDispatcher(
+        profiles: repo2,
+        executors: [foreground],
+      ).dispatch('p');
+      expect(foreground.requests, hasLength(1));
+    },
+  );
+
+  test(
+    'independent databases never share work just because profile IDs match',
+    () async {
+      final db1 = await SyncStateDatabase.inMemory(),
+          db2 = await SyncStateDatabase.inMemory();
+      addTearDown(db1.close);
+      addTearDown(db2.close);
+      final repo1 = SyncProfileRepository(db1),
+          repo2 = SyncProfileRepository(db2);
+      await repo1.save(_profile('p'));
+      await repo2.save(_profile('p'));
+      final gate = Completer<SyncProfileRunResult>();
+      final a = _FakeExecutor(onRun: (_) => gate.future), b = _FakeExecutor();
+      final first = SyncProfileDispatcher(
+        profiles: repo1,
+        executors: [a],
+      ).dispatch('p');
+      final second = await SyncProfileDispatcher(
+        profiles: repo2,
+        executors: [b],
+      ).dispatch('p');
+      expect(second.didRun, isTrue);
+      expect(b.requests, hasLength(1));
+      gate.complete(_completedRun());
+      await first;
+    },
+  );
+
+  test('another isolate owning a run is busy, not a failed transfer', () async {
+    final db = await SyncStateDatabase.inMemory();
+    addTearDown(db.close);
+    final repo = SyncProfileRepository(db);
+    await repo.save(_profile('p'));
+    final executor = _FakeExecutor(
+      onRun: (_) async => throw const SyncRunBusyException('p'),
+    );
+    final result = await SyncProfileDispatcher(
+      profiles: repo,
+      executors: [executor],
+    ).dispatch('p');
+    expect(result.isAlreadyRunning, isTrue);
+    expect(result.didFail, isFalse);
+    expect(result.didRun, isFalse);
+    expect(await db.latestSyncRun('p'), isNull);
+  });
+
   test('routes an active known profile to its registered executor', () async {
     final database = await SyncStateDatabase.inMemory();
     addTearDown(database.close);

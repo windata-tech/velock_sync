@@ -305,11 +305,15 @@ class SyncProfileRunner {
             : state == 'skipped'
             ? 'gc_skipped'
             : 'gc_failed';
-        debugPrint(
-          'VELOCK_SYNC_EVENT {"event":"$event","candidates":$candidateCount,'
-          '"eligible":$eligibleCandidateCount,"deleted":$deletedObjectCount,'
-          '"unacked":$unackedDeviceCount,"reason":"${skipReason ?? 'none'}"}',
-        );
+        // Debug-only: release builds must not print on every GC pass. The
+        // tutorial recorder that greps this event runs debug builds.
+        if (kDebugMode) {
+          debugPrint(
+            'VELOCK_SYNC_EVENT {"event":"$event","candidates":$candidateCount,'
+            '"eligible":$eligibleCandidateCount,"deleted":$deletedObjectCount,'
+            '"unacked":$unackedDeviceCount,"reason":"${skipReason ?? 'none'}"}',
+          );
+        }
       } on Object {
         // Diagnostics are best-effort.
       }

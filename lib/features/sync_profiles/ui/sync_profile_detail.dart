@@ -2,19 +2,25 @@
 /// per-profile settings tabs.
 library;
 
+import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
+
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_history_help.dart';
+import 'package:velock_sync/features/cloud_backup/ui/velock_backup_location.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
+import 'package:velock_sync/features/sync_profiles/model/sync_run_outcome.dart';
 import 'dart:async';
-import 'package:velock_sync/sync_core/model/sync_failure.dart';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
+import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/features/connection/state/connection_provider.dart';
+import 'package:velock_sync/sync_profiles/model/remote_root_segments.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
@@ -38,17 +44,35 @@ class SyncProfileDetail extends ConsumerStatefulWidget {
   ConsumerState<SyncProfileDetail> createState() => _SyncProfileDetailState();
 }
 
-class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
+class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail>
+    with WidgetsBindingObserver {
   late Future<DetailData> _data;
   SyncDatasetKind? _kind;
+  Timer? _runRefresh;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _data = _load();
   }
 
+  @override
+  void dispose() {
+    _runRefresh?.cancel();
+    _loadGeneration++;
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) _refresh();
+  }
+
   Future<DetailData> _load() async {
+    final generation = ++_loadGeneration;
     final database = ref.read(syncStateDatabaseProvider);
     final profile = await ref
         .read(syncProfileRepositoryProvider)
@@ -78,6 +102,14 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
         await ref
             .read(syncProfileRepositoryProvider)
             .setState(profile.profileId, SyncProfileState.accessRequired);
+      }
+    }
+    if (mounted && generation == _loadGeneration) {
+      _runRefresh?.cancel();
+      if ((values[0] as SyncRunRecord?)?.state == 'running') {
+        _runRefresh = Timer(const Duration(seconds: 1), () {
+          if (mounted) _refresh();
+        });
       }
     }
     return DetailData(
@@ -132,7 +164,8 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail> {
   Widget build(BuildContext context) => FutureBuilder<DetailData>(
     future: _data,
     builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
+      if (snapshot.connectionState != ConnectionState.done &&
+          !snapshot.hasData) {
         return _detailScaffold(
           title: syncText(context, '连接详情', 'Connection details'),
           body: AdaptiveLoadingState(
@@ -309,16 +342,16 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
         ref,
         widget.profile.profileId,
       );
-      if (mounted) await presentFirstSyncResult(context, result);
+      if (mounted) {
+        setState(() => _running = false);
+        widget.onChanged();
+        await presentFirstSyncResult(context, result);
+      }
     } on Object catch (error) {
       if (mounted) {
-        showMessage(
-          context,
-          backupFailureMessage(
-            context,
-            SyncFailureClassifier.classify(error).errorCode,
-          ),
-        );
+        setState(() => _running = false);
+        widget.onChanged();
+        await presentSyncFailureAlert(context: context, error: error);
       }
     } finally {
       if (mounted) {
@@ -369,6 +402,9 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
         widget.onConflicts();
       case BackupAction.manage:
         widget.onSettings();
+      case BackupAction.checkStorage:
+        await showBackupStorageHelp(context, widget.profile);
+        if (mounted) widget.onChanged();
       case BackupAction.reviewHistory:
         await showBackupHistoryHelp(context, widget.profile);
         if (mounted) widget.onChanged();
@@ -379,6 +415,16 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
   Widget build(BuildContext context) {
     final pending =
         widget.synced.pendingUploadCount + widget.synced.pendingDownloadCount;
+    final latestRun = widget.latestRun;
+    // The overview names the last run exactly like the history rows do, so a
+    // run that moved nothing is not summarised as a completed transfer.
+    final latestConclusion = latestRun == null
+        ? null
+        : syncRunConclusionLabel(
+            latestRun,
+            transfers: runWindowTransfers(latestRun, widget.history),
+            context: context,
+          );
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 12),
       children: [
@@ -415,20 +461,26 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
           ),
         AdaptiveListSection(
           children: [
-            _BackupLocationTile(connectionId: widget.profile.connectionId),
+            _BackupLocationTile(
+              connectionId: widget.profile.connectionId,
+              remoteRootSegments: _remoteRootSegmentsOf(widget.profile),
+            ),
             AdaptiveListTile(
               leading: const Icon(CupertinoIcons.clock),
               title: Text(syncText(context, '传输记录', 'Transfer history')),
               subtitle: Text(
-                widget.latestRun == null
+                latestConclusion == null
                     ? syncText(context, '尚未传输', 'No transfers yet')
-                    : '${runStateLabel(widget.latestRun!.state, context: context)} · ${AppFormat.stamp(widget.latestRun!.completedAt ?? widget.latestRun!.startedAt)}',
+                    : '$latestConclusion · ${AppFormat.stamp(latestRun!.completedAt ?? latestRun.startedAt)}',
               ),
               showChevron: true,
               onTap: widget.onHistory,
             ),
             if (pending > 0)
               AdaptiveListTile(
+                // Every other row in this card leads with a glyph; a row
+                // without one reads as a different kind of thing.
+                leading: const Icon(CupertinoIcons.tray_arrow_down),
                 title: Text(
                   syncText(context, '查看等待传输的内容', 'View pending transfers'),
                 ),
@@ -476,22 +528,36 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
             footer: Text(
               syncText(
                 context,
-                '暂停不会删除本机或云端的数据。',
-                'Pausing does not delete local or cloud data.',
+                _isVelock
+                    ? '暂停不会删除本机或云端的数据。'
+                    : '暂停不会删除本机或远端的数据。',
+                'Pausing does not delete local or remote data.',
               ),
             ),
             children: [
               AdaptiveListTile(
+                // The Velock domain backs up, the folder domain syncs: the
+                // lifecycle action names the user's own task.
                 title: Text(
-                  syncText(
-                    context,
-                    widget.profile.state == SyncProfileState.paused
-                        ? '继续传输'
-                        : '暂停传输',
-                    widget.profile.state == SyncProfileState.paused
-                        ? 'Resume transfers'
-                        : 'Pause transfers',
-                  ),
+                  _isVelock
+                      ? syncText(
+                          context,
+                          widget.profile.state == SyncProfileState.paused
+                              ? '继续备份'
+                              : '暂停备份',
+                          widget.profile.state == SyncProfileState.paused
+                              ? 'Resume backup'
+                              : 'Pause backup',
+                        )
+                      : syncText(
+                          context,
+                          widget.profile.state == SyncProfileState.paused
+                              ? '继续同步'
+                              : '暂停同步',
+                          widget.profile.state == SyncProfileState.paused
+                              ? 'Resume sync'
+                              : 'Pause sync',
+                        ),
                 ),
                 enabled: !_running,
                 onTap: _toggleState,
@@ -522,19 +588,52 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
   }
 }
 
+/// The profile's own remote folder, relative to its connection.
+List<String> _remoteRootSegmentsOf(SyncProfileEnvelope profile) {
+  final raw = profile.dataset['remoteRootSegments'];
+  if (raw is! List) return const [];
+  return canonicalRemoteRootSegments(raw.whereType<String>());
+}
+
 class _BackupLocationTile extends ConsumerWidget {
-  const _BackupLocationTile({required this.connectionId});
+  const _BackupLocationTile({
+    required this.connectionId,
+    this.remoteRootSegments = const [],
+  });
+
   final String connectionId;
+  final List<String> remoteRootSegments;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) => AdaptiveListTile(
-    leading: const Icon(CupertinoIcons.cloud),
-    title: Text(syncText(context, '云端保存位置', 'Cloud location')),
-    subtitle: Text(
-      syncText(context, '查看当前账号和文件夹', 'View the account and folder'),
-    ),
-    showChevron: true,
-    onTap: () => context.push('/connections/connection/$connectionId'),
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The tile names the folder that actually holds this backup (relative to
+    // the connection) and opens the browser inside it, instead of dropping the
+    // user at the connection root. Resolving it against the connection is the
+    // browser page's job: it already has the connection loaded.
+    final folder = remoteRootSegments.isEmpty
+        ? null
+        : '/${remoteRootSegments.join('/')}';
+    return AdaptiveListTile(
+      leading: const Icon(CupertinoIcons.cloud),
+      title: Text(syncText(context, '云端保存位置', 'Cloud location')),
+      subtitle: Text(
+        folder ??
+            syncText(context, '查看当前账号和文件夹', 'View the account and folder'),
+        key: const Key('backup-location-path'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      showChevron: true,
+      onTap: () => context.pushNamed(
+        AppRoutes.connection.name,
+        pathParameters: {'id': connectionId},
+        queryParameters: {
+          if (remoteRootSegments.isNotEmpty)
+            'segments': remoteRootSegments.join('/'),
+        },
+      ),
+    );
+  }
 }
 
 class _PendingTab extends StatelessWidget {
@@ -634,7 +733,13 @@ class _HistoryTab extends StatelessWidget {
                               : CupertinoIcons.check_mark,
                           color: color,
                         ),
-                        title: Text(runStateLabel(run.state, context: context)),
+                        title: Text(
+                          syncRunConclusionLabel(
+                            run,
+                            transfers: runWindowTransfers(run, history),
+                            context: context,
+                          ),
+                        ),
                         subtitle: Text(
                           AppFormat.relativeTime(
                             run.completedAt ?? run.startedAt,
@@ -727,6 +832,56 @@ class _ProfileSettingsTabState extends ConsumerState<_ProfileSettingsTab> {
   late SyncProfileEnvelope profile = widget.profile;
   bool _saving = false;
   void onChanged() => widget.onChanged();
+  /// Relocates this backup inside its existing connection.
+  Future<void> _changeLocation() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final connection = await ref.read(
+        connectionDetailProvider(profile.connectionId).future,
+      );
+      if (!mounted) return;
+      if (connection == null) {
+        showMessage(
+          context,
+          syncText(
+            context,
+            '这个连接已不存在，无法更换目录。',
+            'This connection no longer exists, so the folder cannot be changed.',
+          ),
+        );
+        return;
+      }
+      final result = await changeVelockBackupLocation(
+        context,
+        ref,
+        profile: profile,
+        connection: connection,
+      );
+      if (!mounted) return;
+      final updated = result.profile;
+      if (updated == null) {
+        if (result.saveFailed) {
+          showMessage(
+            context,
+            syncText(
+              context,
+              '位置没有保存：备份可能正在运行，或这份备份已被改动。',
+              'Location not saved: the backup may be running, or it changed.',
+            ),
+          );
+        }
+        return;
+      }
+      // The page keeps its own copy, and the list behind it re-reads the row.
+      setState(() => profile = updated);
+      ref.read(profilesRevisionProvider.notifier).bump();
+      onChanged();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _reconnect() async {
     if (!await showAdaptiveConfirmation(
           context,
@@ -767,8 +922,29 @@ class _ProfileSettingsTabState extends ConsumerState<_ProfileSettingsTab> {
       if (profile.kind == SyncDatasetKind.velockManaged)
         AdaptiveListSection(
           children: [
-            _BackupLocationTile(connectionId: profile.connectionId),
+            // The read-only "where is it" row lives on the overview tab; here
+            // the same destination is the action that actually changes it.
             AdaptiveListTile(
+              widgetKey: const Key('manage-change-location'),
+              leading: const Icon(CupertinoIcons.cloud),
+              title: Text(
+                syncText(context, '更换保存位置', 'Change backup location'),
+              ),
+              subtitle: Text(
+                _remoteRootSegmentsOf(profile).isEmpty
+                    ? syncText(context, '当前使用连接根目录', 'Currently the connection root')
+                    : '/${_remoteRootSegmentsOf(profile).join('/')}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              showChevron: true,
+              onTap: _saving ? null : _changeLocation,
+            ),
+            AdaptiveListTile(
+              // The link glyph is this app's "connection" mark (it leads the
+              // add-connection row and the connection detail header), and this
+              // row sits directly under the cloud row, which has a leading.
+              leading: const Icon(CupertinoIcons.link),
               title: Text(syncText(context, '重新连接格间', 'Reconnect Velock')),
               subtitle: Text(
                 syncText(

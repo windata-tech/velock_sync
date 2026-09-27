@@ -41,9 +41,9 @@ void main() {
       ProviderScope(
         overrides: [syncSettingsServiceProvider.overrideWithValue(service)],
         child: const MaterialApp(
-          locale: const Locale('zh', 'CN'),
-          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: const [
+          locale: Locale('zh', 'CN'),
+          supportedLocales: [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,

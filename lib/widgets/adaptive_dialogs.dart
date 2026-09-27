@@ -656,57 +656,6 @@ class _AdaptiveTextFieldState extends State<AdaptiveTextField> {
   }
 }
 
-/// Non-dismissible progress dialog used while a blocking operation runs.
-void showAdaptiveBlockingProgress(
-  BuildContext context, {
-  required String message,
-  Key? key,
-}) {
-  if (isApplePlatform(context)) {
-    unawaited(
-      showCupertinoDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => PopScope(
-          canPop: false,
-          child: CupertinoAlertDialog(
-            key: key,
-            content: Column(
-              children: [
-                const CupertinoActivityIndicator(radius: 14),
-                const SizedBox(height: AppSpacing.md),
-                Text(message),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    return;
-  }
-
-  unawaited(
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          key: key,
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: AppSpacing.md),
-              Text(message),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
 class _SheetLabel extends StatelessWidget {
   const _SheetLabel({required this.label, this.caption});
 

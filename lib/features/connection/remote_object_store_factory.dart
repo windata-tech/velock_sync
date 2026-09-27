@@ -18,7 +18,16 @@ abstract final class RemoteObjectStoreFactory {
     final scopedProtocol = scopeProtocol(protocol, remoteRootSegments);
     return switch (scopedProtocol) {
       WebDavProtocolModel(:final credentialRef) => WebDavObjectStore(
-        dio: Dio(),
+        // Real timeouts: a connection that stalls without an RST (Wi-Fi drops
+        // into a black hole, a NAS powers off, a VPN hangs) must fail the run
+        // instead of hanging it for ever.
+        dio: Dio(
+          BaseOptions(
+            connectTimeout: const Duration(seconds: 30),
+            receiveTimeout: const Duration(minutes: 5),
+            sendTimeout: const Duration(minutes: 5),
+          ),
+        ),
         baseUri: webDavUri(scopedProtocol),
         username: scopedProtocol.username,
         password: await connections.readWebDavPassword(credentialRef),
