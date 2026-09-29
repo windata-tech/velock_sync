@@ -34,13 +34,14 @@ Future<bool> downloadVelockRecovery(BuildContext context, WidgetRef ref) async {
       ),
       confirmLabel: syncText(context, '继续', 'Continue'),
     );
-    if (context.mounted)
+    if (context.mounted) {
       await context.push(
         Uri(
           path: AppRoutes.protocols.path,
           queryParameters: {'returnTo': AppRoutes.velockRecovery.path},
         ).toString(),
       );
+    }
     return false;
   }
   final connection = await showAdaptiveActionSheet<ConnectionModel>(

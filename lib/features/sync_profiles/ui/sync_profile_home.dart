@@ -21,6 +21,7 @@ import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
+import 'package:velock_sync/features/cloud_backup/ui/velock_companion_gate.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'sync_profile_workspace_shared.dart';
@@ -43,6 +44,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
   Timer? _runRefresh;
   int _loadGeneration = 0;
   bool _checkingSnapshotContinuation = false;
+  bool _rechecking = false;
   bool get _isVelock => widget.kind == SyncDatasetKind.velockManaged;
 
   @override
@@ -170,6 +172,22 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
             .read(syncStateDatabaseProvider)
             .readSyncedDataSnapshot(p.profileId);
       }
+    } else if (_isVelock) {
+      // Before anything is set up, only a gated state (old Velock, or a
+      // build/platform without the exchange) changes what is offered here.
+      // Everything else is handled step by step inside the wizard.
+      final ready = await ref
+          .read(velockWizardReadinessServiceProvider)
+          .inspect()
+          .timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => const VelockWizardReadiness(
+              VelockWizardAvailability.temporarilyUnavailable,
+            ),
+          );
+      if (isVelockBackupGated(ready.availability)) {
+        availability = ready.availability;
+      }
     }
     if (mounted && generation == _loadGeneration) {
       _runRefresh?.cancel();
@@ -202,6 +220,16 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
       _profiles = pending;
     });
     await pending;
+  }
+
+  Future<void> _recheck() async {
+    if (_rechecking) return;
+    setState(() => _rechecking = true);
+    try {
+      await _refreshAndWait();
+    } finally {
+      if (mounted) setState(() => _rechecking = false);
+    }
   }
 
   Future<void> _open(String route) async {
@@ -349,7 +377,15 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
           children: [
             const SizedBox(height: 8),
             if (_isVelock) ...[
-              if (data.profiles.isEmpty)
+              if (data.profiles.isEmpty &&
+                  isVelockBackupGated(data.availability))
+                VelockCompanionGateCard(
+                  availability: data.availability!,
+                  checking: _rechecking,
+                  onOpenVelock: () => openVelockForBackup(context, ref),
+                  onRecheck: _recheck,
+                )
+              else if (data.profiles.isEmpty)
                 BackupWelcomeCard(
                   onStart: () => _open(AppRoutes.velockDatasetWizard.path),
                 ),
@@ -368,29 +404,32 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
                   onSecondary: () =>
                       _open('/sync-profiles/${profile.profileId}'),
                 ),
-              AdaptiveListSection(
-                children: [
-                  AdaptiveListTile(
-                    widgetKey: const Key('velock-cloud-restore'),
-                    leading: Icon(
-                      CupertinoIcons.cloud_download,
-                      color: context.appPrimary,
-                    ),
-                    title: Text(
-                      syncText(context, '从云端恢复', 'Restore from cloud'),
-                    ),
-                    subtitle: Text(
-                      syncText(
-                        context,
-                        '换手机、重装，或找回原来的数据',
-                        'A new phone, a reinstall, or your existing data',
+              // Restoring needs the same Velock support as backing up.
+              if (!(data.profiles.isEmpty &&
+                  isVelockBackupGated(data.availability)))
+                AdaptiveListSection(
+                  children: [
+                    AdaptiveListTile(
+                      widgetKey: const Key('velock-cloud-restore'),
+                      leading: Icon(
+                        CupertinoIcons.cloud_download,
+                        color: context.appPrimary,
                       ),
+                      title: Text(
+                        syncText(context, '从云端恢复', 'Restore from cloud'),
+                      ),
+                      subtitle: Text(
+                        syncText(
+                          context,
+                          '换手机、重装，或找回原来的数据',
+                          'A new phone, a reinstall, or your existing data',
+                        ),
+                      ),
+                      showChevron: true,
+                      onTap: () => _open(AppRoutes.velockRecovery.path),
                     ),
-                    showChevron: true,
-                    onTap: () => _open(AppRoutes.velockRecovery.path),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ] else ...[
               if (data.profiles.isEmpty)
                 BackupCard(

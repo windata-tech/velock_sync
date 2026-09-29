@@ -5,6 +5,7 @@ import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
@@ -14,6 +15,12 @@ class Protocols extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Only types this build can finish setting up are offered. Saved
+    // connections of other types stay visible in the connection list.
+    final availability = ref.watch(remoteProviderAvailabilityProvider);
+    final hasOtherServices =
+        availability.canCreate(RemoteProviderType.baiduNetdisk) ||
+        availability.canCreate(RemoteProviderType.aliyunDrive);
     return AdaptiveScaffold(
       title: syncText(context, '选择云端位置', 'Choose cloud storage'),
       leading: AppBackButton(
@@ -36,8 +43,8 @@ class Protocols extends HookConsumerWidget {
             child: Text(
               syncText(
                 context,
-                '同步数据会以加密对象写入远端空间，远端服务无法读取内容。',
-                'Sync data is stored remotely as encrypted objects. The remote service cannot read their contents.',
+                '格间备份的内容在上传前由格间加密。文件同步写入的是普通文件，能访问该账号的人都能查看和修改。',
+                'Velock backups are encrypted by Velock before upload. File sync writes ordinary files that anyone with access to the account can view and change.',
               ),
               style: AppType.footnote.copyWith(
                 color: context.appSecondaryLabel,
@@ -70,92 +77,98 @@ class Protocols extends HookConsumerWidget {
                   queryParameters: {'returnTo': ?returnTo},
                 ),
               ),
-              AdaptiveListTile(
-                leading: AdaptiveIconBadge(
-                  icon: CupertinoIcons.folder_badge_plus,
-                  color: AppTone.ok.color(context),
-                ),
-                title: Text('Google Drive'),
-                subtitle: Text(
-                  syncText(
-                    context,
-                    '使用 Google 账号授权，然后选择同步所用的云端目录。',
-                    'Sign in with Google, then choose a cloud folder for sync.',
+              if (availability.canCreate(RemoteProviderType.googleDrive))
+                AdaptiveListTile(
+                  leading: AdaptiveIconBadge(
+                    icon: CupertinoIcons.folder_badge_plus,
+                    color: AppTone.ok.color(context),
                   ),
-                  maxLines: 2,
-                ),
-                showChevron: true,
-                onTap: () => context.pushNamed(
-                  AppRoutes.newOAuth.name,
-                  queryParameters: {'returnTo': ?returnTo},
-                  pathParameters: {
-                    'provider': RemoteProviderType.googleDrive.name,
-                  },
-                ),
-              ),
-              AdaptiveListTile(
-                leading: AdaptiveIconBadge(
-                  icon: CupertinoIcons.cloud,
-                  color: AppTone.brand.color(context),
-                ),
-                title: Text('OneDrive'),
-                subtitle: Text(
-                  syncText(
-                    context,
-                    '使用 Microsoft 账号授权，然后选择同步所用的云端目录。',
-                    'Sign in with Microsoft, then choose a cloud folder for sync.',
+                  title: Text('Google Drive'),
+                  subtitle: Text(
+                    syncText(
+                      context,
+                      '使用 Google 账号授权，然后选择同步所用的云端目录。',
+                      'Sign in with Google, then choose a cloud folder for sync.',
+                    ),
+                    maxLines: 2,
                   ),
-                  maxLines: 2,
+                  showChevron: true,
+                  onTap: () => context.pushNamed(
+                    AppRoutes.newOAuth.name,
+                    queryParameters: {'returnTo': ?returnTo},
+                    pathParameters: {
+                      'provider': RemoteProviderType.googleDrive.name,
+                    },
+                  ),
                 ),
-                showChevron: true,
-                onTap: () => context.pushNamed(
-                  AppRoutes.newOAuth.name,
-                  queryParameters: {'returnTo': ?returnTo},
-                  pathParameters: {
-                    'provider': RemoteProviderType.oneDrive.name,
-                  },
+              if (availability.canCreate(RemoteProviderType.oneDrive))
+                AdaptiveListTile(
+                  leading: AdaptiveIconBadge(
+                    icon: CupertinoIcons.cloud,
+                    color: AppTone.brand.color(context),
+                  ),
+                  title: Text('OneDrive'),
+                  subtitle: Text(
+                    syncText(
+                      context,
+                      '使用 Microsoft 账号授权，然后选择同步所用的云端目录。',
+                      'Sign in with Microsoft, then choose a cloud folder for sync.',
+                    ),
+                    maxLines: 2,
+                  ),
+                  showChevron: true,
+                  onTap: () => context.pushNamed(
+                    AppRoutes.newOAuth.name,
+                    queryParameters: {'returnTo': ?returnTo},
+                    pathParameters: {
+                      'provider': RemoteProviderType.oneDrive.name,
+                    },
+                  ),
                 ),
-              ),
             ],
           ),
-          AdaptiveListSection(
-            header: syncText(context, '其他服务', 'Other Services'),
-            children: [
-              AdaptiveListTile(
-                leading: AdaptiveIconBadge(
-                  icon: CupertinoIcons.cloud_fill,
-                  color: AppTone.neutral.color(context),
-                ),
-                title: Text(syncText(context, '百度网盘', 'Baidu Netdisk')),
-                subtitle: Text(
-                  syncText(
-                    context,
-                    '可填写 AppKey 与 Token，同步适配器尚未开放。',
-                    'AppKey and token setup is available. Sync support is not yet available.',
+          if (hasOtherServices)
+            AdaptiveListSection(
+              header: syncText(context, '其他服务', 'Other Services'),
+              children: [
+                if (availability.canCreate(RemoteProviderType.baiduNetdisk))
+                  AdaptiveListTile(
+                    leading: AdaptiveIconBadge(
+                      icon: CupertinoIcons.cloud_fill,
+                      color: AppTone.neutral.color(context),
+                    ),
+                    title: Text(syncText(context, '百度网盘', 'Baidu Netdisk')),
+                    subtitle: Text(
+                      syncText(
+                        context,
+                        '可填写 AppKey 与 Token，同步适配器尚未开放。',
+                        'AppKey and token setup is available. Sync support is not yet available.',
+                      ),
+                      maxLines: 2,
+                    ),
+                    showChevron: true,
+                    onTap: () =>
+                        context.pushNamed(AppRoutes.newBaiduToken.name),
                   ),
-                  maxLines: 2,
-                ),
-                showChevron: true,
-                onTap: () => context.pushNamed(AppRoutes.newBaiduToken.name),
-              ),
-              AdaptiveListTile(
-                leading: AdaptiveIconBadge(
-                  icon: CupertinoIcons.lock,
-                  color: AppTone.neutral.color(context),
-                ),
-                title: Text(syncText(context, '阿里云盘', 'Aliyun Drive')),
-                subtitle: Text(
-                  syncText(
-                    context,
-                    '需要官方 Token Broker，当前未开放。',
-                    'Requires an official token broker. Not currently available.',
+                if (availability.canCreate(RemoteProviderType.aliyunDrive))
+                  AdaptiveListTile(
+                    leading: AdaptiveIconBadge(
+                      icon: CupertinoIcons.lock,
+                      color: AppTone.neutral.color(context),
+                    ),
+                    title: Text(syncText(context, '阿里云盘', 'Aliyun Drive')),
+                    subtitle: Text(
+                      syncText(
+                        context,
+                        '需要官方 Token Broker，当前未开放。',
+                        'Requires an official token broker. Not currently available.',
+                      ),
+                      maxLines: 2,
+                    ),
+                    enabled: false,
                   ),
-                  maxLines: 2,
-                ),
-                enabled: false,
-              ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );

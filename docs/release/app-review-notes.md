@@ -7,29 +7,57 @@ Notes. Keep them in sync with the build you submit.
 
 Velock Sync has two independent jobs, in two tabs:
 
-1. **格间 / Velock backup** — transports end-to-end encrypted objects produced by
-   our companion app *Velock* (a separate app, also on the App Store). Sync never
-   sees plaintext: it uploads and downloads opaque objects. It asks the user to
-   open Velock to authorize a device the first time.
-2. **文件同步 / File sync** — a plain folder mirror. The user picks one folder on
-   the device and one folder on their own storage, and the two are kept in step
+1. **格间 / Velock backup** — transports objects that our companion app *Velock*
+   (格间, a separate app) encrypts on the device before handing them over. Sync
+   never sees plaintext: it uploads and downloads opaque objects. It asks the
+   user to open Velock to authorize a device the first time.
+2. **文件同步 / Files** — a plain folder mirror. The user picks one folder on the
+   device and one folder on their own WebDAV server, and the two are kept in step
    (both directions, upload only, or download only). **The remote copy is not
-   encrypted**, and the app says so before a location is created.
+   encrypted**; anyone with access to that WebDAV account can read and change the
+   files, and the app says so before a location is created.
 
 Nothing is sent to us: there is no account, no analytics and no server of ours.
-The user supplies their own storage (a NAS or any WebDAV service).
+The user supplies their own WebDAV server.
 
-## Reviewer access without hardware
+## Supported storage in 1.0
 
-Every sync feature needs a storage server the user owns. To review the flows:
+WebDAV is the only storage type in version 1.0. Google Drive, OneDrive, Baidu
+Netdisk and Aliyun Drive are not offered in this build and do not appear when
+adding a connection.
 
-* Any WebDAV endpoint works (for example a free WebDAV test service, a Nextcloud
-  demo, or a local server). Enter address, port, user name and password under
-  **设置 → 云端账号与保存位置 → +**.
-* Plain-HTTP endpoints are supported for local networks; the form asks for an
-  explicit confirmation before accepting `http://`.
+## The 格间 / Velock tab needs Velock 2.0.7 or later
 
-If a test endpoint cannot be provided in the review environment, the tab-level
+The Velock backup tab only works together with Velock **2.0.7 or later**, which
+is not yet released at the time of this submission (the current public Velock
+version is 2.0.6). With an older Velock, or without Velock installed, the tab
+shows a notice that Velock must be updated; backup and restore cannot start
+from it. This is expected for this submission. The Files tab does not depend on
+Velock and can be reviewed fully on its own.
+
+## How to review file sync (WebDAV)
+
+Test server for review: **<fill in before submission: https URL, user name,
+password>** — or any WebDAV endpoint (a Nextcloud instance, a NAS, or a local
+WebDAV server). Plain-HTTP endpoints on a local network are supported; the form
+asks for an explicit confirmation before accepting `http://`.
+
+1. Open the **文件同步 / Files** tab and tap **+** (top right).
+2. Step 1 — choose a folder on the device (for example a folder under
+   *On My iPhone* in the Files picker) that contains a few files.
+3. Step 2 — tap **添加 WebDAV 连接 / Add WebDAV connection**, enter the server
+   address, port, user name and password, and save. Back in the wizard, pick the
+   connection and choose (or create) an empty remote folder.
+4. Step 3 — keep the defaults (both directions, keep both copies on conflict)
+   and tap **创建 / Create**.
+5. On the new location card, tap **立即同步 / Sync now**. The device files appear
+   in the remote folder as ordinary files. Add or change a file on the server and
+   sync again: it is downloaded into the device folder.
+
+Connections can also be managed under **设置 / Settings → 云端账号与保存位置 /
+Cloud accounts and locations**.
+
+If a test endpoint cannot be used in the review environment, the tab-level
 empty states, the three-step wizard, the settings page and the diagnostics pages
 are all reachable without any server.
 
@@ -42,6 +70,30 @@ server on a private address. `NSAllowsLocalNetworking` is enabled for that case;
 reach user-hosted servers over the public internet that the user configured
 themselves. The app never talks to a server we operate, and the connection form
 requires an explicit "use HTTP anyway" confirmation that warns about the risk.
+The Android build declares `usesCleartextTraffic="true"` for the same reason, so
+both platforms accept the same user-configured servers.
+
+`NSLocalNetworkUsageDescription` is set because a user's WebDAV server is often
+on the local network; iOS shows the local-network prompt the first time the app
+connects to such an address.
+
+## Export compliance (`ITSAppUsesNonExemptEncryption = false`)
+
+> Owner must confirm this declaration before submission; it is a legal
+> statement, not a technical default.
+
+What the shipped features use: HTTPS/TLS from the operating system, SHA-256
+hashing, and Ed25519 signature verification / signing for integrity and device
+authorization. Velock backup data is encrypted by the separate Velock app, not
+by Velock Sync; file sync writes plaintext files.
+
+The binary still contains a standard AES-256-GCM + PBKDF2 implementation
+(`package:cryptography`, not the OS) in the retired encrypted folder-sync code
+(`lib/sync_core/crypto/generic_vault_*_cipher.dart`,
+`vault_recovery_package.dart`). No 1.0 screen can create such a job. If that
+code stays in the build, answer App Store Connect's "standard encryption
+algorithms instead of, or in addition to, the OS" question accordingly, or
+remove the code before relying on `false`.
 
 ## Background modes
 
@@ -65,7 +117,6 @@ app cancels the task.
 
 ## Known limitations worth knowing while reviewing
 
-* File sync currently supports WebDAV only; cloud drives (Google Drive, OneDrive,
-  Baidu) can be used by the Velock backup job but not as a plain mirror target.
-* The Velock backup tab needs the companion app to authorize a device. Without it
-  the tab explains how to install it and offers restore-from-cloud guidance.
+* Only WebDAV servers can be used in 1.0 (see above).
+* The Velock backup tab needs Velock 2.0.7 or later to authorize a device; until
+  that version is available it shows the update notice described above.

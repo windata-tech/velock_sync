@@ -35,8 +35,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "tech.windata.velock.sync.velock_sync"
+        // Permanent once published. The Kotlin namespace above stays as it was;
+        // only the store/install identity changes. Velock's exchange contract
+        // (androidSyncPackage) must match this value.
+        applicationId = "tech.windata.velock.sync"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

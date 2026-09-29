@@ -1,5 +1,6 @@
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:velock_sync/features/cloud_backup/ui/velock_companion_gate.dart';
 
 /// Shared, presentation-only formatters.
 ///
@@ -121,6 +122,9 @@ abstract final class AppFormat {
         '完整备份已下载。请打开格间，解锁并确认恢复；返回 Sync 后会继续完成备份检查。',
         'The full backup is downloaded. Open and unlock Velock to confirm restoration, then return to Sync to finish checking the backup.',
       );
+    }
+    if (normalized == 'local.velock_update_required') {
+      return velockUpdateRequiredMessage(context);
     }
     if (normalized == 'local.velock_recovery_required') {
       return _optionalSyncText(

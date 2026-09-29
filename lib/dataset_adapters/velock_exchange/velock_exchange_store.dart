@@ -59,8 +59,14 @@ class VelockExchangeStore {
   Future<List<String>> readyOutboxIds() => _directoryIds(_outboxReady);
 
   /// Atomically claims the lowest-sequence complete package of one producer.
-  /// A crash-safe lease is written only after the rename, so a concurrent sync
-  /// process cannot consume it.
+  ///
+  /// The lease is written into the package while it is still in Ready, so the
+  /// rename moves the package and its lease as one step. Writing it after the
+  /// rename left a window in which a killed process stranded a Claimed package
+  /// without a lease; recovery then quarantined it and the history guard
+  /// reported a permanent gap (`remote.velock_history_incomplete`). A lease
+  /// left in Ready by a claim that died before its rename is inert: Ready is
+  /// claimable regardless, and the next claim overwrites it.
   ///
   /// Only packages whose envelope belongs to the requested vault and source
   /// device are claimed. The shared App Group exchange can hold packages from
@@ -114,22 +120,34 @@ class VelockExchangeStore {
       final batchId = candidate.batchId;
       final ready = Directory('${_outboxReady.path}/$batchId');
       final claimed = Directory('${_outboxClaimed.path}/$batchId');
+      final expiresAt = _now().toUtc().add(leaseDuration);
+      final leaseBytes = Uint8List.fromList(
+        utf8.encode(
+          jsonEncode({
+            'expiresAt': expiresAt.toIso8601String(),
+            'leaseId': leaseId,
+          }),
+        ),
+      );
       try {
+        // Never recreate the package directory: if it vanished, another
+        // process claimed it (or Velock withdrew it) and this candidate is gone.
+        await _writeAtomicInExistingDirectory(
+          File('${ready.path}/lease.json'),
+          leaseBytes,
+          temporarySuffix: leaseId,
+        );
         await ready.rename(claimed.path);
       } on FileSystemException {
         continue; // Another process won the atomic rename race.
       }
-      final expiresAt = _now().toUtc().add(leaseDuration);
-      await _writeAtomic(
+      // A concurrent claimer may have replaced the pre-written lease just
+      // before our rename won. The package is ours now; restate our lease. A
+      // crash before this line still leaves a valid, expiring lease.
+      await _writeAtomicInExistingDirectory(
         File('${claimed.path}/lease.json'),
-        Uint8List.fromList(
-          utf8.encode(
-            jsonEncode({
-              'expiresAt': expiresAt.toIso8601String(),
-              'leaseId': leaseId,
-            }),
-          ),
-        ),
+        leaseBytes,
+        temporarySuffix: leaseId,
       );
       return VelockClaimedOutbox(batchId: batchId, directory: claimed);
     }
@@ -178,14 +196,37 @@ class VelockExchangeStore {
     }
   }
 
-  /// Returns only expired claimed packages to Ready. A malformed or missing
-  /// lease is quarantined rather than treated as safe input.
+  /// Returns expired claimed packages to Ready. A malformed lease is
+  /// quarantined rather than treated as safe input.
+  ///
+  /// A package with no lease at all is returned to Ready too. Claims made by
+  /// this version carry their lease through the rename, so no live process can
+  /// own a lease-less package: it is the leftover of an older build killed
+  /// between its rename and its lease write. Quarantining it removed a
+  /// sequence the remote history needs forever; back in Ready it is claimed
+  /// again in envelope-sequence order and its READY marker and hashes are
+  /// verified again before anything is uploaded.
   Future<void> reclaimExpiredClaims() async {
     await initialize();
     for (final batchId in await _directoryIds(_outboxClaimed)) {
       final claimed = Directory('${_outboxClaimed.path}/$batchId');
       final lease = File('${claimed.path}/lease.json');
       try {
+        if (await FileSystemEntity.type(lease.path, followLinks: false) ==
+            FileSystemEntityType.notFound) {
+          await for (final entity in claimed.list(followLinks: false)) {
+            final name = entity.uri.pathSegments.lastWhere(
+              (segment) => segment.isNotEmpty,
+            );
+            if (entity is File &&
+                name.startsWith('lease.json') &&
+                name.endsWith('.tmp')) {
+              await entity.delete();
+            }
+          }
+          await claimed.rename('${_outboxReady.path}/$batchId');
+          continue;
+        }
         final json = jsonDecode(await lease.readAsString());
         final expiresAt = DateTime.parse(
           (json as Map<String, dynamic>)['expiresAt'] as String,
@@ -347,6 +388,28 @@ class VelockExchangeStore {
   Future<void> _writeAtomic(File destination, Uint8List bytes) async {
     await destination.parent.create(recursive: true);
     final temporary = File('${destination.path}.tmp');
+    await temporary.writeAsBytes(bytes, flush: true);
+    await temporary.rename(destination.path);
+  }
+
+  /// Like [_writeAtomic], but fails instead of creating a missing parent.
+  /// [temporarySuffix] keeps concurrent writers off each other's temp file.
+  Future<void> _writeAtomicInExistingDirectory(
+    File destination,
+    Uint8List bytes, {
+    required String temporarySuffix,
+  }) async {
+    if (await FileSystemEntity.type(
+          destination.parent.path,
+          followLinks: false,
+        ) !=
+        FileSystemEntityType.directory) {
+      throw FileSystemException(
+        'Exchange package directory is unavailable.',
+        destination.parent.path,
+      );
+    }
+    final temporary = File('${destination.path}.$temporarySuffix.tmp');
     await temporary.writeAsBytes(bytes, flush: true);
     await temporary.rename(destination.path);
   }

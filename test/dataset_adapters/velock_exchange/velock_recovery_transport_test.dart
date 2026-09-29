@@ -135,34 +135,37 @@ void main() {
     },
   );
 
-  test('more recovery files than the cap still restores from the newest', () async {
-    // Each password change and each restored device adds a file; they are
-    // never removed. The download used to fail outright past 32 files.
-    for (var i = 0; i < VelockRecoveryTransport.maxCandidates + 3; i++) {
-      final file = jsonEncode({
-        'format': 'velock-cloud-recovery',
-        'version': 1,
-        'lookup': 'a' * 64,
-        'vaultId': vault,
-        'keyId': '00000000-0000-4000-8000-000000000002',
-        'code': 'VSR1-version-$i',
-      });
-      final bytes = utf8.encode(file);
-      await remote.put(
-        VelockRecoveryTransport.objectName(file),
-        Stream.value(bytes),
-        contentLength: bytes.length,
-      );
-    }
+  test(
+    'more recovery files than the cap still restores from the newest',
+    () async {
+      // Each password change and each restored device adds a file; they are
+      // never removed. The download used to fail outright past 32 files.
+      for (var i = 0; i < VelockRecoveryTransport.maxCandidates + 3; i++) {
+        final file = jsonEncode({
+          'format': 'velock-cloud-recovery',
+          'version': 1,
+          'lookup': 'a' * 64,
+          'vaultId': vault,
+          'keyId': '00000000-0000-4000-8000-000000000002',
+          'code': 'VSR1-version-$i',
+        });
+        final bytes = utf8.encode(file);
+        await remote.put(
+          VelockRecoveryTransport.objectName(file),
+          Stream.value(bytes),
+          contentLength: bytes.length,
+        );
+      }
 
-    expect(
-      await VelockRecoveryTransport.download(root: root, remote: remote),
-      VelockRecoveryTransport.maxCandidates,
-    );
-  });
+      expect(
+        await VelockRecoveryTransport.download(root: root, remote: remote),
+        VelockRecoveryTransport.maxCandidates,
+      );
+    },
+  );
 
   final contractDir = Platform.environment['RECOVERY_CONTRACT_DIR'];
-  if (contractDir != null)
+  if (contractDir != null) {
     test(
       'transport real Velock encrypted fixture without knowing secrets',
       () async {
@@ -188,4 +191,5 @@ void main() {
         );
       },
     );
+  }
 }

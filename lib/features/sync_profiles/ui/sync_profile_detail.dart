@@ -909,31 +909,21 @@ class _ProfileSettingsTabState extends ConsumerState<_ProfileSettingsTab> {
           title: syncText(context, '重新连接格间？', 'Reconnect Velock?'),
           message: syncText(
             context,
-            '将停止使用本机旧授权，再请格间重新允许连接。不会删除格间或云端的数据，请继续使用原来的云端位置。',
-            'Stop using the old authorization and ask Velock to allow access again. No Velock or cloud data is deleted. Continue using the original cloud location.',
+            '请格间重新允许连接，继续使用原来的云端位置。新授权完成前，原来的备份设置保持不变；中途退出也不会丢失。不会删除格间或云端的数据。',
+            'Ask Velock to allow access again and keep using the original cloud location. Your existing backup settings stay unchanged until the new authorization is finished, even if you leave midway. No Velock or cloud data is deleted.',
           ),
           confirmLabel: syncText(context, '重新连接', 'Reconnect'),
         ) ||
         !mounted) {
       return;
     }
-    try {
-      await ref.read(syncProfileRepositoryProvider).remove(profile.profileId);
-      if (!mounted) return;
-      ref.read(profilesRevisionProvider.notifier).bump();
-      context.go('/sync-profiles/new/velock');
-    } on Object {
-      if (mounted) {
-        showMessage(
-          context,
-          syncText(
-            context,
-            '当前连接正在使用或暂时无法更新，请稍后重试。',
-            'The connection is busy or could not be updated. Try again later.',
-          ),
-        );
-      }
-    }
+    // The profile is kept until the new pairing is finalized, which replaces
+    // it atomically with the same cloud location.
+    await context.pushNamed(
+      AppRoutes.velockDatasetWizard.name,
+      queryParameters: {'replace': profile.profileId},
+    );
+    if (mounted) ref.read(profilesRevisionProvider.notifier).bump();
   }
 
   @override

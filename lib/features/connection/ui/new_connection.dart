@@ -6,6 +6,7 @@ import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
@@ -22,6 +23,7 @@ class NewConnection extends ConsumerWidget {
         CreateConnectionDto.empty(
           name: syncText(context, '新建连接', 'New Connection'),
         ).copyWith(source: syncText(context, '格间', 'Velock'), target: null);
+    final availability = ref.watch(remoteProviderAvailabilityProvider);
 
     return AdaptiveScaffold(
       title: syncText(context, '新建连接', 'New Connection'),
@@ -45,8 +47,8 @@ class NewConnection extends ConsumerWidget {
             child: Text(
               syncText(
                 context,
-                '本地数据始终留在设备上，只有加密后的同步对象会写入远端空间。',
-                'Local data stays on your device. Only encrypted sync objects are written to remote storage.',
+                '格间备份的内容在上传前由格间加密。文件同步写入的是普通文件，能访问该账号的人都能查看和修改。',
+                'Velock backups are encrypted by Velock before upload. File sync writes ordinary files that anyone with access to the account can view and change.',
               ),
               style: AppType.footnote.copyWith(
                 color: context.appSecondaryLabel,
@@ -97,8 +99,8 @@ class NewConnection extends ConsumerWidget {
                 subtitle: Text(
                   syncText(
                     context,
-                    'WebDAV、Google Drive 或 OneDrive',
-                    'WebDAV, Google Drive, or OneDrive',
+                    availability.describe(chinese: true),
+                    availability.describe(chinese: false),
                   ),
                   maxLines: 2,
                 ),

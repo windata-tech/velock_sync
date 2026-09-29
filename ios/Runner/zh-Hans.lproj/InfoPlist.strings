@@ -1,0 +1,2 @@
+"CFBundleDisplayName" = "Velock Sync";
+"NSLocalNetworkUsageDescription" = "Velock Sync 需要连接你添加的 WebDAV 服务器，它可能位于你的局域网中。";

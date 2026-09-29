@@ -1,8 +1,10 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
@@ -14,21 +16,18 @@ import 'package:velock_sync/widgets/adaptive_widgets.dart';
 ///
 /// Every sentence is built per locale, so the documents are functions of the
 /// current [BuildContext] rather than compile-time constants.
-class ConnectionHelpPage extends StatelessWidget {
+class ConnectionHelpPage extends ConsumerWidget {
   const ConnectionHelpPage({super.key, this.providerType});
 
   final RemoteProviderType? providerType;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The overview documents only the location types this build can set up.
+    // A single-provider page stays reachable for any saved connection.
+    final availability = ref.watch(remoteProviderAvailabilityProvider);
     final documents = providerType == null
-        ? [
-            _webDavDocument(context),
-            _googleDriveDocument(context),
-            _oneDriveDocument(context),
-            _baiduNetdiskDocument(context),
-            _aliyunDriveDocument(context),
-          ]
+        ? [for (final type in availability.ordered) _documentFor(context, type)]
         : [_documentFor(context, providerType!)];
 
     return AdaptiveScaffold(
@@ -39,7 +38,9 @@ class ConnectionHelpPage extends StatelessWidget {
               '${documents.single.title} 配置说明',
               '${documents.single.title} setup',
             ),
-      actions: providerType == RemoteProviderType.baiduNetdisk
+      actions:
+          providerType == RemoteProviderType.baiduNetdisk &&
+              availability.canCreate(RemoteProviderType.baiduNetdisk)
           ? [
               AdaptiveTextButton(
                 padding: EdgeInsets.zero,

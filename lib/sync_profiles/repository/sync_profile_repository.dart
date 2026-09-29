@@ -78,6 +78,36 @@ class SyncProfileRepository {
     return updated;
   });
 
+  /// Re-pairing only: retires [expected] and saves [replacement] atomically.
+  ///
+  /// Held under the retired profile's location lease so no run of it can be
+  /// preparing remote requests while it is replaced. Throws
+  /// `SyncRunBusyException` when that lease is held and [StateError] when the
+  /// profile changed, was removed or is running; in every failure the
+  /// original profile is left exactly as it was.
+  Future<void> replaceVelockProfile({
+    required SyncProfileEnvelope expected,
+    required SyncProfileEnvelope replacement,
+  }) => withVelockLocationGuard(_database, expected.profileId, () async {
+    if (expected.kind != SyncDatasetKind.velockManaged ||
+        replacement.kind != SyncDatasetKind.velockManaged ||
+        replacement.profileId == expected.profileId) {
+      throw ArgumentError('Only a new Velock profile can replace a Velock one.');
+    }
+    if (!await _database.retireSyncProfileAndInsertReplacement(
+      retiredProfileId: expected.profileId,
+      expectedRetiredPayload: jsonEncode(expected.toJson()),
+      profileId: replacement.profileId,
+      datasetId: replacement.datasetId,
+      targetId: replacement.connectionId,
+      vaultId: replacement.vaultId,
+      state: replacement.state.name,
+      payload: jsonEncode(replacement.toJson()),
+    )) {
+      throw StateError('Backup changed or is running. Reopen and try again.');
+    }
+  });
+
   Future<SyncProfileEnvelope?> read(String profileId) async {
     final record = await _database.readVisibleSyncProfilePayload(profileId);
     if (record == null) return null;

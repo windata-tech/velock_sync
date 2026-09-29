@@ -215,7 +215,7 @@
     "android": {
       "authority": "tech.windata.velock.sync.exchange",
       "companionPackage": "tech.windata.velock",
-      "syncPackage": "tech.windata.velock.sync.velock_sync",
+      "syncPackage": "tech.windata.velock.sync",
       "permission": "tech.windata.velock.permission.SYNC_EXCHANGE",
       "protectionLevel": "signature",
       "flutterChannel": "tech.windata.velock.sync/velock_exchange",

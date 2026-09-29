@@ -19,6 +19,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/core/logger.dart';
+import 'package:velock_sync/core/state/common.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
@@ -131,8 +133,16 @@ class _SyncProfileWizardState extends ConsumerState<SyncProfileWizard> {
 }
 
 class VelockDatasetWizard extends ConsumerStatefulWidget {
-  const VelockDatasetWizard({super.key, this.restoring = false});
+  const VelockDatasetWizard({
+    super.key,
+    this.restoring = false,
+    this.replacingProfileId,
+  });
   final bool restoring;
+
+  /// Re-pairing an existing profile. It is kept intact, with its cloud
+  /// location, until the new pairing is finalized and replaces it atomically.
+  final String? replacingProfileId;
 
   @override
   ConsumerState<VelockDatasetWizard> createState() =>
@@ -150,6 +160,10 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
   bool _inspectingPairing = false;
   bool _pairingProblemDialogVisible = false;
   String? _destinationError;
+
+  String? get _replacingProfileId =>
+      widget.replacingProfileId ??
+      ref.read(velockWizardSessionProvider).replacingProfileId;
 
   @override
   void initState() {
@@ -204,6 +218,15 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
     // initState/build throws "tried to modify a provider while building".
     ref.read(velockWizardSessionProvider.notifier).clearCompletedFlow();
     ref.read(velockWizardSessionProvider.notifier).expireIfNeeded();
+    final retained = ref.read(velockWizardSessionProvider);
+    if (widget.replacingProfileId != null &&
+        retained.finalization == null &&
+        retained.replacingProfileId != widget.replacingProfileId &&
+        (retained.session != null || retained.authorizationProblem != null)) {
+      // A transient flow for another purpose must not finalize as this
+      // re-pairing (or vice versa). Only unsaved pairing state is dropped.
+      ref.read(velockWizardSessionProvider.notifier).reset();
+    }
     final wizard = ref.read(velockWizardSessionProvider);
     if (wizard.session != null && wizard.approval == null) {
       await _inspectPendingVelockPairing(wizard.session!);
@@ -346,7 +369,9 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
           .begin(descriptor: descriptor, syncAppInstanceId: appInstanceId);
       if (!mounted) return;
       setState(() => _checkingVelock = false);
-      ref.read(velockWizardSessionProvider.notifier).sessionStarted(session);
+      ref
+          .read(velockWizardSessionProvider.notifier)
+          .sessionStarted(session, replacingProfileId: _replacingProfileId);
       await _reopenVelockPairing(session);
     } on Object {
       if (!mounted) return;
@@ -557,6 +582,17 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       // "还需要一个远端连接" banner must not keep the flow stuck.
       ref.read(velockWizardSessionProvider.notifier).connectionResolved();
 
+      final replacingProfileId = _replacingProfileId;
+      if (replacingProfileId != null) {
+        await _continueReplacement(
+          session,
+          approval,
+          replacingProfileId: replacingProfileId,
+          connections: connections,
+        );
+        return;
+      }
+
       final selectedId = ref
           .read(velockWizardSessionProvider)
           .selectedConnectionId;
@@ -614,6 +650,69 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
         remoteRootSegments = picked;
         if (!await _verifyCurrentApproval(session, approval)) return;
       }
+      await _finishVelockProfile(
+        session,
+        approval,
+        connection: connection,
+        remoteRootSegments: remoteRootSegments,
+      );
+    } on Object catch (error) {
+      _showFinalizationError(session, error);
+    } finally {
+      _continuingSetup = false;
+      if (mounted && _checkingVelock) setState(() => _checkingVelock = false);
+    }
+  }
+
+  /// Re-pairing keeps the original connection and folder. Nothing is chosen
+  /// again, so the profile being replaced cannot be pointed elsewhere.
+  Future<void> _continueReplacement(
+    VelockPairingSession session,
+    VelockPairingControlResponse approval, {
+    required String replacingProfileId,
+    required List<ConnectionModel> connections,
+  }) async {
+    final envelope = await ref
+        .read(syncProfileRepositoryProvider)
+        .read(replacingProfileId);
+    if (!mounted || !_authorizationIsCurrent(session, approval)) return;
+    final VelockSyncProfile previous;
+    try {
+      if (envelope == null) {
+        throw const VelockProfileFinalizationException(
+          'replaced_profile_missing',
+        );
+      }
+      previous = VelockSyncProfile.fromEnvelope(envelope);
+    } on FormatException {
+      throw const VelockProfileFinalizationException('replaced_profile_missing');
+    }
+    final connection = connections
+        .where((item) => item.id == previous.connectionId)
+        .firstOrNull;
+    if (connection == null) {
+      throw const VelockProfileFinalizationException(
+        'replacement_connection_unavailable',
+      );
+    }
+    final controller = ref.read(velockWizardSessionProvider.notifier);
+    controller.connectionSelected(connection.id);
+    controller.folderSelected(previous.remoteRootSegments);
+    await _finishVelockProfile(
+      session,
+      approval,
+      connection: connection,
+      remoteRootSegments: previous.remoteRootSegments,
+    );
+  }
+
+  Future<void> _finishVelockProfile(
+    VelockPairingSession session,
+    VelockPairingControlResponse approval, {
+    required ConnectionModel connection,
+    required List<String> remoteRootSegments,
+  }) async {
+    {
       final review = await _reviewVelockProfile(
         approval: approval,
         connection: connection,
@@ -649,6 +748,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
             displayName: review.displayName,
             backgroundPolicy: review.backgroundPolicy,
             userConfirmed: true,
+            replacingProfileId: _replacingProfileId,
           );
       if (!mounted) return;
       setState(() => _checkingVelock = false);
@@ -686,7 +786,11 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       // Setup is finished: return to the tabbed home, not a detached detail
       // route with no navigation history.
       context.go('/');
-    } on Object catch (error) {
+    }
+  }
+
+  void _showFinalizationError(VelockPairingSession session, Object error) {
+    {
       if (!mounted) return;
       setState(() => _checkingVelock = false);
       logw('Velock profile finalization failed: ${error.runtimeType}: $error');
@@ -736,6 +840,33 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
             '配对响应未通过验证；请重新发起配对。',
             "The pairing response could not be verified. Please pair again.",
           ),
+          'replaced_profile_busy' => syncText(
+            context,
+            '备份正在运行，原来的备份设置保持不变。请等它结束后再重新连接。',
+            'A backup is running. Your existing backup settings are unchanged. Reconnect after it finishes.',
+          ),
+          'replaced_profile_changed' ||
+          'replaced_profile_missing' ||
+          'replacement_unavailable' => syncText(
+            context,
+            '原来的备份设置已经变化，这次重新连接没有保存。请返回备份详情后再试。',
+            'Your backup settings changed, so this reconnection was not saved. Go back to the backup and try again.',
+          ),
+          'replacement_connection_unavailable' => syncText(
+            context,
+            '原来的云端连接当前不可用，原来的备份设置保持不变。请先在连接页验证它。',
+            'The original cloud connection is unavailable. Your existing backup settings are unchanged. Verify it on the Connections page first.',
+          ),
+          'replacement_vault_mismatch' => syncText(
+            context,
+            '格间允许的是另一个账号，原来的备份设置保持不变。请在格间切换到原来的账号后重试。',
+            'Velock allowed a different account. Your existing backup settings are unchanged. Switch to the original account in Velock and retry.',
+          ),
+          'replacement_location_mismatch' => syncText(
+            context,
+            '重新连接必须继续使用原来的云端文件夹，原来的备份设置保持不变。',
+            'Reconnecting keeps the original cloud folder. Your existing backup settings are unchanged.',
+          ),
           'invalid_display_name' => syncText(
             context,
             '无法读取格间的账号名称，请打开格间确认账号后再试。',
@@ -759,9 +890,6 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
         ),
       };
       setState(() => _destinationError = message);
-    } finally {
-      _continuingSetup = false;
-      if (mounted && _checkingVelock) setState(() => _checkingVelock = false);
     }
   }
 

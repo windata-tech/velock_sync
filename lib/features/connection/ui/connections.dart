@@ -9,6 +9,7 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/features/connection/ui/connection_info_sheet.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
@@ -142,6 +143,7 @@ class Connections extends HookConsumerWidget {
     required VoidCallback onCreate,
   }) {
     if (connections.isEmpty) {
+      final availability = ref.read(remoteProviderAvailabilityProvider);
       return [
         SliverFillRemaining(
           hasScrollBody: false,
@@ -154,8 +156,8 @@ class Connections extends HookConsumerWidget {
             title: syncText(context, '还没有远端连接', 'No Remote Connections Yet'),
             message: syncText(
               context,
-              '添加 WebDAV、Google Drive 或 OneDrive，作为加密同步的远端空间。',
-              'Add WebDAV, Google Drive, or OneDrive as remote storage for encrypted sync.',
+              '添加 ${availability.describe(chinese: true)} 连接，用于格间备份或文件同步。',
+              'Add a ${availability.describe(chinese: false)} connection for Velock backup or file sync.',
             ),
             action: CupertinoButton.filled(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),

@@ -4,6 +4,9 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
+import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
+import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
@@ -390,7 +393,200 @@ void main() {
         expect(events, isEmpty);
       },
     );
+
+    group('re-pairing', () {
+      late SyncStateDatabase database;
+      late SyncProfileRepository profiles;
+      late VelockProfileFinalizationService replacing;
+      const folder = ['USB_HDD_8T', '111'];
+
+      Future<SyncProfileEnvelope> saveOriginal({
+        String vaultId = 'vault-1',
+        String snapshotProducerId = 'producer-1',
+        String? snapshotRestoreRequestId,
+      }) async {
+        final original = VelockSyncProfile(
+          profileId: 'old-profile',
+          datasetId: vaultId,
+          vaultId: vaultId,
+          deviceId: 'sync-device-1',
+          displayName: 'Personal vault',
+          connectionId: 'connection-1',
+          pairedProducerId: 'producer-old',
+          pairedProducerPublicKeyId: 'key-old',
+          exchangeBindingId: 'binding-old',
+          remoteRootSegments: folder,
+          // The producer ID belongs to Velock and survives a re-pairing.
+          trustedProducerIds: ['producer-old', snapshotProducerId],
+          currentSnapshotId: 'snapshot-1',
+          currentSnapshotProducerId: snapshotProducerId,
+          snapshotRestoreRequestId: snapshotRestoreRequestId,
+          backgroundPolicy: const SyncProfileBackgroundPolicy(),
+          state: SyncProfileState.active,
+          createdAt: now,
+        ).toEnvelope();
+        await profiles.save(original);
+        return (await profiles.read('old-profile'))!;
+      }
+
+      Future<VelockProfileFinalizationResult> finalizeReplacement({
+        List<String> remoteRootSegments = folder,
+      }) => replacing.finalize(
+        session: session,
+        approval: approval,
+        connectionId: 'connection-1',
+        displayName: 'Personal vault',
+        backgroundPolicy: const SyncProfileBackgroundPolicy(),
+        userConfirmed: true,
+        remoteRootSegments: remoteRootSegments,
+        replacingProfileId: 'old-profile',
+      );
+
+      setUp(() async {
+        database = await SyncStateDatabase.inMemory();
+        profiles = SyncProfileRepository(database);
+        replacing = VelockProfileFinalizationService(
+          retainProducerTrust:
+              ({
+                required vaultId,
+                required producerId,
+                required signingPublicKey,
+              }) async {},
+          saveProfile: (_) async => fail('re-pairing must not insert beside'),
+          readProfiles: () =>
+              profiles.listSummaries(kind: SyncDatasetKind.velockManaged),
+          readConnection: (_) async => connection,
+          readProfile: profiles.read,
+          replaceProfile: profiles.replaceVelockProfile,
+          pairing: pairing..events = events,
+          nextId: () => 'new-profile',
+          now: () => now,
+        );
+      });
+      tearDown(() => database.close());
+
+      test('keeps the original until finalization, then swaps atomically '
+          'with the same cloud folder', () async {
+        await saveOriginal();
+        // Starting (or abandoning) a pairing never touches the original.
+        expect(await profiles.read('old-profile'), isNotNull);
+
+        final result = await finalizeReplacement();
+
+        expect(await profiles.read('old-profile'), isNull);
+        final replacement = await profiles.read('new-profile');
+        expect(replacement, isNotNull);
+        final profile = VelockSyncProfile.fromEnvelope(replacement!);
+        expect(profile.remoteRootSegments, folder);
+        expect(profile.connectionId, 'connection-1');
+        expect(profile.pairedProducerId, approval.producerId);
+        // A settled snapshot reference is carried over and re-verified later.
+        expect(profile.currentSnapshotId, 'snapshot-1');
+        expect(profile.snapshotDiscoveryPending, isFalse);
+        expect(result.pairingAcknowledged, isTrue);
+        final visible = await profiles.listSummaries(
+          kind: SyncDatasetKind.velockManaged,
+        );
+        expect(visible.map((item) => item.profileId), ['new-profile']);
+      });
+
+      test('a pending restore is rediscovered instead of reused', () async {
+        await saveOriginal(
+          snapshotProducerId: 'producer-restored',
+          snapshotRestoreRequestId: 'restore-old',
+        );
+
+        await finalizeReplacement();
+
+        final profile = VelockSyncProfile.fromEnvelope(
+          (await profiles.read('new-profile'))!,
+        );
+        expect(profile.snapshotDiscoveryPending, isTrue);
+        expect(profile.snapshotRestoreRequestId, isNull);
+        expect(profile.currentSnapshotId, isNull);
+      });
+
+      test('another account or folder leaves the original unchanged', () async {
+        final original = await saveOriginal();
+
+        await _expectCode(
+          finalizeReplacement(remoteRootSegments: const ['elsewhere']),
+          'replacement_location_mismatch',
+        );
+        expect((await profiles.read('old-profile'))!.toJson(), original.toJson());
+        expect(await profiles.read('new-profile'), isNull);
+
+        await profiles.remove('old-profile');
+        final otherVault = await saveOriginalAs('vault-2', profiles, now);
+        await _expectCode(
+          finalizeReplacement(),
+          'replacement_vault_mismatch',
+        );
+        expect((await profiles.read('old-profile'))!.toJson(), otherVault.toJson());
+        expect(events, isNot(contains('ack')));
+      });
+
+      test('a running backup blocks the swap and keeps the original', () async {
+        final original = await saveOriginal();
+        await database.startSyncRun(
+          runId: 'run-1',
+          profileId: 'old-profile',
+          startedAt: now,
+        );
+
+        await _expectCode(finalizeReplacement(), 'replaced_profile_changed');
+        expect((await profiles.read('old-profile'))!.toJson(), original.toJson());
+        expect(await profiles.read('new-profile'), isNull);
+        expect(events, isNot(contains('ack')));
+      });
+
+      test('an untrusted snapshot producer is rediscovered', () async {
+        await saveOriginal(snapshotProducerId: 'producer-gone');
+
+        await finalizeReplacement();
+
+        final profile = VelockSyncProfile.fromEnvelope(
+          (await profiles.read('new-profile'))!,
+        );
+        expect(profile.snapshotDiscoveryPending, isTrue);
+        expect(profile.currentSnapshotId, isNull);
+      });
+
+      test('a removed original is not silently recreated', () async {
+        await saveOriginal();
+        await profiles.remove('old-profile');
+
+        await _expectCode(finalizeReplacement(), 'replaced_profile_missing');
+        expect(await profiles.read('new-profile'), isNull);
+      });
+    });
   });
+}
+
+Future<SyncProfileEnvelope> saveOriginalAs(
+  String vaultId,
+  SyncProfileRepository profiles,
+  DateTime now,
+) async {
+  // Profile IDs are never reused in the store, so the other-account fixture
+  // is written through the database directly under the same ID.
+  final envelope = VelockSyncProfile(
+    profileId: 'old-profile',
+    datasetId: vaultId,
+    vaultId: vaultId,
+    deviceId: 'sync-device-1',
+    displayName: 'Other vault',
+    connectionId: 'connection-1',
+    pairedProducerId: 'producer-old',
+    pairedProducerPublicKeyId: 'key-old',
+    exchangeBindingId: 'binding-old',
+    remoteRootSegments: const ['USB_HDD_8T', '111'],
+    backgroundPolicy: const SyncProfileBackgroundPolicy(),
+    state: SyncProfileState.active,
+    createdAt: now,
+  ).toEnvelope();
+  await profiles.save(envelope);
+  return (await profiles.read('old-profile'))!;
 }
 
 Future<VelockPairingControlResponse> _approval(

@@ -3,6 +3,7 @@
 library;
 
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/features/cloud_backup/ui/velock_companion_gate.dart';
 import 'dart:async';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 
@@ -64,6 +65,8 @@ class VelockConnectionBanner extends StatelessWidget {
         'Velock 版本不受支持',
         "Unsupported Velock version",
       ),
+      VelockWizardAvailability.velockUpdateRequired =>
+        velockUpdateRequiredTitle(context),
       VelockWizardAvailability.signatureMismatch => _optionalSyncText(
         context,
         'Velock 身份验证失败',
@@ -1554,6 +1557,11 @@ String velockAvailabilityLabel(
     '版本不支持',
     "Unsupported version",
   ),
+  VelockWizardAvailability.velockUpdateRequired => _optionalSyncText(
+    context,
+    '需要更新格间',
+    'Update Velock',
+  ),
   VelockWizardAvailability.signatureMismatch => _optionalSyncText(
     context,
     '身份验证失败',
@@ -1604,6 +1612,11 @@ String velockAvailabilitySubtitle(
     context,
     '请升级 Velock 本体后重试。',
     "Update Velock and retry.",
+  ),
+  VelockWizardAvailability.velockUpdateRequired => _optionalSyncText(
+    context,
+    '请把格间更新到 2.0.7 或更高版本，并打开一次。',
+    'Update Velock to 2.0.7 or later and open it once.',
   ),
   VelockWizardAvailability.signatureMismatch => _optionalSyncText(
     context,
@@ -1741,6 +1754,8 @@ String velockReadinessTitle(
     'Velock 版本不受支持',
     "Unsupported Velock version",
   ),
+  VelockWizardAvailability.velockUpdateRequired =>
+    velockUpdateRequiredTitle(context),
   VelockWizardAvailability.signatureMismatch => _optionalSyncText(
     context,
     'Velock 身份验证失败',
@@ -1756,11 +1771,8 @@ String velockReadinessTitle(
     'Velock 暂时不可用',
     "Velock temporarily unavailable",
   ),
-  VelockWizardAvailability.unsupportedPlatform => _optionalSyncText(
-    context,
-    '当前平台不受支持',
-    "This platform is not supported",
-  ),
+  VelockWizardAvailability.unsupportedPlatform =>
+    velockUnsupportedPlatformTitle(context),
 };
 
 String velockReadinessMessage(
@@ -1792,6 +1804,8 @@ String velockReadinessMessage(
     '当前的格间版本太旧，无法连接。请更新格间后再试。',
     'This Velock version is too old to connect. Update Velock and try again.',
   ),
+  VelockWizardAvailability.velockUpdateRequired =>
+    velockUpdateRequiredMessage(context),
   VelockWizardAvailability.signatureMismatch => _optionalSyncText(
     context,
     '无法确认这是正版格间，为保护你的数据，已停止连接。请从官方渠道安装格间。',
@@ -1807,11 +1821,8 @@ String velockReadinessMessage(
     '暂时连不上格间。请打开并解锁格间，再回来重试；没有保存任何设置。',
     'Velock cannot be reached right now. Open and unlock it, then try again. Nothing was saved.',
   ),
-  VelockWizardAvailability.unsupportedPlatform => _optionalSyncText(
-    context,
-    '格间备份目前只支持 iPhone 和 iPad。',
-    'Velock backup currently works on iPhone and iPad only.',
-  ),
+  VelockWizardAvailability.unsupportedPlatform =>
+    velockUnsupportedPlatformMessage(context),
 };
 
 String conflictLabel(String type, {BuildContext? context}) => switch (type

@@ -74,6 +74,7 @@ class BackupPresentation {
       final canOpen =
           state != SyncProfileState.accessRequired &&
           (availability == null ||
+              availability == VelockWizardAvailability.velockUpdateRequired ||
               availability == VelockWizardAvailability.authorizationRequired ||
               availability == VelockWizardAvailability.temporarilyUnavailable ||
               availability == VelockWizardAvailability.configurationMissing);
@@ -117,6 +118,16 @@ class BackupPresentation {
         BackupStage.waitingForRestore,
         BackupAction.openVelock,
         errorCode: run?.errorCode,
+      );
+    }
+    if (run?.state == 'failed' &&
+        run?.errorCode == 'local.velock_update_required') {
+      // Only a newer Velock can fix this; retrying the backup cannot.
+      return BackupPresentation(
+        BackupStage.needsVelock,
+        BackupAction.openVelock,
+        errorCode: run?.errorCode,
+        availability: VelockWizardAvailability.velockUpdateRequired,
       );
     }
     if (run?.state == 'failed' &&

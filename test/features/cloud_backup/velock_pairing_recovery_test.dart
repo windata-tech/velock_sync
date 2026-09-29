@@ -1082,6 +1082,7 @@ class _RecordingFinalizer implements VelockProfileFinalizer {
     required bool userConfirmed,
     List<String> remoteRootSegments = const [],
     bool restoring = false,
+    String? replacingProfileId,
   }) async {
     lastSegments = remoteRootSegments;
     finalizeCount += 1;

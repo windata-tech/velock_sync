@@ -20,6 +20,7 @@ import 'package:velock_sync/providers/oauth/oauth_public_client_configuration.da
 import 'package:velock_sync/providers/oauth/oauth_remote_folder_picker.dart';
 import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
+import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/app_components.dart';
 import 'package:velock_sync/widgets/app_format.dart';
@@ -44,6 +45,11 @@ class NewOAuthConnection extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formKey = useMemoized(GlobalKey<FormState>.new);
+    // Release builds only use the client ID built into the app; the developer
+    // form and any Client ID saved through it are debug-only.
+    final allowsDeveloperClientId = ref
+        .watch(remoteProviderAvailabilityProvider)
+        .allowsDeveloperClientId;
     final localDataManager = ref.read(localDataManagerProvider);
     final clientIdController = useTextEditingController();
     final savedClientId = useFuture(
@@ -73,8 +79,9 @@ class NewOAuthConnection extends HookConsumerWidget {
     try {
       config = OAuthPublicClientConfiguration.forProvider(providerType);
     } on Object catch (error) {
-      final clientId = (manualClientId.value ?? savedClientId.data ?? '')
-          .trim();
+      final clientId = allowsDeveloperClientId
+          ? (manualClientId.value ?? savedClientId.data ?? '').trim()
+          : '';
       if (clientId.isEmpty) {
         registrationError = error;
       } else {
@@ -244,6 +251,7 @@ class NewOAuthConnection extends HookConsumerWidget {
                   providerType: providerType,
                   error: registrationError,
                   clientIdController: clientIdController,
+                  showDeveloperSettings: allowsDeveloperClientId,
                   onSave: saveClientId,
                   onChooseAnother: () => context.goNamed(
                     AppRoutes.protocols.name,
@@ -527,6 +535,7 @@ class _MissingOAuthRegistration extends StatelessWidget {
     required this.providerType,
     required this.error,
     required this.clientIdController,
+    required this.showDeveloperSettings,
     required this.onSave,
     required this.onChooseAnother,
   });
@@ -534,6 +543,7 @@ class _MissingOAuthRegistration extends StatelessWidget {
   final RemoteProviderType providerType;
   final Object? error;
   final TextEditingController clientIdController;
+  final bool showDeveloperSettings;
   final Future<void> Function() onSave;
   final VoidCallback onChooseAnother;
 
@@ -575,44 +585,46 @@ class _MissingOAuthRegistration extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
         ),
-        const SizedBox(height: 22),
-        ExpansionTile(
-          key: const Key('oauth-developer-settings'),
-          title: Text(syncText(context, '开发者配置', 'Developer settings')),
-          subtitle: Text(
-            syncText(context, '普通用户无需配置', 'Not required for everyday use'),
+        if (showDeveloperSettings) ...[
+          const SizedBox(height: 22),
+          ExpansionTile(
+            key: const Key('oauth-developer-settings'),
+            title: Text(syncText(context, '开发者配置', 'Developer settings')),
+            subtitle: Text(
+              syncText(context, '普通用户无需配置', 'Not required for everyday use'),
+            ),
+            childrenPadding: const EdgeInsets.all(12),
+            children: [
+              Text(
+                syncText(
+                  context,
+                  '自定义构建可填写公开 Client ID，或在构建时传入 $clientIdKey。不要填写 Client Secret。',
+                  'For custom builds, enter a public Client ID or provide $clientIdKey at build time. Do not enter a Client Secret.',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('oauth-client-id-field'),
+                controller: clientIdController,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(labelText: 'Client ID'),
+              ),
+              const SizedBox(height: 12),
+              AdaptiveTextButton(
+                key: const Key('oauth-save-client-id'),
+                onPressed: onSave,
+                child: Text(
+                  syncText(context, '保存开发者配置', 'Save developer settings'),
+                ),
+              ),
+              const Text('velocksync://oauth/callback', style: AppType.mono),
+              AppDetailDisclosure(
+                detail: '${error.runtimeType}\n${_errorCode(error)}',
+              ),
+            ],
           ),
-          childrenPadding: const EdgeInsets.all(12),
-          children: [
-            Text(
-              syncText(
-                context,
-                '自定义构建可填写公开 Client ID，或在构建时传入 $clientIdKey。不要填写 Client Secret。',
-                'For custom builds, enter a public Client ID or provide $clientIdKey at build time. Do not enter a Client Secret.',
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const Key('oauth-client-id-field'),
-              controller: clientIdController,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: const InputDecoration(labelText: 'Client ID'),
-            ),
-            const SizedBox(height: 12),
-            AdaptiveTextButton(
-              key: const Key('oauth-save-client-id'),
-              onPressed: onSave,
-              child: Text(
-                syncText(context, '保存开发者配置', 'Save developer settings'),
-              ),
-            ),
-            const Text('velocksync://oauth/callback', style: AppType.mono),
-            AppDetailDisclosure(
-              detail: '${error.runtimeType}\n${_errorCode(error)}',
-            ),
-          ],
-        ),
+        ],
       ],
     );
   }

@@ -98,6 +98,7 @@ class MainActivity : FlutterActivity() {
     private fun handleVelockExchangeCall(call: MethodCall, result: MethodChannel.Result) = onVelockExchangeExecutor(result) {
         val arguments = call.arguments as? Map<*, *> ?: emptyMap<Any?, Any?>()
         when (call.method) {
+            "isExchangeConfigured" -> isExchangeConfigured()
             "readyOutboxIds" -> queryReadyOutbox()
             "claimOutbox" -> claimOutbox(
                 requireExchangeString(arguments, "batchId"),
@@ -307,6 +308,16 @@ class MainActivity : FlutterActivity() {
     private fun exchangeCall(method: String, arg: String?, extras: Bundle?): Bundle =
         contentResolver.call(exchangeUri, method, arg, extras)
             ?: throw IOException("Velock exchange provider returned no result.")
+
+    /// Build-time configuration only; it never contacts the provider. Ordinary
+    /// builds leave the Gradle properties empty, so Velock backup is reported
+    /// as unsupported instead of as an authorization problem.
+    private fun isExchangeConfigured(): Boolean =
+        EXCHANGE_AUTHORITY.matches(BuildConfig.VELOCK_EXCHANGE_AUTHORITY) &&
+            PACKAGE_NAME.matches(BuildConfig.VELOCK_COMPANION_PACKAGE) &&
+            CERTIFICATE_SHA256.matches(
+                BuildConfig.VELOCK_COMPANION_CERT_SHA256.replace(":", "").lowercase(),
+            )
 
     private val exchangeUri: Uri
         get() {

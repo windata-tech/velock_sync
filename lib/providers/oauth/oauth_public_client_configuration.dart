@@ -25,6 +25,19 @@ abstract final class OAuthPublicClientConfiguration {
     return fromClientId(providerType: providerType, clientId: clientId);
   }
 
+  /// Whether this build was given a public client ID for [providerType].
+  /// Non-OAuth types are never configured here.
+  static bool hasBuiltInRegistration(RemoteProviderType providerType) {
+    try {
+      forProvider(providerType);
+      return true;
+    } on OAuthClientRegistrationMissingException {
+      return false;
+    } on UnsupportedError {
+      return false;
+    }
+  }
+
   static OAuthAuthorizationConfig fromClientId({
     required RemoteProviderType providerType,
     required String clientId,

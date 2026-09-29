@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:uuid/uuid.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_companion_capabilities.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_current_snapshot_transport.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_dataset_adapter_factory.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
@@ -210,6 +211,8 @@ class VelockBackupRebuildService {
       throw StateError('Choose a new empty backup folder.');
     }
     final adapter = await _adapter(expected);
+    // An older Velock would never answer the snapshot request.
+    await VelockCompanionCapabilities.requireSupported(adapter.exchangeRoot);
     await _key(p);
     final remote = await openRemote(p.connectionId, segments);
     final page = await remote.list(limit: 1);

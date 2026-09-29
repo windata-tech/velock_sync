@@ -102,6 +102,76 @@ final class ProfileQueries {
     }
   }
 
+  /// Retires [retiredProfileId] and inserts its replacement in one
+  /// transaction, or changes nothing.
+  ///
+  /// The retired row must still be visible (any state except `removed`), hold
+  /// exactly [expectedRetiredPayload] and have no running sync run. The
+  /// replacement must be a new profile ID. Used by re-pairing, so a failed or
+  /// abandoned pairing never leaves the device without its original profile.
+  Future<bool> retireSyncProfileAndInsertReplacement({
+    required String retiredProfileId,
+    required String expectedRetiredPayload,
+    required String profileId,
+    required String datasetId,
+    required String targetId,
+    required String vaultId,
+    required String state,
+    required String payload,
+  }) async {
+    if (profileId == retiredProfileId) {
+      throw ArgumentError.value(profileId, 'profileId', 'must be new');
+    }
+    db.execute('BEGIN IMMEDIATE');
+    try {
+      final rows = db.select(
+        'SELECT state, payload_json FROM sync_profiles WHERE profile_id = ?',
+        [retiredProfileId],
+      );
+      if (rows.length != 1 || rows.single['state'] == 'removed') {
+        db.execute('ROLLBACK');
+        return false;
+      }
+      final previous = rows.single['payload_json']! as String;
+      final decoded = jsonDecode(previous) as Map<String, dynamic>;
+      decoded['state'] = rows.single['state'];
+      final running = db.select(
+        'SELECT 1 FROM sync_runs WHERE profile_id = ? AND state = ? LIMIT 1',
+        [retiredProfileId, 'running'],
+      );
+      final taken = db.select(
+        'SELECT 1 FROM sync_profiles WHERE profile_id = ? LIMIT 1',
+        [profileId],
+      );
+      if (running.isNotEmpty ||
+          taken.isNotEmpty ||
+          jsonEncode(_orderedJson(decoded)) !=
+              jsonEncode(_orderedJson(jsonDecode(expectedRetiredPayload)))) {
+        db.execute('ROLLBACK');
+        return false;
+      }
+      final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+      db.execute(
+        'UPDATE sync_profiles SET state = ?, updated_at = ? '
+        'WHERE profile_id = ? AND payload_json = ?',
+        ['removed', now, retiredProfileId, previous],
+      );
+      if (db.updatedRows != 1) {
+        db.execute('ROLLBACK');
+        return false;
+      }
+      db.execute(
+        'INSERT INTO sync_profiles (profile_id, dataset_id, target_id, vault_id, state, payload_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [profileId, datasetId, targetId, vaultId, state, payload, now],
+      );
+      db.execute('COMMIT');
+      return true;
+    } catch (_) {
+      db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
   /// Atomically consumes a hash of a pairing challenge.
   ///
   /// Only a SHA-256 digest is persisted; the original challenge never enters

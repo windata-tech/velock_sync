@@ -1,3 +1,5 @@
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_companion_capabilities.dart';
+import 'velock_companion_capabilities_fixture.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_store.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_recovery_transport.dart';
@@ -43,10 +45,59 @@ void main() {
   });
 
   test(
+    'an older Velock without the capability descriptor fails with the update code before any remote traffic',
+    () async {
+      final fixture = await _Fixture.create();
+      addTearDown(fixture.dispose);
+      final remote = InMemoryObjectStore();
+      // A recovery file alone is not enough: only the descriptor proves the
+      // installed Velock can finish a backup.
+      final recovery = File(
+        '${fixture.stagingRoot.path}/Recovery/Outgoing/${fixture.profile.vaultId}.json',
+      );
+      await recovery.parent.create(recursive: true);
+      await recovery.writeAsString('{}');
+      var remoteCalls = 0;
+      final dataset = VelockExchangeDatasetAdapter(
+        datasetId: fixture.profile.datasetId,
+        vaultId: fixture.profile.vaultId,
+        producerDeviceId: fixture.profile.pairedProducerId,
+        displayName: 'Test',
+        exchange: VelockExchangeStore(fixture.stagingRoot),
+      );
+      final service = fixture.service(
+        adapterFactory: _FakeAdapterFactory(dataset),
+        remoteFactory: ({required protocol, required password}) {
+          remoteCalls++;
+          return remote;
+        },
+        availableSpace: const _FixedAvailableSpaceProbe(1024 * 1024 * 1024),
+      );
+      await expectLater(
+        service.run(fixture.profile.profileId),
+        throwsA(isA<VelockUpdateRequired>()),
+      );
+      final run = await fixture.database.latestSyncRun(
+        fixture.profile.profileId,
+      );
+      expect(run!.state, 'failed');
+      expect(run.errorCode, 'local.velock_update_required');
+      expect(remoteCalls, 0);
+      expect((await remote.list()).items, isEmpty);
+      // The profile stays active: updating Velock is enough to continue.
+      expect(
+        (await fixture.profiles.read(fixture.profile.profileId))!.state,
+        SyncProfileState.active,
+      );
+    },
+  );
+
+  test(
     'missing recovery file records failed run before publishing any backup objects',
     () async {
       final fixture = await _Fixture.create();
       addTearDown(fixture.dispose);
+      await writeVelockCompanionCapabilities(fixture.stagingRoot);
       final remote = InMemoryObjectStore();
       final dataset = VelockExchangeDatasetAdapter(
         datasetId: fixture.profile.datasetId,

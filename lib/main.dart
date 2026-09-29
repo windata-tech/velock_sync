@@ -58,7 +58,7 @@ void main() async {
         ),
       ],
       retry: (int retryCount, Object error) {
-        debugPrint('retryCount=$retryCount');
+        if (kDebugMode) debugPrint('retryCount=$retryCount');
         if (retryCount >= 2) return null;
 
         return Duration(seconds: retryCount * 2);
@@ -108,9 +108,9 @@ Future<void> _provisionNasConnection() async {
       connection.id: jsonEncode(connection.toJson()),
     });
     await marker.delete();
-    debugPrint('NAS connection provisioned.');
+    if (kDebugMode) debugPrint('NAS connection provisioned.');
   } on Object catch (error) {
-    debugPrint('NAS connection provisioning failed: $error');
+    if (kDebugMode) debugPrint('NAS connection provisioning failed: $error');
   }
 }
 

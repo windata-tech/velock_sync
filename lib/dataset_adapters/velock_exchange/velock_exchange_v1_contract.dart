@@ -25,7 +25,7 @@ abstract final class VelockExchangeV1Contract {
 
   static const androidAuthority = 'tech.windata.velock.sync.exchange';
   static const androidCompanionPackage = 'tech.windata.velock';
-  static const androidSyncPackage = 'tech.windata.velock.sync.velock_sync';
+  static const androidSyncPackage = 'tech.windata.velock.sync';
   static const androidPermission =
       'tech.windata.velock.permission.SYNC_EXCHANGE';
   static const androidFlutterChannel =

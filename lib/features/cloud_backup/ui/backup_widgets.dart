@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/widgets/velock_brand_mark.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
+import 'package:velock_sync/features/cloud_backup/ui/velock_companion_gate.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/app_format.dart';
@@ -231,11 +232,9 @@ class BackupStatusCard extends StatelessWidget {
             ? 'Cloud location needs checking'
             : 'Your attention is needed',
       ),
-      BackupStage.needsVelock => syncText(
-        context,
-        '需要连接格间',
-        'Connect to Velock',
-      ),
+      BackupStage.needsVelock =>
+        velockGateTitle(presentation.availability, context) ??
+            syncText(context, '需要连接格间', 'Connect to Velock'),
       BackupStage.paused => syncText(
         context,
         isVelock ? '备份已暂停' : '同步已暂停',
@@ -309,11 +308,10 @@ class BackupStatusCard extends StatelessWidget {
           '无法验证格间的身份，已停止传输以保护数据。请使用可信的格间和 Sync 版本。',
           'Velock’s identity could not be verified. Transfers stopped to protect your data. Use trusted versions of both apps.',
         ),
-        VelockWizardAvailability.unsupportedPlatform => syncText(
-          context,
-          '当前平台暂不支持格间备份，请在受支持的设备上使用。普通文件同步不受影响。',
-          'Velock backup is not supported on this platform yet. Use a supported device. Ordinary file sync is separate.',
-        ),
+        VelockWizardAvailability.velockUpdateRequired =>
+          velockUpdateRequiredMessage(context),
+        VelockWizardAvailability.unsupportedPlatform =>
+          velockUnsupportedPlatformMessage(context),
         VelockWizardAvailability.accessRevoked => syncText(
           context,
           '格间已撤销此前的授权。请在管理中重新连接，已有云端数据不会因此删除。',

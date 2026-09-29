@@ -93,8 +93,10 @@ void main() {
       await tester.tap(find.text('Choose Remote Protocol'));
       await tester.pumpAndSettle();
       expect(find.text('Where to save'), findsOneWidget);
-      expect(find.text('Other Services'), findsOneWidget);
-      expect(find.text('Baidu Netdisk'), findsOneWidget);
+      // Baidu Netdisk and Aliyun Drive have no adapter in this build, so the
+      // picker does not offer them (remote_provider_availability_test.dart).
+      expect(find.text('Other Services'), findsNothing);
+      expect(find.text('Baidu Netdisk'), findsNothing);
       await tester.tap(find.text('WebDAV'));
       await tester.pumpAndSettle();
       expect(find.text('New WebDAV Connection'), findsOneWidget);

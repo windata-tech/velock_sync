@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_companion_capabilities.dart';
+import '../../dataset_adapters/velock_exchange/velock_companion_capabilities_fixture.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_current_snapshot_transport.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_dataset_adapter_factory.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
@@ -105,6 +107,7 @@ void main() {
         'code': 'VSR1-opaque-test-only',
       }),
     );
+    await writeVelockCompanionCapabilities(exchange);
   });
   tearDown(() async {
     await db.close();
@@ -179,6 +182,17 @@ void main() {
   Future<void> unchanged() async => expect(
     (await profiles.read('p'))!.toJson(),
     profile.toEnvelope().toJson(),
+  );
+  test(
+    'an older Velock without the capability descriptor cannot start a rebuild',
+    () async {
+      await File('${exchange.path}/Control/Capabilities.json').delete();
+      await expectLater(start(), throwsA(isA<VelockUpdateRequired>()));
+      await unchanged();
+      expect(remote.puts, isEmpty);
+      expect(await jobs.read('p'), isNull);
+      expect(Directory('${exchange.path}/Control/SnapshotRequests').existsSync(), isFalse);
+    },
   );
   test(
     'choice is durable but does not change profile or write remote; opening is explicit',

@@ -5,10 +5,16 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- Granted only when this APK and Velock share a signing certificate. -->
     <uses-permission android:name="tech.windata.velock.permission.SYNC_EXCHANGE"/>
+    <!-- usesCleartextTraffic mirrors iOS NSAllowsArbitraryLoads: the user
+         supplies their own WebDAV server, which may be a plaintext http://
+         address on a private network (the form asks for explicit confirmation
+         before accepting HTTP). Hosts are user-chosen, so no fixed domain list
+         is possible. See docs/release/app-review-notes.md. -->
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -133,6 +133,26 @@ class SyncStateDatabase {
     payload: payload,
   );
 
+  Future<bool> retireSyncProfileAndInsertReplacement({
+    required String retiredProfileId,
+    required String expectedRetiredPayload,
+    required String profileId,
+    required String datasetId,
+    required String targetId,
+    required String vaultId,
+    required String state,
+    required String payload,
+  }) => _profiles.retireSyncProfileAndInsertReplacement(
+    retiredProfileId: retiredProfileId,
+    expectedRetiredPayload: expectedRetiredPayload,
+    profileId: profileId,
+    datasetId: datasetId,
+    targetId: targetId,
+    vaultId: vaultId,
+    state: state,
+    payload: payload,
+  );
+
   Future<void> upsertSyncProfilePayload({
     required String profileId,
     required String datasetId,

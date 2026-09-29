@@ -61,6 +61,7 @@ void main() {
     SyncProfileRunService? runService,
     ConnectionRepository? connections,
     Future<bool> Function(String)? continuationReady,
+    VelockWizardAvailability readiness = VelockWizardAvailability.ready,
   }) => ProviderScope(
     overrides: [
       syncStateDatabaseProvider.overrideWithValue(database),
@@ -69,7 +70,9 @@ void main() {
       if (connections != null)
         connectionRepositoryProvider.overrideWithValue(connections),
       syncProfileRepositoryProvider.overrideWithValue(repository),
-      velockWizardReadinessServiceProvider.overrideWithValue(const _Ready()),
+      velockWizardReadinessServiceProvider.overrideWithValue(
+        _Ready(readiness),
+      ),
       if (runService != null)
         syncProfileRunServiceProvider.overrideWithValue(runService),
     ],
@@ -236,6 +239,67 @@ void main() {
       image.dispose();
     });
   }
+
+  for (final language in ['zh', 'en']) {
+    testWidgets('an old Velock replaces setup and restore entries ($language)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        app(
+          const SyncProfilesHome(),
+          locale: language,
+          readiness: VelockWizardAvailability.velockUpdateRequired,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('velock-gate-velockUpdateRequired')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('velock-gate-open')), findsOneWidget);
+      expect(find.byKey(const Key('velock-gate-recheck')), findsOneWidget);
+      expect(find.byKey(const Key('velock-cloud-restore')), findsNothing);
+      expect(
+        find.textContaining(language == 'zh' ? '2.0.7' : 'Velock 2.0.7'),
+        findsOneWidget,
+      );
+      if (language == 'en') {
+        final chinese = RegExp(r'[\u4e00-\u9fff]');
+        for (final text in tester.widgetList<Text>(find.byType(Text))) {
+          expect(chinese.hasMatch(text.data ?? ''), isFalse, reason: text.data);
+        }
+      }
+    });
+  }
+
+  testWidgets('an unsupported build offers no pairing or restore', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        const SyncProfilesHome(),
+        platform: TargetPlatform.android,
+        readiness: VelockWizardAvailability.unsupportedPlatform,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('velock-gate-unsupportedPlatform')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('velock-gate-open')), findsNothing);
+    expect(find.byKey(const Key('velock-cloud-restore')), findsNothing);
+  });
+
+  testWidgets('a current Velock still shows setup and restore', (tester) async {
+    await tester.pumpWidget(app(const SyncProfilesHome()));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('velock-cloud-restore')), findsOneWidget);
+    expect(find.byKey(const Key('velock-gate-title')), findsNothing);
+  });
 
   testWidgets(
     'Velock and folder homes are separate destinations even with both profiles',
@@ -749,10 +813,11 @@ SyncProfileEnvelope _profile({bool folder = false}) => SyncProfileEnvelope(
 );
 
 class _Ready implements VelockWizardReadinessService {
-  const _Ready();
+  const _Ready([this.availability = VelockWizardAvailability.ready]);
+  final VelockWizardAvailability availability;
   @override
   Future<VelockWizardReadiness> inspect({String? syncAppInstanceId}) async =>
-      const VelockWizardReadiness(VelockWizardAvailability.ready);
+      VelockWizardReadiness(availability);
 }
 
 class _PendingRunService implements SyncProfileRunService {

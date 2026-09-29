@@ -1,5 +1,6 @@
 import 'velock_snapshot_recovery.dart';
 import 'velock_recovery_transport.dart';
+import 'velock_companion_capabilities.dart';
 import 'velock_location_guard.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -200,6 +201,14 @@ class VelockSyncService implements VelockSyncRunner {
         await _profiles.setState(profileId, SyncProfileState.accessRequired);
       }
       rethrow;
+    }
+    // An older Velock (before 2.0.7) pairs but can never finish a backup: it
+    // exports no recovery file and ignores velock://sync-settings, so the
+    // "open Velock" advice for a missing recovery file loops forever. Stop
+    // here, before any remote traffic, with an update-specific code. This is
+    // an extra gate; every signature/history/recovery check below still runs.
+    if (dataset is VelockExchangeDatasetAdapter) {
+      await VelockCompanionCapabilities.requireSupported(dataset.exchangeRoot);
     }
 
     // The runner repeats this preflight after the sync run is recorded. This

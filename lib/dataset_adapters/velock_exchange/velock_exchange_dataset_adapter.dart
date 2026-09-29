@@ -115,8 +115,8 @@ class VelockExchangeDatasetAdapter
     required BatchLimits limits,
   }) async {
     // A prior process may have died after its atomic claim. Reclaiming only
-    // expired leases makes the next sync attempt recoverable without stealing
-    // work that is still owned by a live process.
+    // expired (or, from older builds, missing) leases makes the next sync
+    // attempt recoverable without stealing work a live process still owns.
     if (_claimed == null) {
       await _exchange.reclaimExpiredClaims();
     }

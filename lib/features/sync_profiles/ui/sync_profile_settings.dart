@@ -130,8 +130,8 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       title: syncText(context, '默认蜂窝网络传输上限', 'Default cellular transfer limit'),
       message: syncText(
         context,
-        '加密内容按单个传输对象限制。',
-        'Encrypted data is limited per transferred item.',
+        '上限按每个传输的文件或对象计算。',
+        'The limit applies to each file or object transferred.',
       ),
       actions: [
         for (final bytes in const [
@@ -353,8 +353,8 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
               subtitle: Text(
                 syncText(
                   context,
-                  '加密内容按单个传输对象限制。',
-                  'Encrypted data is limited per transferred item.',
+                  '上限按每个传输的文件或对象计算。',
+                  'The limit applies to each file or object transferred.',
                 ),
               ),
               additionalInfo: isApplePlatform(context)

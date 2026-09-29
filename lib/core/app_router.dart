@@ -208,9 +208,17 @@ GoRouter createAppRouter({
     WdRoute(
       name: AppRoutes.velockDatasetWizard.name,
       path: AppRoutes.velockDatasetWizard.path,
-      builder: (context, state) => VelockDatasetWizard(
-        restoring: state.uri.queryParameters['intent'] == 'restore',
-      ),
+      builder: (context, state) {
+        final replace = state.uri.queryParameters['replace']?.trim();
+        return VelockDatasetWizard(
+          restoring: state.uri.queryParameters['intent'] == 'restore',
+          // Only an existing profile ID; the finalizer re-validates it.
+          replacingProfileId:
+              replace == null || replace.isEmpty || replace.length > 128
+              ? null
+              : replace,
+        );
+      },
     ),
     WdRoute(
       name: AppRoutes.selectedFolderProfiles.name,

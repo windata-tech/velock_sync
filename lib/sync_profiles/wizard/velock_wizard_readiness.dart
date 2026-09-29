@@ -5,6 +5,8 @@ import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_ch
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_pairing_control_channel.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_velock_companion_probe.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_companion_capabilities.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
 
 enum VelockWizardAvailability {
@@ -13,9 +15,17 @@ enum VelockWizardAvailability {
   authorizationRequired,
   accessRevoked,
   unsupportedVersion,
+
+  /// Velock is installed but older than 2.0.7, or was not opened since it
+  /// was updated: it has not published `Control/Capabilities.json`. Pairing
+  /// would succeed and every backup would then fail, so nothing is started.
+  velockUpdateRequired,
   signatureMismatch,
   configurationMissing,
   temporarilyUnavailable,
+
+  /// Velock backup is not available on this platform or in this build (for
+  /// example an ordinary Android build, where the exchange is disabled).
   unsupportedPlatform,
 }
 
@@ -31,6 +41,7 @@ class VelockWizardReadiness {
     VelockWizardAvailability.appNotInstalled ||
     VelockWizardAvailability.authorizationRequired ||
     VelockWizardAvailability.accessRevoked ||
+    VelockWizardAvailability.velockUpdateRequired ||
     VelockWizardAvailability.temporarilyUnavailable => true,
     _ => false,
   };
@@ -38,6 +49,23 @@ class VelockWizardReadiness {
 
 abstract interface class VelockWizardReadinessService {
   Future<VelockWizardReadiness> inspect({String? syncAppInstanceId});
+}
+
+/// Whether this Android build was configured with a trusted Velock exchange
+/// provider. Ordinary builds leave the Gradle properties empty, which the
+/// native side reports as `false`; an older native side without the method
+/// counts as not configured.
+Future<bool> androidVelockExchangeConfigured({MethodChannel? channel}) async {
+  try {
+    return await (channel ??
+                const MethodChannel(
+                  VelockExchangeV1Contract.androidFlutterChannel,
+                ))
+            .invokeMethod<bool>('isExchangeConfigured') ??
+        false;
+  } on Object {
+    return false;
+  }
 }
 
 /// Probes only the independently installed Velock application's protected
@@ -52,6 +80,7 @@ class PlatformVelockWizardReadinessService
     AppleExchangeRootLocator? appleRoot,
     VelockPairingControlChannel? applePairingControl,
     AppleVelockCompanionProbe? appleCompanionProbe,
+    Future<bool> Function()? androidExchangeConfigured,
     bool Function()? isAndroid,
     bool Function()? isApple,
   }) : _androidExchange =
@@ -66,6 +95,8 @@ class PlatformVelockWizardReadinessService
        _appleCompanionProbe =
            appleCompanionProbe ??
            const MethodChannelAppleVelockCompanionProbe(),
+       _androidExchangeConfigured =
+           androidExchangeConfigured ?? androidVelockExchangeConfigured,
        _isAndroid = isAndroid ?? (() => Platform.isAndroid),
        _isApple = isApple ?? (() => Platform.isIOS || Platform.isMacOS);
 
@@ -74,6 +105,7 @@ class PlatformVelockWizardReadinessService
   final AppleExchangeRootLocator _appleRoot;
   final VelockPairingControlChannel _applePairingControl;
   final AppleVelockCompanionProbe _appleCompanionProbe;
+  final Future<bool> Function() _androidExchangeConfigured;
   final bool Function() _isAndroid;
   final bool Function() _isApple;
 
@@ -81,6 +113,14 @@ class PlatformVelockWizardReadinessService
   Future<VelockWizardReadiness> inspect({String? syncAppInstanceId}) async {
     try {
       if (_isAndroid()) {
+        // An unconfigured build answers every exchange call with a
+        // SecurityException, which used to read as "authorize Sync in
+        // Velock" -- advice that can never work. Say it is unsupported.
+        if (!await _androidExchangeConfigured()) {
+          return const VelockWizardReadiness(
+            VelockWizardAvailability.unsupportedPlatform,
+          );
+        }
         await _androidExchange.readyOutboxIds();
         final control =
             _androidPairingControl ??
@@ -114,6 +154,13 @@ class PlatformVelockWizardReadinessService
           );
         }
         final root = await _appleRoot.locate();
+        // Checked before any pairing descriptor is trusted: Velock 2.0.6
+        // pairs, but can never finish a backup.
+        if (!await VelockCompanionCapabilities.isSupported(root)) {
+          return const VelockWizardReadiness(
+            VelockWizardAvailability.velockUpdateRequired,
+          );
+        }
         if (!await root.exists()) {
           return const VelockWizardReadiness(
             VelockWizardAvailability.configurationMissing,

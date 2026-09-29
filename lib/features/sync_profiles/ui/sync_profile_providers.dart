@@ -129,6 +129,8 @@ final velockProfileFinalizerProvider = Provider<VelockProfileFinalizer>((ref) {
     readProfiles: () =>
         profiles.listSummaries(kind: SyncDatasetKind.velockManaged),
     readConnection: connections.getConnectionById,
+    readProfile: profiles.read,
+    replaceProfile: profiles.replaceVelockProfile,
     pairing: ref.watch(velockPairingSessionServiceProvider),
     now: ref.watch(velockWizardClockProvider),
   );
@@ -159,6 +161,7 @@ class VelockWizardSessionState {
     this.selectedConnectionId,
     this.selectedRemoteRootSegments = const [],
     this.authorizationProblem,
+    this.replacingProfileId,
   });
 
   final VelockPairingSession? session;
@@ -168,6 +171,10 @@ class VelockWizardSessionState {
   final String? selectedConnectionId;
   final List<String> selectedRemoteRootSegments;
   final VelockWizardAuthorizationProblem? authorizationProblem;
+
+  /// Re-pairing: the existing profile this flow replaces once it is finalized.
+  /// That profile stays untouched (location, cursors, trust) until then.
+  final String? replacingProfileId;
 
   VelockWizardSessionState copyWith({
     VelockPairingControlResponse? approval,
@@ -184,6 +191,7 @@ class VelockWizardSessionState {
         ? this.selectedRemoteRootSegments
         : List.unmodifiable(selectedRemoteRootSegments),
     authorizationProblem: authorizationProblem,
+    replacingProfileId: replacingProfileId,
   );
 }
 
@@ -197,13 +205,17 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
     return const VelockWizardSessionState();
   }
 
-  void sessionStarted(VelockPairingSession session) {
+  void sessionStarted(
+    VelockPairingSession session, {
+    String? replacingProfileId,
+  }) {
     _flowSession = session;
     state = VelockWizardSessionState(
       session: session,
       connectionNeeded: state.connectionNeeded,
       selectedConnectionId: state.selectedConnectionId,
       selectedRemoteRootSegments: state.selectedRemoteRootSegments,
+      replacingProfileId: replacingProfileId,
     );
     _scheduleExpiration();
   }
@@ -280,6 +292,7 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
       selectedConnectionId: state.selectedConnectionId,
       selectedRemoteRootSegments: state.selectedRemoteRootSegments,
       authorizationProblem: reason,
+      replacingProfileId: state.replacingProfileId,
     );
   }
 
