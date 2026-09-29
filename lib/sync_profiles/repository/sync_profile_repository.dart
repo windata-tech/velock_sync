@@ -92,7 +92,9 @@ class SyncProfileRepository {
     if (expected.kind != SyncDatasetKind.velockManaged ||
         replacement.kind != SyncDatasetKind.velockManaged ||
         replacement.profileId == expected.profileId) {
-      throw ArgumentError('Only a new Velock profile can replace a Velock one.');
+      throw ArgumentError(
+        'Only a new Velock profile can replace a Velock one.',
+      );
     }
     if (!await _database.retireSyncProfileAndInsertReplacement(
       retiredProfileId: expected.profileId,

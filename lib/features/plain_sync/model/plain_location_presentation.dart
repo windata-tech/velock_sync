@@ -21,7 +21,7 @@ String directionExplanation(
 ) => switch (direction) {
   MirrorDirection.bidirectional => syncText(
     context,
-    '两边改动互相同步；同一条文件两边都改过时按冲突处理方式保留。本机删除会同步删除远端文件。',
+    '两边改动互相同步；同一个文件两边都改过时按冲突处理方式保留。本机删除会同步删除远端文件。',
     'Changes flow both ways. If the same file changed on both sides, the conflict setting decides. Deleting a file here also deletes it remotely.',
   ),
   MirrorDirection.uploadOnly => syncText(
@@ -342,6 +342,11 @@ String plainFailureMessage(
       context,
       '无法确认远端文件夹有没有创建成功，本次同步没有完成。请刷新远端目录确认后再试。',
       'It is unclear whether the remote folder was created, so the sync did not finish. Refresh the remote folder to check, then try again.',
+    ),
+    'network.unreachable' => syncText(
+      context,
+      '连不上远端服务器，本次同步没有完成。请检查网络、服务器地址和端口，并确认服务器正在运行。',
+      'Could not reach the remote server, so the sync did not finish. Check the network, the server address and port, and that the server is running.',
     ),
     'network.certificate' => syncText(
       context,

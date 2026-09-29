@@ -843,6 +843,7 @@ class PlainFolderSyncService {
       MirrorProgress(phase: MirrorRunPhase.uploading, total: uploads.length),
     );
     final downloadedPaths = <String>[];
+    final conflictCopies = <String>[];
     for (var index = 0; index < uploads.length; index++) {
       final action = uploads[index];
       cancellation?.throwIfCancelled();
@@ -895,6 +896,7 @@ class PlainFolderSyncService {
           from: action.relativePath,
           to: conflictCopyPath,
         );
+        conflictCopies.add(conflictCopyPath);
       }
       await _download(
         remote: remote,
@@ -938,9 +940,70 @@ class PlainFolderSyncService {
           ),
         ]);
       }
+      // Keep-both copies only exist on this device so far. Conflicts are only
+      // planned for two-way locations, so send each copy up in this same run
+      // instead of leaving it for the next one.
+      if (rescanned != null) {
+        await _uploadConflictCopies(
+          profile: profile,
+          remote: remote,
+          storage: storage,
+          local: rescanned,
+          paths: conflictCopies,
+          counters: counters,
+          cancellation: cancellation,
+        );
+      }
     }
 
     onProgress?.call(const MirrorProgress(phase: MirrorRunPhase.finishing));
+  }
+
+  Future<void> _uploadConflictCopies({
+    required PlainFolderSyncProfile profile,
+    required RemoteObjectStore remote,
+    required SelectedFolderStorage storage,
+    required Map<String, MirrorEntry> local,
+    required List<String> paths,
+    required _RunCounters counters,
+    required RemoteOperationCancellation? cancellation,
+  }) async {
+    for (final path in paths) {
+      final localEntry = local[path];
+      if (localEntry == null) continue;
+      cancellation?.throwIfCancelled();
+      // Never overwrite a remote file that happens to carry the same name;
+      // the next run then plans it like any other pair.
+      // A failed check is not proof of absence either.
+      try {
+        if (await remote.stat(path, cancellation: cancellation) != null) {
+          continue;
+        }
+      } on RemoteOperationCancelledException {
+        rethrow;
+      } on Object {
+        continue;
+      }
+      final action = MirrorAction(
+        type: MirrorActionType.uploadFile,
+        relativePath: path,
+        outcome: MirrorPathOutcome.uploaded,
+        local: localEntry,
+      );
+      final metadata = await _upload(
+        remote: remote,
+        storage: storage,
+        action: action,
+        counters: counters,
+        cancellation: cancellation,
+      );
+      await _recordBaselineAfterUpload(
+        profile: profile,
+        action: action,
+        remoteEntry: metadata,
+        now: _now().toUtc(),
+      );
+    }
   }
 
   /// Writes the baseline for paths this run proved to be in sync.

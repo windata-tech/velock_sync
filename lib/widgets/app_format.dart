@@ -162,8 +162,8 @@ abstract final class AppFormat {
     if (normalized.contains('401') || normalized.contains('unauthor')) {
       return _optionalSyncText(
         context,
-        '远端拒绝了访问，请重新授权后再试。',
-        "Remote access was denied. Authorize access again and retry.",
+        '服务器没有接受保存的登录信息。请修改连接，核对用户名和密码（云盘请重新授权）后再试。',
+        "The server did not accept the saved sign-in. Edit the connection to check the username and password (or authorize the cloud drive again), then retry.",
       );
     }
     if (normalized.contains('403') || normalized.contains('forbidden')) {
@@ -207,8 +207,8 @@ abstract final class AppFormat {
         normalized.contains('unreachable')) {
       return _optionalSyncText(
         context,
-        '无法连接远端，请检查网络与服务器地址。',
-        "Could not connect. Check the network and server address.",
+        '连不上远端服务器。请检查网络、服务器地址和端口，并确认服务器正在运行。',
+        "Could not reach the remote server. Check the network, the server address and port, and that the server is running.",
       );
     }
     if (normalized.contains('token_broker') || normalized.contains('oauth')) {

@@ -221,6 +221,47 @@ void main() {
     },
   );
 
+  // QA 2026-09-29: the 冲突 1 badge could never be dismissed.
+  testWidgets('the conflict log can be cleared without touching files', (
+    tester,
+  ) async {
+    final world = await openDetail(tester);
+    final seen = DateTime.utc(2026, 9, 29, 8);
+    await world.database.recordMirrorConflicts(_profileId, const [
+      MirrorPlannedConflict(
+        relativePath: 'notes.txt',
+        kind: MirrorConflictKind.bothModified,
+        resolution: MirrorConflictResolution.keepBoth,
+      ),
+    ], detectedAt: seen);
+    await world.refreshListView();
+    world.router.pop();
+    await tester.pumpAndSettle();
+    world.router.push<void>('/plain-locations/$_profileId');
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(const Key('plain-conflicts'));
+    await tester.scrollUntilVisible(row, 200);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    // Closing keeps the log.
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('notes.txt'), findsOneWidget);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+    expect(await world.database.countMirrorConflicts(_profileId), 1);
+
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plain-conflicts-clear')));
+    await tester.pumpAndSettle();
+    expect(await world.database.countMirrorConflicts(_profileId), 0);
+    expect(find.byKey(const Key('plain-conflicts')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('changing the conflict policy persists', (tester) async {
     final world = await openDetail(tester);
 

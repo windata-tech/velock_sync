@@ -725,11 +725,20 @@ void main() {
       expect(conflicts.single.resolution, MirrorConflictResolution.keepBoth);
       expect(outcome.stats.conflictCount, 1);
       expect(outcome.stats.downloadedFileCount, 1);
+      // QA 2026-09-29: the keep-both copy used to reach the remote only on
+      // the next run. The download resolves the pair; the copy goes up now.
       expect(
         remote.putCalls,
-        1,
-        reason: 'the conflict is resolved by a download',
+        2,
+        reason: 'first run uploads notes.txt, this run uploads only the copy',
       );
+      expect(remote.files[copies.single], localEdit);
+      expect(outcome.stats.uploadedFileCount, 1);
+
+      final next = await service().run(_profileId);
+      expect(next.stats.uploadedFileCount, 0);
+      expect(next.stats.downloadedFileCount, 0);
+      expect(remote.putCalls, 2);
     },
   );
 

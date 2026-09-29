@@ -165,7 +165,12 @@ void main() {
       expect(find.text('Enter a port'), findsOneWidget);
       await enter('address', 'invalid');
       await save();
-      expect(find.text('Enter a valid server address'), findsOneWidget);
+      expect(
+        find.text(
+          'Enter the full address starting with http:// or https://, e.g. https://nas.example.com',
+        ),
+        findsOneWidget,
+      );
       await enter('address', 'http://example.com');
       await enter('user', 'user');
       await save();

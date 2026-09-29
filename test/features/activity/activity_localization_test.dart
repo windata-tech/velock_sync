@@ -38,7 +38,10 @@ void main() {
     // The run, the transfers and the conflict all show the same profile and
     // time, so this row is expected more than once.
     expect(find.text('Family NAS · 刚刚'), findsWidgets);
-    expect(find.text('远端拒绝了访问，请重新授权后再试。'), findsOneWidget);
+    expect(
+      find.text('服务器没有接受保存的登录信息。请修改连接，核对用户名和密码（云盘请重新授权）后再试。'),
+      findsOneWidget,
+    );
     expect(find.text('待恢复传输'), findsOneWidget);
     expect(find.text('上传进行中'), findsOneWidget);
     expect(find.text('Family NAS · 2 KB / 4 KB'), findsOneWidget);
@@ -79,7 +82,9 @@ void main() {
     expect(find.text('Download in progress'), findsOneWidget);
     expect(find.text('Family NAS · 2 KB transferred'), findsOneWidget);
     expect(
-      find.text('Remote access was denied. Authorize access again and retry.'),
+      find.text(
+        'The server did not accept the saved sign-in. Edit the connection to check the username and password (or authorize the cloud drive again), then retry.',
+      ),
       findsOneWidget,
     );
     expect(find.text('Conflicts to review'), findsOneWidget);
@@ -90,6 +95,8 @@ void main() {
     expect(find.text('Result'), findsOneWidget);
     expect(find.text('Not completed'), findsOneWidget);
     expect(find.text('Likely cause'), findsOneWidget);
+    // The run sheet scrolls once its message is long.
+    await tester.ensureVisible(find.text('Close'));
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
 

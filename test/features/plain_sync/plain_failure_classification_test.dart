@@ -51,25 +51,28 @@ Future<BuildContext> _mount(WidgetTester tester) async {
 
 void main() {
   group('SyncFailureClassifier', () {
-    test('a device with no network is offline, not "unexpected"', () {
-      final failure = SyncFailureClassifier.classify(
-        _dio(
-          DioExceptionType.connectionError,
-          error: const SocketException('offline'),
-        ),
-      );
+    test(
+      'a refused connection is unreachable, not "offline" or "unexpected"',
+      () {
+        final failure = SyncFailureClassifier.classify(
+          _dio(
+            DioExceptionType.connectionError,
+            error: const SocketException('offline'),
+          ),
+        );
 
-      expect(failure.errorCode, SyncFailureCodes.networkOffline);
-      expect(failure.category, SyncErrorCategory.transientNetwork);
-      expect(failure.retryable, isTrue);
-    });
+        expect(failure.errorCode, SyncFailureCodes.networkUnreachable);
+        expect(failure.category, SyncErrorCategory.transientNetwork);
+        expect(failure.retryable, isTrue);
+      },
+    );
 
-    test('a bare socket error is offline as well', () {
+    test('a bare socket error is unreachable as well', () {
       expect(
         SyncFailureClassifier.classify(
           const SocketException('no route to host'),
         ).errorCode,
-        SyncFailureCodes.networkOffline,
+        SyncFailureCodes.networkUnreachable,
       );
     });
 
@@ -153,7 +156,10 @@ void main() {
     final offline = SyncFailureClassifier.classify(
       _dio(DioExceptionType.connectionError, error: const SocketException('x')),
     );
-    expect(plainFailureMessage(context, offline.errorCode), '没有网络连接，连上网络后再试。');
+    expect(
+      plainFailureMessage(context, offline.errorCode),
+      '连不上远端服务器，本次同步没有完成。请检查网络、服务器地址和端口，并确认服务器正在运行。',
+    );
 
     final timeout = SyncFailureClassifier.classify(
       _dio(DioExceptionType.receiveTimeout),

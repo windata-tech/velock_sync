@@ -75,7 +75,9 @@ class VelockCompanionCapabilities {
 
   /// Reads the descriptor from an exchange root. Missing, unreadable or
   /// malformed files all yield `null` (treated as "Velock too old").
-  static Future<VelockCompanionCapabilities?> read(Directory exchangeRoot) async {
+  static Future<VelockCompanionCapabilities?> read(
+    Directory exchangeRoot,
+  ) async {
     try {
       final file = File('${exchangeRoot.path}/$relativePath');
       if (!await file.exists()) return null;

@@ -70,9 +70,7 @@ void main() {
       if (connections != null)
         connectionRepositoryProvider.overrideWithValue(connections),
       syncProfileRepositoryProvider.overrideWithValue(repository),
-      velockWizardReadinessServiceProvider.overrideWithValue(
-        _Ready(readiness),
-      ),
+      velockWizardReadinessServiceProvider.overrideWithValue(_Ready(readiness)),
       if (runService != null)
         syncProfileRunServiceProvider.overrideWithValue(runService),
     ],
@@ -186,22 +184,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(service.calls, 0);
-    tester.binding.handleAppLifecycleStateChanged(
-      AppLifecycleState.paused,
-    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     ready = true;
-    tester.binding.handleAppLifecycleStateChanged(
-      AppLifecycleState.resumed,
-    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     await tester.pump();
     expect(service.calls, 1);
-    tester.binding.handleAppLifecycleStateChanged(
-      AppLifecycleState.inactive,
-    );
-    tester.binding.handleAppLifecycleStateChanged(
-      AppLifecycleState.resumed,
-    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     expect(service.calls, 1);
     ready = false;
@@ -212,12 +202,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    tester.binding.handleAppLifecycleStateChanged(
-      AppLifecycleState.inactive,
-    );
-    tester.binding.handleAppLifecycleStateChanged(
-      AppLifecycleState.resumed,
-    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     expect(service.calls, 1);
     expect(tester.takeException(), isNull);
@@ -241,36 +227,41 @@ void main() {
   }
 
   for (final language in ['zh', 'en']) {
-    testWidgets('an old Velock replaces setup and restore entries ($language)', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        app(
-          const SyncProfilesHome(),
-          locale: language,
-          readiness: VelockWizardAvailability.velockUpdateRequired,
-        ),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      'an old Velock replaces setup and restore entries ($language)',
+      (tester) async {
+        await tester.pumpWidget(
+          app(
+            const SyncProfilesHome(),
+            locale: language,
+            readiness: VelockWizardAvailability.velockUpdateRequired,
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('velock-gate-velockUpdateRequired')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('velock-gate-open')), findsOneWidget);
-      expect(find.byKey(const Key('velock-gate-recheck')), findsOneWidget);
-      expect(find.byKey(const Key('velock-cloud-restore')), findsNothing);
-      expect(
-        find.textContaining(language == 'zh' ? '2.0.7' : 'Velock 2.0.7'),
-        findsOneWidget,
-      );
-      if (language == 'en') {
-        final chinese = RegExp(r'[\u4e00-\u9fff]');
-        for (final text in tester.widgetList<Text>(find.byType(Text))) {
-          expect(chinese.hasMatch(text.data ?? ''), isFalse, reason: text.data);
+        expect(
+          find.byKey(const Key('velock-gate-velockUpdateRequired')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('velock-gate-open')), findsOneWidget);
+        expect(find.byKey(const Key('velock-gate-recheck')), findsOneWidget);
+        expect(find.byKey(const Key('velock-cloud-restore')), findsNothing);
+        expect(
+          find.textContaining(language == 'zh' ? '2.0.7' : 'Velock 2.0.7'),
+          findsOneWidget,
+        );
+        if (language == 'en') {
+          final chinese = RegExp(r'[\u4e00-\u9fff]');
+          for (final text in tester.widgetList<Text>(find.byType(Text))) {
+            expect(
+              chinese.hasMatch(text.data ?? ''),
+              isFalse,
+              reason: text.data,
+            );
+          }
         }
-      }
-    });
+      },
+    );
   }
 
   testWidgets('an unsupported build offers no pairing or restore', (
@@ -376,14 +367,14 @@ void main() {
       await tester.pumpAndSettle();
 
       // Only the failure interrupts: it stays until the user acknowledges it.
-      expect(find.text('同步失败'), findsOneWidget);
+      expect(find.text('备份失败'), findsOneWidget);
       expect(find.byKey(const Key('sync-failure-alert-ok')), findsOneWidget);
       expect(find.textContaining(secret), findsNothing);
       await tester.tap(find.byKey(const Key('sync-failure-alert-ok')));
       await tester.pumpAndSettle();
 
       // Back to a usable card: no leftover modal, no stuck spinner.
-      expect(find.text('同步失败'), findsNothing);
+      expect(find.text('备份失败'), findsNothing);
       expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
       expect(primary, findsOneWidget);
       expect(tester.widget<BackupActionButton>(primary).busy, isFalse);
@@ -541,13 +532,13 @@ void main() {
       pending.completeError(StateError(secret));
       await tester.pumpAndSettle();
 
-      expect(find.text('同步失败'), findsOneWidget);
+      expect(find.text('备份失败'), findsOneWidget);
       expect(find.byKey(const Key('sync-failure-alert-ok')), findsOneWidget);
       expect(find.textContaining(secret), findsNothing);
       await tester.tap(find.byKey(const Key('sync-failure-alert-ok')));
       await tester.pumpAndSettle();
 
-      expect(find.text('同步失败'), findsNothing);
+      expect(find.text('备份失败'), findsNothing);
       expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
       expect(find.byKey(const Key('backup-status-title')), findsOneWidget);
       expect(find.text('传输记录'), findsOneWidget);

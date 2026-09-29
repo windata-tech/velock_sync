@@ -129,6 +129,20 @@ void main() {
     );
   });
 
+  testWidgets(
+    'Velock backup never blames the network for a server that is down',
+    (tester) async {
+      expect(
+        await _errorSummary(tester, const Locale('zh'), 'network.unreachable'),
+        '连不上远端服务器。请检查网络、服务器地址和端口，并确认服务器正在运行。',
+      );
+      expect(
+        await _errorSummary(tester, const Locale('en'), 'network.unreachable'),
+        'Could not reach the remote server. Check the network, the server address and port, and that the server is running.',
+      );
+    },
+  );
+
   testWidgets('an unknown code stays a plain sentence in Velock too', (
     tester,
   ) async {

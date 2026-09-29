@@ -7,6 +7,7 @@ import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_providers.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
+import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:velock_sync/widgets/adaptive_dialogs.dart';
 import 'backup_actions.dart';
 import 'backup_widgets.dart';
@@ -55,6 +56,11 @@ class _VelockRecoveryGuideState extends ConsumerState<VelockRecoveryGuide> {
     final profiles = ref.watch(velockExistingProfilesProvider);
     return AdaptiveScaffold(
       title: syncText(context, '从云端恢复', 'Restore from cloud'),
+      // Adding the original connection returns here with `go`, which leaves
+      // nothing to pop; the page must still lead back home.
+      leading: AppBackButton(
+        onPressed: () => context.canPop() ? context.pop() : context.go('/'),
+      ),
       body: profiles.when(
         loading: () => const Center(child: CupertinoActivityIndicator()),
         error: (_, _) => AdaptiveErrorState(

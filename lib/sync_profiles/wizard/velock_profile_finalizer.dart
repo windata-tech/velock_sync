@@ -299,13 +299,17 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
     final envelope = await read(profileId);
     // Removed profiles are not readable; that includes one already replaced.
     if (envelope == null || envelope.kind != SyncDatasetKind.velockManaged) {
-      throw const VelockProfileFinalizationException('replaced_profile_missing');
+      throw const VelockProfileFinalizationException(
+        'replaced_profile_missing',
+      );
     }
     final VelockSyncProfile profile;
     try {
       profile = VelockSyncProfile.fromEnvelope(envelope);
     } on FormatException {
-      throw const VelockProfileFinalizationException('replaced_profile_missing');
+      throw const VelockProfileFinalizationException(
+        'replaced_profile_missing',
+      );
     }
     // Re-pairing continues the same account in the same folder. Another
     // account, connection or folder is a new setup, not a replacement.

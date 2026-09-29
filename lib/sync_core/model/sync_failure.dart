@@ -57,7 +57,16 @@ abstract interface class SyncFailureException implements Exception {
 /// with the same sentence.
 abstract final class SyncFailureCodes {
   /// The device itself has no usable connection.
+  ///
+  /// The classifier no longer produces it: a refused or reset connection looks
+  /// the same whether the phone is offline or the server is down, and telling a
+  /// user on working Wi-Fi that they have no network sends them to the wrong
+  /// fix. Kept so runs recorded by earlier builds still read correctly.
   static const networkOffline = 'network.offline';
+
+  /// The remote could not be reached: no network, a wrong address or port, or
+  /// a server that is not running.
+  static const networkUnreachable = 'network.unreachable';
 
   /// A request to the remote started but never completed in time.
   static const networkTimeout = 'network.timeout';
@@ -91,7 +100,7 @@ abstract final class SyncFailureClassifier {
         DioExceptionType.sendTimeout ||
         DioExceptionType.receiveTimeout ||
         DioExceptionType.transformTimeout => _timeout,
-        DioExceptionType.connectionError => _offline,
+        DioExceptionType.connectionError => _unreachable,
         DioExceptionType.cancel => _cancelled,
         DioExceptionType.badCertificate => _certificate,
         DioExceptionType.badResponse => null,
@@ -104,7 +113,7 @@ abstract final class SyncFailureClassifier {
   /// A bare socket or timeout error, e.g. from a store that streams bytes
   /// without wrapping them.
   static SyncFailure? _classifyCause(Object? cause) => switch (cause) {
-    SocketException() => _offline,
+    SocketException() => _unreachable,
     TimeoutException() => _timeout,
     _ => null,
   };
@@ -137,11 +146,11 @@ abstract final class SyncFailureClassifier {
     },
   );
 
-  static const _offline = SyncFailure(
-    errorCode: SyncFailureCodes.networkOffline,
+  static const _unreachable = SyncFailure(
+    errorCode: SyncFailureCodes.networkUnreachable,
     category: SyncErrorCategory.transientNetwork,
     retryable: true,
-    suggestedAction: '请连接网络后重试。',
+    suggestedAction: '请检查网络、服务器地址与端口，并确认服务器正在运行。',
   );
 
   static const _timeout = SyncFailure(

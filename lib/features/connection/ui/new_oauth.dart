@@ -195,7 +195,7 @@ class NewOAuthConnection extends HookConsumerWidget {
               );
         }
         saved = true;
-        if (context.mounted) context.go(returnTo ?? AppRoutes.connections.path);
+        if (context.mounted) leaveConnectionEditor(context, returnTo);
       } on Object catch (error, stackTrace) {
         loge(
           'OAuth authorization or connection check failed: ${error.runtimeType}',

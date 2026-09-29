@@ -869,6 +869,11 @@ class SyncStateDatabase {
   Future<int> countMirrorConflicts(String profileId) async =>
       _mirror.countMirrorConflicts(profileId);
 
+  Future<void> clearMirrorConflicts(
+    String profileId, {
+    required DateTime through,
+  }) async => _mirror.clearMirrorConflicts(profileId, through: through);
+
   /// Keeps the informational conflict log bounded for a long-lived location.
   Future<void> trimMirrorConflicts(String profileId, {int keep = 200}) async =>
       _mirror.trimMirrorConflicts(profileId, keep: keep);

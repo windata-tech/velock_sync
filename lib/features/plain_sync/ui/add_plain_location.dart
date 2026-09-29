@@ -4,6 +4,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_repository.dart';
 import 'package:velock_sync/core/app_router.dart';
@@ -104,7 +105,8 @@ class AddPlainLocation extends HookConsumerWidget {
           MaterialPageRoute(
             builder: (_) => BackupFolderPicker(
               connectionName: value.name,
-              basePath: protocol.address,
+              basePath: RemoteObjectStoreFactory.webDavDisplayAddress(protocol),
+              forSync: true,
               loadFolders: (relative) =>
                   loader(protocol: protocol, relativeSegments: relative),
               createFolder: (parent, folderName) => ref.read(
@@ -122,8 +124,25 @@ class AddPlainLocation extends HookConsumerWidget {
           );
           return;
         }
+        // Refuse a backup folder right away instead of at the last step.
+        await assertPlainFolderIsNotBackup(
+          backups: ref.read(syncProfileRepositoryProvider),
+          connectionId: value.id,
+          segments: picked,
+          childFolderNames: () async => [
+            for (final folder in await loader(
+              protocol: protocol,
+              relativeSegments: picked,
+            ))
+              folder.name,
+          ],
+        );
+        if (!context.mounted) return;
         connection.value = value;
         segments.value = picked;
+      } on BackupFolderOverlapException catch (failure) {
+        if (!context.mounted) return;
+        error.value = backupOverlapMessage(context, failure);
       } on Object catch (failure, stackTrace) {
         loge('Remote folder pick failed: $failure', stackTrace: stackTrace);
         error.value = syncText(
@@ -252,11 +271,7 @@ class AddPlainLocation extends HookConsumerWidget {
           stackTrace: stackTrace,
         );
         if (!context.mounted) return;
-        error.value = syncText(
-          context,
-          '这个远端文件夹和格间备份用的是同一个位置（或它的上级/下级）：${failure.backupName}。明文同步会把加密备份当成普通文件处理，所以不能用。请换一个文件夹。',
-          'This remote folder is the same as — or contains, or sits inside — the folder used by the backup “${failure.backupName}”. Plain sync would treat the encrypted backup as ordinary files, so it cannot be used here. Pick another folder.',
-        );
+        error.value = backupOverlapMessage(context, failure);
       } on PlainLocationOverlapException catch (failure, stackTrace) {
         loge(
           'Plain location overlaps another: $failure',
@@ -696,4 +711,23 @@ class AddPlainLocation extends HookConsumerWidget {
       ),
     ),
   ];
+}
+
+/// Why a remote folder that holds (or contains) a Velock backup is refused.
+String backupOverlapMessage(
+  BuildContext context,
+  BackupFolderOverlapException failure,
+) {
+  if (failure.backupName.isEmpty) {
+    return syncText(
+      context,
+      '这个远端文件夹里有格间的加密备份（或它本身就在备份里）。明文同步会把加密备份当成普通文件处理，可能改动或删除它，所以不能用。请换一个文件夹。',
+      'This remote folder holds a Velock encrypted backup, or sits inside one. Plain sync would treat the backup as ordinary files and could change or delete it, so it cannot be used. Pick another folder.',
+    );
+  }
+  return syncText(
+    context,
+    '这个远端文件夹和格间备份用的是同一个位置（或它的上级/下级）：${failure.backupName}。明文同步会把加密备份当成普通文件处理，所以不能用。请换一个文件夹。',
+    'This remote folder is the same as — or contains, or sits inside — the folder used by the backup “${failure.backupName}”. Plain sync would treat the encrypted backup as ordinary files, so it cannot be used here. Pick another folder.',
+  );
 }

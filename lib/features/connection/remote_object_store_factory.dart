@@ -79,6 +79,17 @@ abstract final class RemoteObjectStoreFactory {
     }
   }
 
+  /// The server address a person recognises: scheme, host, any non-default
+  /// port and the configured path, decoded. For display only.
+  static String webDavDisplayAddress(WebDavProtocolModel protocol) {
+    try {
+      final text = Uri.decodeFull(webDavUri(protocol).toString());
+      return text.replaceFirst(RegExp(r'/+$'), '');
+    } on Object {
+      return protocol.address;
+    }
+  }
+
   static Uri webDavUri(WebDavProtocolModel protocol) {
     final address = Uri.tryParse(protocol.address);
     final port = int.tryParse(protocol.port);

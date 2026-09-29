@@ -117,34 +117,35 @@ Future<void> expectPersistentFailurePresentation(
 }
 
 void main() {
-  testWidgets('downloaded snapshot offers to open Velock instead of a dead end', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      host(
-        TargetPlatform.iOS,
-        const Locale('zh'),
-        (context) => presentSyncFailureAlert(
-          context: context,
-          error: const VelockSnapshotApplicationRequired(),
+  testWidgets(
+    'downloaded snapshot offers to open Velock instead of a dead end',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          TargetPlatform.iOS,
+          const Locale('zh'),
+          (context) => presentSyncFailureAlert(
+            context: context,
+            error: const VelockSnapshotApplicationRequired(),
+          ),
         ),
-      ),
-    );
-    await tester.tap(find.byKey(const Key('trigger')));
-    await tester.pumpAndSettle();
+      );
+      await tester.tap(find.byKey(const Key('trigger')));
+      await tester.pumpAndSettle();
 
-    expect(find.text('请到格间完成恢复'), findsOneWidget);
-    expect(
-      find.text('完整备份已下载。请打开格间，解锁并确认恢复；返回 Sync 后会继续完成备份检查。'),
-      findsOneWidget,
-    );
-    expect(find.text('打开格间'), findsOneWidget);
-    expect(find.text('同步失败'), findsNothing);
+      expect(find.text('请到格间完成恢复'), findsOneWidget);
+      expect(
+        find.text('完整备份已下载。请打开格间，解锁并确认恢复；返回 Sync 后会继续完成备份检查。'),
+        findsOneWidget,
+      );
+      expect(find.text('打开格间'), findsOneWidget);
+      expect(find.text('备份失败'), findsNothing);
 
-    await tester.tap(find.text('稍后'));
-    await tester.pumpAndSettle();
-    expect(find.text('请到格间完成恢复'), findsNothing);
-  });
+      await tester.tap(find.text('稍后'));
+      await tester.pumpAndSettle();
+      expect(find.text('请到格间完成恢复'), findsNothing);
+    },
+  );
 
   for (final platform in const [TargetPlatform.iOS, TargetPlatform.android]) {
     testWidgets(
@@ -159,8 +160,8 @@ void main() {
             context,
             failedResult(const _FakeSyncFailure(_authFailure)),
           ),
-          title: '同步失败',
-          message: '远端拒绝了访问，请重新授权后再试。',
+          title: '备份失败',
+          message: '服务器没有接受保存的登录信息。请修改连接，核对用户名和密码（云盘请重新授权）后再试。',
           okLabel: '知道了',
         );
       },
@@ -180,7 +181,7 @@ void main() {
             // failure without leaking diagnostic text.
             failedResult(Exception('boom')),
           ),
-          title: '同步失败',
+          title: '备份失败',
           message: '同步未完成，请检查同步配置后重试。',
           okLabel: '知道了',
         );
@@ -197,7 +198,7 @@ void main() {
           context: context,
           error: StateError('fake thrown exception'),
         ),
-        title: '同步失败',
+        title: '备份失败',
         message: '同步未完成，请检查同步配置后重试。',
         okLabel: '知道了',
       );
@@ -213,8 +214,9 @@ void main() {
           context,
           failedResult(const _FakeSyncFailure(_authFailure)),
         ),
-        title: 'Sync failed',
-        message: 'Remote access was denied. Authorize access again and retry.',
+        title: 'Backup failed',
+        message:
+            'The server did not accept the saved sign-in. Edit the connection to check the username and password (or authorize the cloud drive again), then retry.',
         okLabel: 'OK',
       );
     });

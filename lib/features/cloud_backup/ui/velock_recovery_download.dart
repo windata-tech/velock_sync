@@ -65,7 +65,7 @@ Future<bool> downloadVelockRecovery(BuildContext context, WidgetRef ref) async {
       CupertinoPageRoute(
         builder: (_) => BackupFolderPicker(
           connectionName: connection.name,
-          basePath: protocol.path ?? '/',
+          basePath: RemoteObjectStoreFactory.webDavDisplayAddress(protocol),
           restoring: true,
           loadFolders: (segments) =>
               loader(protocol: protocol, relativeSegments: segments),

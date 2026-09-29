@@ -56,6 +56,7 @@ class BackupFolderPicker extends StatefulWidget {
     required this.loadFolders,
     this.initialSegments = const [],
     this.restoring = false,
+    this.forSync = false,
     this.createFolder,
   });
 
@@ -63,6 +64,9 @@ class BackupFolderPicker extends StatefulWidget {
   final String basePath;
   final List<String> initialSegments;
   final bool restoring;
+
+  /// The folder is for a plain file-sync location, which says 「同步」.
+  final bool forSync;
   final Future<List<WebDavBackupFolder>> Function(List<String>) loadFolders;
   final Future<void> Function(List<String> parent, String name)? createFolder;
 
@@ -184,8 +188,8 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
                       autofocus: true,
                       placeholder: syncText(
                         dialogContext,
-                        '例如：格间备份',
-                        'e.g. Velock backup',
+                        widget.forSync ? '例如：照片' : '例如：格间备份',
+                        widget.forSync ? 'e.g. Photos' : 'e.g. Velock backup',
                       ),
                       onChanged: (value) =>
                           setDialogState(() => enteredName = value),
@@ -197,8 +201,8 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
                       decoration: InputDecoration(
                         hintText: syncText(
                           dialogContext,
-                          '例如：格间备份',
-                          'e.g. Velock backup',
+                          widget.forSync ? '例如：照片' : '例如：格间备份',
+                          widget.forSync ? 'e.g. Photos' : 'e.g. Velock backup',
                         ),
                       ),
                       onChanged: (value) =>
@@ -332,7 +336,11 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
       ),
       title: syncText(
         context,
-        widget.restoring ? '找到原备份文件夹' : '选择备份文件夹',
+        widget.restoring
+            ? '找到原备份文件夹'
+            : widget.forSync
+            ? '选择同步文件夹'
+            : '选择备份文件夹',
         // The English title must stay short: the navigation bar gives the title
         // the space the leading and trailing slots leave over, and the length
         // of the title is what pushes a long one into an ellipsis.
@@ -370,9 +378,13 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
                         context,
                         widget.restoring
                             ? '选择当初备份时使用的保存文件夹，Sync 会查找其中的格间备份。'
+                            : widget.forSync
+                            ? '选择要和本机文件夹同步的远端文件夹，也可以新建一个空文件夹。不会改动其他文件夹。'
                             : '选择已有文件夹，或新建一个空文件夹保存备份。不会改动其他文件夹。',
                         widget.restoring
                             ? 'Choose the folder you originally saved to. Sync will look for your Velock backup inside it.'
+                            : widget.forSync
+                            ? 'Choose the remote folder to sync with the folder on this device, or create an empty one. Other folders stay unchanged.'
                             : 'Choose a folder or create an empty one for your backup. Other folders stay unchanged.',
                       ),
                       style: TextStyle(
@@ -431,8 +443,12 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
                       Text(
                         syncText(
                           context,
-                          '已进入新文件夹。点下方按钮即可选择它，尚未开始备份。',
-                          'Your new folder is open. Use the button below to select it. Backup has not started.',
+                          widget.forSync
+                              ? '已进入新文件夹。点下方按钮即可选择它，尚未开始同步。'
+                              : '已进入新文件夹。点下方按钮即可选择它，尚未开始备份。',
+                          widget.forSync
+                              ? 'Your new folder is open. Use the button below to select it. Sync has not started.'
+                              : 'Your new folder is open. Use the button below to select it. Backup has not started.',
                         ),
                         key: const Key('backup-folder-created'),
                       ),

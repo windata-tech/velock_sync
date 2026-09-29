@@ -11,6 +11,7 @@ import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_connection_fix.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_history_help.dart';
 import 'package:velock_sync/features/cloud_backup/ui/velock_backup_location.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
@@ -176,7 +177,15 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail>
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<DetailData>(
+  Widget build(BuildContext context) {
+    // An automatic run on resume finishes after the resume refresh.
+    ref.listen<int>(profilesRevisionProvider, (before, after) {
+      if (before != after) _refresh();
+    });
+    return _buildDetail(context);
+  }
+
+  Widget _buildDetail(BuildContext context) => FutureBuilder<DetailData>(
     future: _data,
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done &&
@@ -351,6 +360,37 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
     ),
   );
 
+  /// Retrying the same object into a conflicting remote file cannot succeed,
+  /// so that failure keeps only its review action.
+  bool get _offersRetry {
+    final presentation = _presentation;
+    return widget.latestRun?.state == 'failed' &&
+        presentation.stage == BackupStage.needsAttention &&
+        (presentation.action == BackupAction.fixConnection ||
+            presentation.action == BackupAction.manage) &&
+        presentation.errorCode != 'remote.immutable_object_mismatch';
+  }
+
+  /// Velock applies a downloaded backup on its own, but only a run reads its
+  /// receipt. A restored profile never runs in the background, so without
+  /// this the card would wait forever after Velock has finished.
+  bool get _offersRestoreCheck =>
+      _presentation.stage == BackupStage.waitingForRestore;
+
+  String? _secondaryLabel(BuildContext context) {
+    if (_offersRestoreCheck) {
+      return syncText(context, '检查恢复进度', 'Check restore progress');
+    }
+    if (_offersRetry) {
+      return syncText(
+        context,
+        _isVelock ? '重试备份' : '重试同步',
+        _isVelock ? 'Retry backup' : 'Retry sync',
+      );
+    }
+    return null;
+  }
+
   Future<void> _runNow() async {
     if (_running) return;
     setState(() => _running = true);
@@ -424,6 +464,15 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
         widget.onConflicts();
       case BackupAction.manage:
         widget.onSettings();
+      case BackupAction.fixConnection:
+        final retry = await editBackupConnection(
+          context,
+          ref,
+          widget.profile.connectionId,
+        );
+        if (!mounted) return;
+        widget.onChanged();
+        if (retry) await _runNow();
       case BackupAction.checkStorage:
         await showBackupStorageHelp(context, widget.profile);
         if (mounted) widget.onChanged();
@@ -455,6 +504,13 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
           presentation: _presentation,
           isVelock: _isVelock,
           onAction: _primaryAction,
+          // A failure fixed outside the app (server back up, permission
+          // granted) must never leave the card without a way to try again.
+          secondaryLabel: _secondaryLabel(context),
+          onSecondary: _offersRestoreCheck || _offersRetry ? _runNow : null,
+          secondaryKey: Key(
+            _offersRestoreCheck ? 'backup-check-restore' : 'backup-retry',
+          ),
         ),
         if (widget.conflicts.isNotEmpty)
           AdaptiveListSection(

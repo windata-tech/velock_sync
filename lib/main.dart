@@ -16,6 +16,8 @@ import 'package:velock_sync/core/local_data_manager.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/core/logger.dart';
+import 'package:velock_sync/features/plain_sync/state/plain_sync_providers.dart';
+import 'package:velock_sync/features/sync_profiles/ui/sync_profile_providers.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/providers/oauth/oauth_callback_link_receiver.dart';
@@ -129,7 +131,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _foregroundSync = ForegroundSyncCoordinator(
-      runProfiles: runEnabledBackgroundProfiles,
+      runProfiles: () async {
+        try {
+          return await runEnabledBackgroundProfiles();
+        } finally {
+          // The home cards read the database once per load; without this an
+          // automatic run on resume finished unseen until "Refresh status".
+          if (mounted) {
+            ref.read(profilesRevisionProvider.notifier).bump();
+            ref.invalidate(plainLocationViewsProvider);
+          }
+        }
+      },
     )..start();
   }
 

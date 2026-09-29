@@ -187,6 +187,8 @@ void main() {
         find.text('Sign in to the server again and retry.'),
         findsOneWidget,
       );
+      // The run sheet scrolls once its message is long.
+      await tester.ensureVisible(find.text('Close'));
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
 

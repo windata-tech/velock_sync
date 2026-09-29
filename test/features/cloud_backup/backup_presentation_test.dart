@@ -338,4 +338,35 @@ void main() {
     expect(state(running: true).stage, BackupStage.transferring);
     expect(state(run: 'running').stage, BackupStage.transferring);
   });
+
+  test('a rejected sign-in opens the connection editor, not a dead end', () {
+    // QA 2026-09-29: a 401 led to the manage page, which cannot change the
+    // username or password, so the backup stayed failed forever.
+    for (final code in const [
+      'provider.http.401',
+      'provider.webdav.unauthorized',
+    ]) {
+      final result = state(run: 'failed', error: code);
+      expect(result.stage, BackupStage.needsAttention, reason: code);
+      expect(result.action, BackupAction.fixConnection, reason: code);
+      expect(
+        state(
+          state: SyncProfileState.reauthorizationRequired,
+          run: 'failed',
+          error: code,
+        ).action,
+        BackupAction.fixConnection,
+        reason: code,
+      );
+    }
+    // A permission or missing folder is not a sign-in problem.
+    expect(
+      state(run: 'failed', error: 'provider.http.403').action,
+      BackupAction.manage,
+    );
+    expect(
+      state(run: 'failed', error: 'provider.http.404').action,
+      BackupAction.manage,
+    );
+  });
 }

@@ -225,11 +225,15 @@ class BackupStatusCard extends StatelessWidget {
             ? '云端备份不完整'
             : presentation.action == BackupAction.checkStorage
             ? '云端位置需要检查'
+            : presentation.action == BackupAction.fixConnection
+            ? '服务器拒绝了登录'
             : '有一件事需要你处理',
         presentation.action == BackupAction.reviewHistory
             ? 'Cloud backup is incomplete'
             : presentation.action == BackupAction.checkStorage
             ? 'Cloud location needs checking'
+            : presentation.action == BackupAction.fixConnection
+            ? 'The server rejected the sign-in'
             : 'Your attention is needed',
       ),
       BackupStage.needsVelock =>
@@ -367,6 +371,11 @@ class BackupStatusCard extends StatelessWidget {
             'Check cloud location',
           ),
           BackupAction.manage => syncText(context, '查看并处理', 'Review and fix'),
+          BackupAction.fixConnection => syncText(
+            context,
+            '修改连接',
+            'Edit connection',
+          ),
           BackupAction.resolve => syncText(
             context,
             '选择保留的内容',

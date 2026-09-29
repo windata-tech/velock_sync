@@ -105,6 +105,31 @@ Future<bool> reviewHeldDeletions(
           '$listed\n…and $remaining more',
         )
       : listed;
+  // Each held deletion removes the copy on one side only: the file is already
+  // gone on the other side, which is why it is being deleted at all.
+  final remote = held.actions
+      .where((action) => action.type == MirrorActionType.deleteRemoteEntry)
+      .isNotEmpty;
+  final local = held.actions
+      .where((action) => action.type == MirrorActionType.deleteLocalEntry)
+      .isNotEmpty;
+  final where = remote && local
+      ? syncText(
+          context,
+          '这些文件已经在一边被删除，确认后会把另一边剩下的那份也删除',
+          'These files were already deleted on one side. Confirming deletes the copy left on the other side',
+        )
+      : remote
+      ? syncText(
+          context,
+          '这些文件已经在本机删除，确认后会删除远端剩下的那份',
+          'These files were already deleted on this device. Confirming deletes the copy left on the remote',
+        )
+      : syncText(
+          context,
+          '这些文件已经在远端删除，确认后会删除本机剩下的那份',
+          'These files were already deleted on the remote. Confirming deletes the copy left on this device',
+        );
   final confirm = await showAdaptiveConfirmation(
     context,
     title: syncText(
@@ -114,8 +139,8 @@ Future<bool> reviewHeldDeletions(
     ),
     message: syncText(
       context,
-      '删除数量超过安全阈值，本次一项都没有删除。\n\n将删除：\n$detail\n\n${plainRunResultMessage(context, outcome)}\n\n删除的是本地和远端对应的文件，无法从这个页面撤销。',
-      'The number of deletions passed the safety threshold, so nothing was deleted this time.\n\nWill delete:\n$detail\n\n${plainRunResultMessage(context, outcome)}\n\nThis removes the matching files locally and remotely and cannot be undone from this screen.',
+      '删除数量超过安全阈值，本次一项都没有删除。\n\n将删除：\n$detail\n\n${plainRunResultMessage(context, outcome)}\n\n$where，无法从这个页面撤销。',
+      'The number of deletions passed the safety threshold, so nothing was deleted this time.\n\nWill delete:\n$detail\n\n${plainRunResultMessage(context, outcome)}\n\n$where. This cannot be undone from this screen.',
     ),
     confirmLabel: syncText(context, '删除这些文件', 'Delete these items'),
     cancelLabel: syncText(context, '先不删除', 'Not now'),
@@ -155,9 +180,11 @@ String plainRunResultMessage(BuildContext context, MirrorRunOutcome outcome) {
         '冲突 ${stats.conflictCount} 个：已按当前冲突设置处理，两端都不会静默丢失。',
         '${stats.conflictCount} conflicts handled by your conflict setting; neither side was silently lost.',
       ),
+    // Held deletions mean the two sides still differ.
     if (stats.changedCount == 0 &&
         stats.conflictCount == 0 &&
-        stats.skippedCount == 0)
+        stats.skippedCount == 0 &&
+        outcome.heldDeletionCount == 0)
       syncText(context, '两边内容已经一致。', 'Both sides already match.'),
     if (stats.skippedCount > 0)
       syncText(

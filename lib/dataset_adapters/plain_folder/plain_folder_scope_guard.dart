@@ -1,4 +1,5 @@
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 import 'package:velock_sync/sync_profiles/model/remote_root_segments.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
@@ -13,7 +14,8 @@ import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dar
 class BackupFolderOverlapException implements Exception {
   const BackupFolderOverlapException(this.backupName);
 
-  /// The backup whose folder would be covered.
+  /// The backup whose folder would be covered; empty for a backup found by
+  /// its content rather than by a profile on this device.
   final String backupName;
 
   @override
@@ -48,6 +50,48 @@ Future<void> assertPlainScopeAvoidsBackups({
     throw BackupFolderOverlapException(
       profile.displayName.isEmpty ? '格间备份' : profile.displayName,
     );
+  }
+}
+
+/// Whether a remote folder looks like a Velock backup made elsewhere.
+///
+/// [assertPlainScopeAvoidsBackups] only knows the backups configured on this
+/// device. A backup written by another device still keeps its encrypted
+/// objects under a `velock-sync` folder, so a folder that is, sits inside, or
+/// directly contains one is refused too. [childFolderNames] are the folders
+/// directly inside the chosen one.
+bool looksLikeVelockBackupFolder(
+  Iterable<String> segments,
+  Iterable<String> childFolderNames,
+) {
+  bool isMarker(String name) =>
+      name.toLowerCase() == VelockExchangeV1Contract.protocolName;
+  return segments.any(isMarker) || childFolderNames.any(isMarker);
+}
+
+/// Refuses a picked folder that belongs to a backup: one configured on this
+/// device ([assertPlainScopeAvoidsBackups]) or one recognised by its content
+/// ([looksLikeVelockBackupFolder]). A folder whose children cannot be read is
+/// not refused here; the writability check reports it afterwards.
+Future<void> assertPlainFolderIsNotBackup({
+  required SyncProfileRepository backups,
+  required String connectionId,
+  required List<String> segments,
+  required Future<Iterable<String>> Function() childFolderNames,
+}) async {
+  await assertPlainScopeAvoidsBackups(
+    backups: backups,
+    connectionId: connectionId,
+    segments: segments,
+  );
+  Iterable<String> children = const [];
+  try {
+    children = await childFolderNames();
+  } on Object {
+    // Unreadable: left to the writability check.
+  }
+  if (looksLikeVelockBackupFolder(segments, children)) {
+    throw const BackupFolderOverlapException('');
   }
 }
 

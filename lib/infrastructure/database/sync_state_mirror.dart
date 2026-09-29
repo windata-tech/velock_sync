@@ -219,6 +219,19 @@ final class MirrorQueries {
     return (rows.single['total'] as int?) ?? 0;
   }
 
+  /// Dismisses the conflict log up to [through]. Only the log is removed; the
+  /// files the conflicts produced stay where they are. A conflict recorded
+  /// after the user looked at the list survives.
+  Future<void> clearMirrorConflicts(
+    String profileId, {
+    required DateTime through,
+  }) async {
+    db.execute(
+      'DELETE FROM mirror_conflicts WHERE profile_id = ? AND detected_at <= ?',
+      [profileId, through.toUtc().millisecondsSinceEpoch],
+    );
+  }
+
   /// Conflicts are informational once resolved; the log is bounded so a
   /// long-lived location cannot grow forever.
   Future<void> trimMirrorConflicts(String profileId, {int keep = 200}) async {

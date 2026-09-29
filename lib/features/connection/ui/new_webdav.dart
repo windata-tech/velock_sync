@@ -226,7 +226,7 @@ class NewWebDav extends HookConsumerWidget {
                           }
                           connectionPersisted = true;
                           if (context.mounted) {
-                            context.go(returnTo ?? AppRoutes.connections.path);
+                            leaveConnectionEditor(context, returnTo);
                           } else {
                             Fluttertoast.showToast(msg: savedMessage);
                           }
@@ -373,8 +373,8 @@ class _WebDavFormFields extends StatelessWidget {
           if (!isUrl(value, protocols: ['http', 'https'])) {
             return syncText(
               context,
-              '请输入有效的服务器地址',
-              'Enter a valid server address',
+              '请输入完整地址，以 http:// 或 https:// 开头，例如 https://nas.example.com',
+              'Enter the full address starting with http:// or https://, e.g. https://nas.example.com',
             );
           }
           final expectedScheme = enableHTTPS ? 'https://' : 'http://';

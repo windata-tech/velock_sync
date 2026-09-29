@@ -335,3 +335,11 @@
 - WebDAV 父目录缓存仅在上传/原子发布成功后填充，限定单client/scope；失败清空，显式删除失效子树。不把MKCOL405/409当存在证明，不用缓存放宽防覆盖或自动重放流。11个同目录对象的父目录MKCOL由44降到4。
 - 新快照保留upload逐对象完整读回hash校验，之后不再重复全量baseline验证，完成页不再追加普通runner；本次成功与目录CAS仍原子记录。准备快照后的新修改下一轮处理，文案必须明确。
 - 独立下一轮同步仍重新完整验远端快照；不得把本次优化扩展成永久可信缓存或关闭历史完整性门禁。165项相关回归通过。见 `docs/verification/2026-09-27-snapshot-transfer-optimization.md`；通俗说明 `docs/guides/velock-sync-explained.md`。
+
+## 2026-09-29 QA 修复（双模拟器 19 条）
+
+- 401 的格间备份主操作是「修改连接」（`BackupAction.fixConnection`→`backup_connection_fix.dart`），保存后必须再确认才重试，保存本身不启动备份；不要再把 401 送进无法改密码的管理页。
+- 连接被拒绝/重置 ≠ 离线：分类为 `network.unreachable`，文案提示检查地址端口与服务器；`network.offline` 仅为旧记录保留。
+- 等待格间应用快照的恢复 profile 提供「检查恢复进度」，回前台自动检查；前台自动同步结束要刷新首页卡片。
+- 文件同步选择远端目录时，按内容拒绝含 `velock-sync` 的格间备份目录（不只查本机 profile）。
+- 格间侧：恢复密钥输入规范化（U+2011 等短横线）、等待恢复横幅由 `waitEnded` 信号刷新、恢复场景批准文案。详见 `docs/verification/2026-09-29-qa-fixes.md`（Sync 1303、格间 1399 项通过；未模拟器复测）。

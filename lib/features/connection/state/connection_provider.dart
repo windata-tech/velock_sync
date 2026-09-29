@@ -6,6 +6,7 @@ import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/protocol_provider.dart';
+import 'package:velock_sync/providers/remote_provider_availability.dart';
 
 part '../../../generated/features/connection/state/connection_provider.g.dart';
 
@@ -278,6 +279,30 @@ ConnectionModel reconfiguredWebDavConnection(
   );
 }
 
+/// The draft title of the new-connection page, in either language. Saved as
+/// is it read like a button in the connection list (QA 2026-09-29).
+bool _isPlaceholderName(String? name) {
+  final trimmed = name?.trim() ?? '';
+  return trimmed.isEmpty || trimmed == '新建连接' || trimmed == 'New Connection';
+}
+
+/// A name the user can recognise the connection by: the server host (with a
+/// non-default port) for WebDAV, the account for a cloud drive.
+String defaultConnectionName(ProtocolModel protocol) => switch (protocol) {
+  WebDavProtocolModel(:final address, :final port) => () {
+    final host = Uri.tryParse(address.trim())?.host ?? '';
+    final label = host.isEmpty ? address.trim() : host;
+    final number = int.tryParse(port.trim());
+    return number == null || number == 80 || number == 443
+        ? label
+        : '$label:$number';
+  }(),
+  OAuthProtocolModel(:final providerType, :final accountLabel) =>
+    accountLabel?.trim().isNotEmpty == true
+        ? accountLabel!.trim()
+        : remoteProviderDisplayName(providerType),
+};
+
 @Riverpod(keepAlive: true)
 class ConnectionCreation extends _$ConnectionCreation {
   @override
@@ -307,6 +332,9 @@ class ConnectionCreation extends _$ConnectionCreation {
           name: '新建连接',
         ).copyWith(source: '格间', target: null);
     final completeConnection = base.copyWith(
+      name: _isPlaceholderName(base.name)
+          ? defaultConnectionName(protocolModel)
+          : base.name,
       target: protocolModel.targetLabel,
       targetDescription: 'runtimeType=${protocolModel.runtimeType}',
       protocol: protocolModel,

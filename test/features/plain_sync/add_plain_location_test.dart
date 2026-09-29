@@ -17,6 +17,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
@@ -24,6 +25,8 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/plain_sync/ui/add_plain_location.dart';
 import 'package:velock_sync/features/plain_sync/ui/plain_sync_home.dart';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
+import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
+import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 import 'package:velock_sync/widgets/common_widgets.dart' show AppBackButton;
 
 import 'plain_sync_test_support.dart';
@@ -404,6 +407,119 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  group('a Velock backup folder is refused as soon as it is picked', () {
+    Future<void> pickAndExpectRefused(
+      WidgetTester tester,
+      PlainSyncWorld world, {
+      required List<String> path,
+      required String message,
+    }) async {
+      await pickLocalAndContinue(tester);
+      await tapVisible(tester, find.byKey(const Key('plain-remote-conn-1')));
+      for (final segment in path) {
+        await tester.tap(find.byKey(ValueKey('backup-folder-$segment')));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byKey(const Key('use-backup-folder')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AddPlainLocation), findsOneWidget);
+      expect(find.byKey(const Key('plain-wizard-error')), findsOneWidget);
+      expect(find.textContaining(message), findsOneWidget);
+      // The folder was not taken: Next stays locked, nothing probed or stored.
+      expect(find.text('选择一个文件夹'), findsOneWidget);
+      expect(
+        tester
+            .widget<BackupActionButton>(
+              find.byKey(const Key('plain-wizard-next-2')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(world.remoteChecks, isEmpty);
+      expect(world.createdFolders, isEmpty);
+      expect(await world.listProfiles(), isEmpty);
+      expect(tester.takeException(), isNull);
+    }
+
+    Future<List<WebDavBackupFolder>> backupTree(List<String> segments) async =>
+        switch (segments) {
+          [] => const [WebDavBackupFolder(name: 'velock-backup')],
+          ['velock-backup'] => const [WebDavBackupFolder(name: 'velock-sync')],
+          _ => const [WebDavBackupFolder(name: 'v1')],
+        };
+
+    testWidgets('the folder of a backup configured on this device', (
+      tester,
+    ) async {
+      final world = await openWizard(
+        tester,
+        connections: [webDavConnection()],
+        platform: TargetPlatform.android,
+        // No marker folder: the refusal comes from the local backup profile.
+        folderListing: (segments) async => segments.isEmpty
+            ? const [WebDavBackupFolder(name: 'velock-backup')]
+            : const [],
+      );
+      await SyncProfileRepository(world.database).save(
+        VelockSyncProfile(
+          profileId: 'backup',
+          datasetId: 'dataset',
+          vaultId: 'vault',
+          deviceId: 'consumer',
+          displayName: '我的格间',
+          connectionId: 'conn-1',
+          remoteRootSegments: const ['velock-backup'],
+          pairedProducerId: 'source',
+          pairedProducerPublicKeyId: 'public-key-ref',
+          exchangeBindingId: 'binding',
+          backgroundPolicy: const SyncProfileBackgroundPolicy(),
+          state: SyncProfileState.active,
+          createdAt: DateTime.utc(2026, 9, 29),
+        ).toEnvelope(),
+      );
+
+      await pickAndExpectRefused(
+        tester,
+        world,
+        path: ['velock-backup'],
+        message: '我的格间',
+      );
+    });
+
+    testWidgets('a folder holding a backup made on another device', (
+      tester,
+    ) async {
+      final world = await openWizard(
+        tester,
+        connections: [webDavConnection()],
+        platform: TargetPlatform.android,
+        folderListing: backupTree,
+      );
+      await pickAndExpectRefused(
+        tester,
+        world,
+        path: ['velock-backup'],
+        message: '这个远端文件夹里有格间的加密备份',
+      );
+    });
+
+    testWidgets('a folder inside a backup', (tester) async {
+      final world = await openWizard(
+        tester,
+        connections: [webDavConnection()],
+        platform: TargetPlatform.android,
+        folderListing: backupTree,
+      );
+      await pickAndExpectRefused(
+        tester,
+        world,
+        path: ['velock-backup', 'velock-sync'],
+        message: '这个远端文件夹里有格间的加密备份',
+      );
+    });
+  });
 
   testWidgets('a remote folder that cannot be written stores nothing', (
     tester,

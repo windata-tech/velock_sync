@@ -13,7 +13,7 @@ import 'package:velock_sync/features/plain_sync/model/plain_location_presentatio
 
 void main() {
   testWidgets('an option row shows its whole explanation', (tester) async {
-    const explanation = '两边改动互相同步；同一条文件两边都改过时按冲突处理方式保留。本机删除会同步删除远端文件。';
+    const explanation = '两边改动互相同步；同一个文件两边都改过时按冲突处理方式保留。本机删除会同步删除远端文件。';
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(

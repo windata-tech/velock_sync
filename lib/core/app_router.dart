@@ -391,10 +391,29 @@ class WDShellPage extends StatelessWidget {
   }
 }
 
+/// `returnTo` value meaning "pop back to whoever pushed the editor, with
+/// `true` once the connection was saved". A backup that failed with 401 opens
+/// the editor this way so it can offer a retry right after the fix.
+const connectionEditorPopBack = 'back';
+
+/// Leaves a connection editor after a successful save.
+void leaveConnectionEditor(BuildContext context, String? returnTo) {
+  if (returnTo == connectionEditorPopBack) {
+    if (context.canPop()) {
+      context.pop(true);
+      return;
+    }
+    context.go(AppRoutes.connections.path);
+    return;
+  }
+  context.go(returnTo ?? AppRoutes.connections.path);
+}
+
 // Return only to known local product flows, never arbitrary routes or URLs.
 String? _setupReturnTo(GoRouterState state) {
   final target = state.uri.queryParameters['returnTo'];
   return {
+        connectionEditorPopBack,
         AppRoutes.velockDatasetWizard.path,
         '${AppRoutes.velockDatasetWizard.path}?intent=restore',
         AppRoutes.selectedFolderProfiles.path,

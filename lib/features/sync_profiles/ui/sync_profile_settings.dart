@@ -614,11 +614,7 @@ String _deletionProtectionStatus(
     );
   }
   if (checkedAt == null) {
-    return syncText(
-      context,
-      '本次安全清理已跳过。',
-      'This safe cleanup was skipped.',
-    );
+    return syncText(context, '本次安全清理已跳过。', 'This safe cleanup was skipped.');
   }
   if (gc.state == 'failed') {
     return syncText(

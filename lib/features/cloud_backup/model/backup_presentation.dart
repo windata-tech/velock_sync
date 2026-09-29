@@ -26,6 +26,11 @@ enum BackupAction {
   resolve,
   reviewHistory,
   checkStorage,
+
+  /// The server rejected the saved login (401). Only the connection's
+  /// username/password or authorization can fix it, so the action opens the
+  /// connection editor rather than a page with nothing to change.
+  fixConnection,
 }
 
 class BackupPresentation {
@@ -99,6 +104,8 @@ class BackupPresentation {
             ? BackupAction.reviewHistory
             : _needsStorageCheck(run?.errorCode)
             ? BackupAction.checkStorage
+            : _needsConnectionFix(run?.errorCode)
+            ? BackupAction.fixConnection
             : BackupAction.manage,
         errorCode: run?.errorCode,
         failedAt: run?.state == 'failed'
@@ -162,6 +169,8 @@ class BackupPresentation {
             ? BackupAction.reviewHistory
             : _needsStorageCheck(code)
             ? BackupAction.checkStorage
+            : _needsConnectionFix(code)
+            ? BackupAction.fixConnection
             : needsStorage
             ? BackupAction.manage
             : BackupAction.transfer,
@@ -205,6 +214,9 @@ class BackupPresentation {
     );
   }
 }
+
+bool _needsConnectionFix(String? code) =>
+    code != null && (code.contains('unauthor') || code.contains('401'));
 
 bool _needsStorageCheck(String? code) =>
     code == 'provider.webdav.atomic_create_unsupported' ||

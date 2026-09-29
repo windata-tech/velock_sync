@@ -685,7 +685,9 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       }
       previous = VelockSyncProfile.fromEnvelope(envelope);
     } on FormatException {
-      throw const VelockProfileFinalizationException('replaced_profile_missing');
+      throw const VelockProfileFinalizationException(
+        'replaced_profile_missing',
+      );
     }
     final connection = connections
         .where((item) => item.id == previous.connectionId)

@@ -172,7 +172,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          velockBackupRebuildServiceProvider.overrideWith((ref) async => throw StateError('No draft in this navigation fixture')),
+          velockBackupRebuildServiceProvider.overrideWith(
+            (ref) async =>
+                throw StateError('No draft in this navigation fixture'),
+          ),
           if (createFolder != null)
             backupFolderCreatorProvider.overrideWithValue(createFolder),
           backupDestinationServiceProvider.overrideWithValue(
@@ -697,7 +700,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          locale == 'zh' ? '原备份丢失后，仍可重新备份' : 'Create a backup when the original is lost',
+          locale == 'zh'
+              ? '原备份丢失后，仍可重新备份'
+              : 'Create a backup when the original is lost',
         ),
         findsOneWidget,
       );

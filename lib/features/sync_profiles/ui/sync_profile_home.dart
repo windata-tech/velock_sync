@@ -14,6 +14,7 @@ import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_connection_fix.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_history_help.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
@@ -70,6 +71,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
     if (state == AppLifecycleState.resumed && mounted) {
       _refresh();
       unawaited(_continueAppliedSnapshots());
+      unawaited(_checkRestoresAfterVelock());
     }
   }
 
@@ -99,27 +101,45 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
         }
         if (!mounted) return;
         if (!ready) continue;
-        setState(() => _running.add(profile.profileId));
-        try {
-          final result = await runSyncWithProgress(
-            context,
-            ref,
-            profile.profileId,
-          );
-          if (mounted) await presentFirstSyncResult(context, result);
-        } on Object catch (error) {
-          if (mounted) {
-            await presentSyncFailureAlert(context: context, error: error);
-          }
-        } finally {
-          if (mounted) {
-            setState(() => _running.remove(profile.profileId));
-            _refresh();
-          }
-        }
+        await _runOnce(profile.profileId);
       }
     } finally {
       _checkingSnapshotContinuation = false;
+    }
+  }
+
+  /// Profiles whose card sent the user to Velock to finish a restore.
+  ///
+  /// A restored profile never runs in the background, and only a run reads
+  /// the receipt Velock writes once it has applied the download. Coming back
+  /// from Velock therefore checks each of these exactly once; nothing else
+  /// is started on resume.
+  final Set<String> _checkAfterVelock = {};
+
+  Future<void> _checkRestoresAfterVelock() async {
+    final ids = _checkAfterVelock.toList();
+    _checkAfterVelock.clear();
+    for (final id in ids) {
+      if (!mounted) return;
+      if (_running.contains(id)) continue;
+      await _runOnce(id);
+    }
+  }
+
+  Future<void> _runOnce(String profileId) async {
+    setState(() => _running.add(profileId));
+    try {
+      final result = await runSyncWithProgress(context, ref, profileId);
+      if (mounted) await presentFirstSyncResult(context, result);
+    } on Object catch (error) {
+      if (mounted) {
+        await presentSyncFailureAlert(context: context, error: error);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _running.remove(profileId));
+        _refresh();
+      }
     }
   }
 
@@ -244,6 +264,9 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
     if (_running.contains(profile.profileId)) return;
     switch (state.action) {
       case BackupAction.openVelock:
+        if (state.stage == BackupStage.waitingForRestore) {
+          _checkAfterVelock.add(profile.profileId);
+        }
         await openVelockForBackup(context, ref, profileId: profile.profileId);
         return;
       case BackupAction.checkStorage:
@@ -265,6 +288,16 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
       case BackupAction.manage:
       case BackupAction.resolve:
         await _open('/sync-profiles/${profile.profileId}');
+        return;
+      case BackupAction.fixConnection:
+        final retry = await editBackupConnection(
+          context,
+          ref,
+          profile.connectionId,
+        );
+        if (!mounted) return;
+        _refresh();
+        if (retry) await _action(profile, _retryPresentation);
         return;
       case BackupAction.resume:
         setState(() => _running.add(profile.profileId));
@@ -565,6 +598,12 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
             data.velockStatus?.needsVelock == true,
       );
 }
+
+/// A user-confirmed retry after fixing a failed backup's connection.
+const _retryPresentation = BackupPresentation(
+  BackupStage.needsAttention,
+  BackupAction.transfer,
+);
 
 class _HomeData {
   const _HomeData(

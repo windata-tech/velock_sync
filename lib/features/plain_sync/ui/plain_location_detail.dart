@@ -2,6 +2,7 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/background/background_sync.dart';
 import 'package:velock_sync/core/logger.dart';
@@ -318,7 +319,8 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
         MaterialPageRoute(
           builder: (_) => BackupFolderPicker(
             connectionName: connection.name,
-            basePath: protocol.address,
+            basePath: RemoteObjectStoreFactory.webDavDisplayAddress(protocol),
+            forSync: true,
             initialSegments: view.profile.remoteRootSegments,
             loadFolders: (relative) =>
                 loader(protocol: protocol, relativeSegments: relative),
@@ -345,10 +347,17 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
       // encrypted objects as ordinary files, and two locations over the same
       // tree would overwrite each other.
       try {
-        await assertPlainScopeAvoidsBackups(
+        await assertPlainFolderIsNotBackup(
           backups: ref.read(syncProfileRepositoryProvider),
           connectionId: view.profile.connectionId,
           segments: picked,
+          childFolderNames: () async => [
+            for (final folder in await loader(
+              protocol: protocol,
+              relativeSegments: picked,
+            ))
+              folder.name,
+          ],
         );
         await assertPlainScopeAvoidsOtherLocations(
           profiles: ref.read(plainFolderProfilesProvider),
@@ -361,11 +370,17 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
         if (!mounted) return;
         showPlatformMessage(
           context,
-          syncText(
-            context,
-            '这个文件夹属于格间备份（${failure.backupName}），明文同步不能用它。',
-            'That folder belongs to the backup “${failure.backupName}”. Plain sync cannot use it.',
-          ),
+          failure.backupName.isEmpty
+              ? syncText(
+                  context,
+                  '这个文件夹里有格间的加密备份，明文同步不能用它。',
+                  'That folder holds a Velock encrypted backup. Plain sync cannot use it.',
+                )
+              : syncText(
+                  context,
+                  '这个文件夹属于格间备份（${failure.backupName}），明文同步不能用它。',
+                  'That folder belongs to the backup “${failure.backupName}”. Plain sync cannot use it.',
+                ),
         );
         return;
       } on PlainLocationOverlapException catch (failure) {
@@ -613,7 +628,7 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
             footer: Text(
               syncText(
                 context,
-                '两边同时改过同一条文件时按这里的设置处理；默认保留两份，不会静默覆盖。',
+                '两边同时改过同一个文件时按这里的设置处理；默认保留两份，不会静默覆盖。',
                 'When the same file changed on both sides, this setting decides. Keeping both is the default and never silently overwrites.',
               ),
             ),
@@ -758,19 +773,39 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
         .read(syncStateDatabaseProvider)
         .readMirrorConflicts(widget.profileId, limit: 50);
     if (!mounted) return;
-    await showAdaptiveNotice(
-      context: context,
-      title: syncText(context, '冲突记录', 'Conflict history'),
-      message: conflicts.isEmpty
-          ? syncText(context, '没有冲突记录。', 'No conflicts recorded.')
-          : conflicts
-                .map(
-                  (conflict) =>
-                      '${AppFormat.stamp(conflict.detectedAt)}  ${conflict.relativePath}',
-                )
-                .join('\n'),
-      confirmLabel: syncText(context, '知道了', 'OK'),
+    final title = syncText(context, '冲突记录', 'Conflict history');
+    if (conflicts.isEmpty) {
+      await showAdaptiveNotice(
+        context: context,
+        title: title,
+        message: syncText(context, '没有冲突记录。', 'No conflicts recorded.'),
+        confirmLabel: syncText(context, '知道了', 'OK'),
+      );
+      return;
+    }
+    final list = conflicts
+        .map(
+          (conflict) =>
+              '${AppFormat.stamp(conflict.detectedAt)}  ${conflict.relativePath}',
+        )
+        .join('\n');
+    final clear = await showAdaptiveConfirmation(
+      context,
+      title: title,
+      message:
+          '$list\n\n${syncText(context, '清除只移除这些记录，不会改动或删除任何文件。', 'Clearing removes only these records. No file is changed or deleted.')}',
+      confirmLabel: syncText(context, '清除记录', 'Clear records'),
+      cancelLabel: syncText(context, '关闭', 'Close'),
+      confirmKey: const Key('plain-conflicts-clear'),
     );
+    if (!clear || !mounted) return;
+    await ref
+        .read(syncStateDatabaseProvider)
+        .clearMirrorConflicts(
+          widget.profileId,
+          through: conflicts.first.detectedAt,
+        );
+    await _refresh();
   }
 }
 

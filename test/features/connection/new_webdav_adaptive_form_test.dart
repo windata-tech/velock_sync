@@ -127,7 +127,12 @@ void main() {
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Enter a valid server address'), findsOneWidget);
+      expect(
+        find.text(
+          'Enter the full address starting with http:// or https://, e.g. https://nas.example.com',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Enter a port'), findsNothing);
       // Validation failed, so nothing was submitted to a repository or a probe.
       expect(find.text('Enter a server address'), findsNothing);

@@ -191,7 +191,10 @@ void main() {
       await unchanged();
       expect(remote.puts, isEmpty);
       expect(await jobs.read('p'), isNull);
-      expect(Directory('${exchange.path}/Control/SnapshotRequests').existsSync(), isFalse);
+      expect(
+        Directory('${exchange.path}/Control/SnapshotRequests').existsSync(),
+        isFalse,
+      );
     },
   );
   test(

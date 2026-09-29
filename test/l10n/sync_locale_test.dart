@@ -277,7 +277,7 @@ void main() {
       );
       expect(
         AppFormat.errorSummary('provider.http.401', context: context),
-        'Remote access was denied. Authorize access again and retry.',
+        'The server did not accept the saved sign-in. Edit the connection to check the username and password (or authorize the cloud drive again), then retry.',
       );
     },
   );

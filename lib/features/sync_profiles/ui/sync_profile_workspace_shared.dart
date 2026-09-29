@@ -435,7 +435,8 @@ Future<void> presentSyncFailureAlert({
     context: context,
     title: failure.errorCode == 'local.velock_snapshot_application_required'
         ? _optionalSyncText(context, '请到格间完成恢复', 'Finish restoring in Velock')
-        : _optionalSyncText(context, '同步失败', "Sync failed"),
+        // Every caller is the Velock domain, whose task is a backup.
+        : _optionalSyncText(context, '备份失败', 'Backup failed'),
     message: _syncFailureAlertMessage(failure, context: context),
     barrierDismissible: false,
     actions: [
@@ -1754,8 +1755,9 @@ String velockReadinessTitle(
     'Velock 版本不受支持',
     "Unsupported Velock version",
   ),
-  VelockWizardAvailability.velockUpdateRequired =>
-    velockUpdateRequiredTitle(context),
+  VelockWizardAvailability.velockUpdateRequired => velockUpdateRequiredTitle(
+    context,
+  ),
   VelockWizardAvailability.signatureMismatch => _optionalSyncText(
     context,
     'Velock 身份验证失败',
@@ -1804,8 +1806,9 @@ String velockReadinessMessage(
     '当前的格间版本太旧，无法连接。请更新格间后再试。',
     'This Velock version is too old to connect. Update Velock and try again.',
   ),
-  VelockWizardAvailability.velockUpdateRequired =>
-    velockUpdateRequiredMessage(context),
+  VelockWizardAvailability.velockUpdateRequired => velockUpdateRequiredMessage(
+    context,
+  ),
   VelockWizardAvailability.signatureMismatch => _optionalSyncText(
     context,
     '无法确认这是正版格间，为保护你的数据，已停止连接。请从官方渠道安装格间。',

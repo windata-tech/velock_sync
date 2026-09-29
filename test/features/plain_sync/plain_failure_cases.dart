@@ -11,8 +11,9 @@
 /// * `provider.oauth.*` — `lib/providers/oauth/*`
 /// * `sync.run_busy`, `sync.unexpected` — the upload engine and the classifier
 /// * `sync.interrupted` — runs the system killed before they could finish
-/// * `network.offline`, `network.timeout` — transport failures the classifier
-///   names instead of collapsing them into `sync.unexpected`
+/// * `network.unreachable`, `network.timeout` — transport failures the
+///   classifier names instead of collapsing them into `sync.unexpected`
+///   (`network.offline` only survives in runs recorded by earlier builds)
 library;
 
 import 'package:material_ui/material_ui.dart';
@@ -285,8 +286,8 @@ const plainFailureCases = <FailureCopy>[
   ),
   FailureCopy(
     'network.unreachable',
-    zh: '这次同步没能连上远端，没有完成。请检查网络和远端服务后重试。',
-    en: 'The sync could not reach the remote and did not finish. Check the network and the remote service, then try again.',
+    zh: '连不上远端服务器，本次同步没有完成。请检查网络、服务器地址和端口，并确认服务器正在运行。',
+    en: 'Could not reach the remote server, so the sync did not finish. Check the network, the server address and port, and that the server is running.',
   ),
 ];
 
