@@ -131,7 +131,7 @@ void main() {
       );
       final m = r.toJson();
       for (final change in [
-        <String, Object>{'unexpected': 'value'},
+        <String, Object>{'unexpected': true},
         {'operation': 'reset'},
         {'snapshotId': '../escape'},
         {'expiresAt': now.add(const Duration(hours: 1)).toIso8601String()},
@@ -148,6 +148,58 @@ void main() {
       }
     },
   );
+  test('extensions are kept in the digest and the signed receipt', () async {
+    final key = await Ed25519().newKeyPair();
+    final r = request();
+    final m = {...r.toJson(), 'laterField': 'value'};
+    final keys = m.keys.toList()..sort();
+    final bytes = utf8.encode(jsonEncode({for (final k in keys) k: m[k]}));
+    final parsed = SnapshotControlRequest.parse(bytes);
+    expect(parsed.encode(), bytes);
+    expect(parsed.digest, isNot(r.digest));
+
+    final receipt = await SnapshotControlReceipt.sign(
+      request: parsed,
+      manifestHash: 'b' * 64,
+      approvedAt: now,
+      completedAt: now,
+      signingKey: key,
+    );
+    final body = {
+      ...(jsonDecode(utf8.decode(receipt.encode())) as Map<String, dynamic>),
+    };
+    body.remove('signature');
+    body['laterReceiptField'] = 7;
+    final bodyKeys = body.keys.toList()..sort();
+    final canonical = jsonEncode({for (final k in bodyKeys) k: body[k]});
+    final signature = await Ed25519().sign([
+      ...utf8.encode('VelockSnapshotControlReceipt/2\n'),
+      ...utf8.encode(canonical),
+    ], keyPair: key);
+    final signed = {...body, 'signature': base64UrlEncode(signature.bytes)};
+    final signedKeys = signed.keys.toList()..sort();
+    final encoded = utf8.encode(
+      jsonEncode({for (final k in signedKeys) k: signed[k]}),
+    );
+    final verified = await SnapshotControlReceipt.verify(
+      bytes: encoded,
+      request: parsed,
+      trustedActorKey: await key.extractPublicKey(),
+    );
+    expect(verified.encode(), encoded);
+    await expectLater(
+      SnapshotControlReceipt.verify(
+        bytes: utf8.encode(
+          utf8
+              .decode(encoded)
+              .replaceFirst('"laterReceiptField":7', '"laterReceiptField":8'),
+        ),
+        request: parsed,
+        trustedActorKey: await key.extractPublicKey(),
+      ),
+      throwsFormatException,
+    );
+  });
   late Directory root;
   late SnapshotControlFiles files;
   setUp(() async {

@@ -328,8 +328,7 @@ void main() {
             keyId: 'key-1',
             trustedSigningKey: inventoryKey!,
             skipObjectCheck: (inventory) => record.isFresh(scope, inventory),
-            onObjectsVerified: (inventory) =>
-                record.remember(scope, inventory),
+            onObjectsVerified: (inventory) => record.remember(scope, inventory),
           );
       final prefix = 'vaults/vault-1/current-snapshots/snapshot-1/';
 
@@ -394,7 +393,6 @@ void main() {
     'duplicate',
     'records',
     'head',
-    'unknown',
     'timestamp',
   ]) {
     test('rejects signed invalid inventory: $mutation', () async {
@@ -411,8 +409,6 @@ void main() {
           payload['recordCount'] = 3;
         case 'head':
           payload['heads']['producer-1']['sequence'] = 0;
-        case 'unknown':
-          payload['acceptAnyway'] = true;
         case 'timestamp':
           payload['createdAt'] = 'yesterday';
       }
@@ -420,6 +416,19 @@ void main() {
       await expectLater(verify(), throwsFormatException);
     });
   }
+  test('extension fields are accepted but signed', () async {
+    final payload = jsonDecode(utf8.decode(manifest)) as Map<String, dynamic>;
+    payload.remove('signature');
+    payload['laterField'] = {'b': 1, 'a': 2};
+    (payload['blobs'][0] as Map<String, dynamic>)['laterBlobField'] = 'x';
+    await sign(payload);
+    expect((await verify()).snapshotId, isNotEmpty);
+
+    final signed = jsonDecode(utf8.decode(manifest)) as Map<String, dynamic>;
+    signed['laterField'] = {'a': 3, 'b': 1};
+    manifest = snapshotJson(signed);
+    await expectLater(verify(), throwsFormatException);
+  });
   test('ambiguous noncanonical JSON rejected', () async {
     manifest = Uint8List.fromList([...manifest, 32]);
     await expectLater(verify(), throwsFormatException);

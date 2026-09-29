@@ -7,6 +7,10 @@ import 'package:cryptography/cryptography.dart';
 /// Public, content-free cross-app intent. A request grants no authority: the
 /// unlocked owner validates local pairing and obtains explicit user consent.
 /// This file is kept byte-identical in Sync and Velock.
+///
+/// Keys a later version adds are extensions: kept, sorted and hashed or signed
+/// with the rest, their meaning ignored (see `velock_exchange_extensions.dart`).
+/// Every value, extensions included, must be a String or int.
 class SnapshotControlRequest {
   SnapshotControlRequest({
     required this.requestId,
@@ -23,6 +27,7 @@ class SnapshotControlRequest {
     required this.destinationHash,
     required this.createdAt,
     required this.expiresAt,
+    this.extensions = const {},
   }) {
     for (final id in [
       requestId,
@@ -54,6 +59,26 @@ class SnapshotControlRequest {
   final String actorDeviceId, actorPublicKeyId, exchangeBindingId;
   final String syncAppInstanceId, destinationLabel, destinationHash;
   final DateTime createdAt, expiresAt;
+  final Map<String, Object> extensions;
+
+  static const _fields = {
+    'kind',
+    'version',
+    'requestId',
+    'challenge',
+    'operation',
+    'snapshotId',
+    'vaultId',
+    'producerId',
+    'actorDeviceId',
+    'actorPublicKeyId',
+    'exchangeBindingId',
+    'syncAppInstanceId',
+    'destinationLabel',
+    'destinationHash',
+    'createdAt',
+    'expiresAt',
+  };
 
   void assertFresh(DateTime now) {
     if (now.isBefore(createdAt) || !now.isBefore(expiresAt)) {
@@ -78,30 +103,14 @@ class SnapshotControlRequest {
     'destinationHash': destinationHash,
     'createdAt': createdAt.toIso8601String(),
     'expiresAt': expiresAt.toIso8601String(),
+    ..._extensions(extensions, _fields),
   };
   Uint8List encode() => _encode(toJson());
   String get digest => sha256.convert(encode()).toString();
 
   static SnapshotControlRequest parse(List<int> bytes) {
     final m = _decode(bytes);
-    _keys(m, {
-      'kind',
-      'version',
-      'requestId',
-      'challenge',
-      'operation',
-      'snapshotId',
-      'vaultId',
-      'producerId',
-      'actorDeviceId',
-      'actorPublicKeyId',
-      'exchangeBindingId',
-      'syncAppInstanceId',
-      'destinationLabel',
-      'destinationHash',
-      'createdAt',
-      'expiresAt',
-    });
+    _keys(m, _fields);
     if (m['kind'] != 'velock-snapshot-request' || m['version'] != 2) {
       throw const FormatException('Unsupported snapshot request.');
     }
@@ -120,6 +129,7 @@ class SnapshotControlRequest {
       destinationHash: _string(m, 'destinationHash'),
       createdAt: _date(m, 'createdAt'),
       expiresAt: _date(m, 'expiresAt'),
+      extensions: _unknown(m, _fields),
     );
   }
 }
@@ -134,11 +144,24 @@ class SnapshotControlReceipt {
     this.manifestHash,
     this.approvedAt,
     this.completedAt,
-    this.signature,
-  );
+    this.signature, [
+    this.extensions = const {},
+  ]);
   final String requestDigest, manifestHash;
   final DateTime approvedAt, completedAt;
   final Uint8List signature;
+  final Map<String, Object> extensions;
+
+  static const _fields = {
+    'kind',
+    'version',
+    'requestSha256',
+    'manifestSha256',
+    'approvedAt',
+    'completedAt',
+    'signature',
+  };
+
   Map<String, Object> _body() => {
     'kind': 'velock-snapshot-receipt',
     'version': 2,
@@ -146,6 +169,7 @@ class SnapshotControlReceipt {
     'manifestSha256': manifestHash,
     'approvedAt': approvedAt.toIso8601String(),
     'completedAt': completedAt.toIso8601String(),
+    ..._extensions(extensions, _fields),
   };
   Uint8List encode() =>
       _encode({..._body(), 'signature': base64UrlEncode(signature)});
@@ -193,15 +217,7 @@ class SnapshotControlReceipt {
     required PublicKey trustedActorKey,
   }) async {
     final m = _decode(bytes);
-    _keys(m, {
-      'kind',
-      'version',
-      'requestSha256',
-      'manifestSha256',
-      'approvedAt',
-      'completedAt',
-      'signature',
-    });
+    _keys(m, _fields);
     final approved = _date(m, 'approvedAt');
     final completed = _date(m, 'completedAt');
     request.assertFresh(approved);
@@ -220,6 +236,7 @@ class SnapshotControlReceipt {
       approved,
       completed,
       Uint8List.fromList(signature).asUnmodifiableView(),
+      _unknown(m, _fields),
     );
     if (signature.length != 64 ||
         !await Ed25519().verify(
@@ -264,9 +281,24 @@ Map<String, dynamic> _decode(List<int> input) {
 }
 
 void _keys(Map<String, dynamic> m, Set<String> expected) {
-  if (m.length != expected.length || !m.keys.toSet().containsAll(expected)) {
-    throw const FormatException('Unexpected control fields.');
+  if (!m.keys.toSet().containsAll(expected)) {
+    throw const FormatException('Missing control fields.');
   }
+}
+
+Map<String, Object> _unknown(Map<String, dynamic> m, Set<String> known) =>
+    Map.unmodifiable({
+      for (final e in m.entries)
+        if (!known.contains(e.key)) e.key: e.value as Object,
+    });
+
+Map<String, Object> _extensions(Map<String, Object> ext, Set<String> known) {
+  for (final e in ext.entries) {
+    if (known.contains(e.key) || (e.value is! String && e.value is! int)) {
+      throw const FormatException('Invalid control extension.');
+    }
+  }
+  return ext;
 }
 
 String _string(Map<String, dynamic> m, String key) {

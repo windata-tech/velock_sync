@@ -1,12 +1,15 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_extensions.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 
 /// Frozen outer contract shared with the trusted Velock companion.
 ///
 /// Sync may inspect this metadata for routing, limits, and integrity, but it
 /// never receives the business decryption key and never opens operations.
+/// Fields a later version adds are accepted and ignored; see
+/// `velock_exchange_extensions.dart` for the frozen rule.
 abstract final class VelockExchangeV1Contract {
   static const exchangeVersion = 1;
   static const protocolName = 'velock-sync';
@@ -55,7 +58,7 @@ abstract final class VelockExchangeV1Contract {
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('Velock Exchange envelope is invalid.');
     }
-    _exactKeys(decoded, const {
+    requireExchangeKeys(decoded, const {
       'batchId',
       'batchKind',
       'blobs',
@@ -104,27 +107,13 @@ abstract final class VelockExchangeV1Contract {
     }
 
     final operations = _object(decoded, 'operations');
-    final operationKeys = operations.keys.toSet();
-    if (operationKeys.difference(const {
-          'cipherSha256',
-          'cipherSize',
-          'compression',
-          'deleteCount',
-          'logicalName',
-          'operationCount',
-          'upsertCount',
-        }).isNotEmpty ||
-        !operationKeys.containsAll(const {
-          'cipherSha256',
-          'cipherSize',
-          'compression',
-          'logicalName',
-          'operationCount',
-        })) {
-      throw const FormatException(
-        'Velock Exchange operations schema is invalid.',
-      );
-    }
+    requireExchangeKeys(operations, const {
+      'cipherSha256',
+      'cipherSize',
+      'compression',
+      'logicalName',
+      'operationCount',
+    }, 'operations');
     final operationsCipherSize = _nonNegative(operations, 'cipherSize');
     final operationCount = _nonNegative(operations, 'operationCount');
     final deleteCount = operations.containsKey('deleteCount')
@@ -162,7 +151,7 @@ abstract final class VelockExchangeV1Contract {
               'Velock Exchange blob descriptor is invalid.',
             );
           }
-          _exactKeys(item, const {
+          requireExchangeKeys(item, const {
             'blobId',
             'chunkSize',
             'cipherSha256',
@@ -203,17 +192,6 @@ abstract final class VelockExchangeV1Contract {
       upsertCount: upsertCount,
       blobs: List.unmodifiable(blobs),
     );
-  }
-
-  static void _exactKeys(
-    Map<String, dynamic> value,
-    Set<String> expected,
-    String name,
-  ) {
-    if (value.keys.toSet().difference(expected).isNotEmpty ||
-        expected.difference(value.keys.toSet()).isNotEmpty) {
-      throw FormatException('Velock Exchange $name schema is invalid.');
-    }
   }
 
   static String _string(Map<String, dynamic> value, String key) {

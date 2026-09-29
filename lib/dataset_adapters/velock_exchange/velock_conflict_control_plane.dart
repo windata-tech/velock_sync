@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_extensions.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 
 final RegExp _opaqueId = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$');
@@ -111,6 +112,7 @@ class VelockConflictControlReceipt {
     required this.resolvedAt,
     required this.expiresAt,
     required this.signature,
+    this.extensions = const {},
   });
 
   final String requestId;
@@ -126,7 +128,29 @@ class VelockConflictControlReceipt {
   final DateTime expiresAt;
   final Uint8List signature;
 
-  Map<String, Object> unsignedJson() => {
+  /// Fields a later Velock added; signed after the v1 fields and kept when the
+  /// receipt is re-encoded into [artifact].
+  final Map<String, Object?> extensions;
+
+  static const _fields = {
+    'challenge',
+    'conflictId',
+    'controlVersion',
+    'exchangeBindingId',
+    'expiresAt',
+    'producerId',
+    'producerPublicKeyId',
+    'requestId',
+    'resolutionArtifactId',
+    'resolvedAt',
+    'signature',
+    'signatureAlgorithm',
+    'status',
+    'syncAppInstanceId',
+    'vaultId',
+  };
+
+  Map<String, Object?> unsignedJson() => withExchangeExtensions({
     'challenge': challenge,
     'conflictId': conflictId,
     'controlVersion': VelockExchangeV1Contract.conflictControlVersion,
@@ -141,7 +165,7 @@ class VelockConflictControlReceipt {
     'status': 'resolved',
     'syncAppInstanceId': syncAppInstanceId,
     'vaultId': vaultId,
-  };
+  }, extensions);
 
   Uint8List signaturePayload() =>
       Uint8List.fromList(utf8.encode(jsonEncode(unsignedJson())));
@@ -159,23 +183,7 @@ class VelockConflictControlReceipt {
       'velock-conflict-v1:${base64UrlEncode(encode()).replaceAll('=', '')}';
 
   static VelockConflictControlReceipt parse(Uint8List bytes) {
-    final json = _object(bytes, const {
-      'challenge',
-      'conflictId',
-      'controlVersion',
-      'exchangeBindingId',
-      'expiresAt',
-      'producerId',
-      'producerPublicKeyId',
-      'requestId',
-      'resolutionArtifactId',
-      'resolvedAt',
-      'signature',
-      'signatureAlgorithm',
-      'status',
-      'syncAppInstanceId',
-      'vaultId',
-    });
+    final json = _object(bytes, _fields);
     if (json['controlVersion'] !=
             VelockExchangeV1Contract.conflictControlVersion ||
         json['signatureAlgorithm'] !=
@@ -200,6 +208,7 @@ class VelockConflictControlReceipt {
       resolvedAt: _utc(json, 'resolvedAt'),
       expiresAt: _utc(json, 'expiresAt'),
       signature: signature,
+      extensions: exchangeExtensions(json, _fields),
     );
     if (receipt.resolvedAt.isAfter(receipt.expiresAt)) {
       throw const FormatException('Invalid Velock conflict receipt lifetime.');
@@ -216,14 +225,15 @@ class VelockConflictControlReceipt {
   }
 }
 
+/// Requires [fields]; other keys are extensions (see
+/// `velock_exchange_extensions.dart`).
 Map<String, dynamic> _object(Uint8List bytes, Set<String> fields) {
   if (bytes.isEmpty || bytes.length > 16 * 1024) {
     throw const FormatException('Invalid Velock conflict object size.');
   }
   final value = jsonDecode(utf8.decode(bytes, allowMalformed: false));
   if (value is! Map<String, dynamic> ||
-      value.keys.toSet().difference(fields).isNotEmpty ||
-      fields.difference(value.keys.toSet()).isNotEmpty) {
+      !value.keys.toSet().containsAll(fields)) {
     throw const FormatException('Invalid Velock conflict object.');
   }
   return value;

@@ -57,8 +57,8 @@ class VelockSnapshotTrust {
       'members',
       'signature',
     };
+    // Other keys are extensions: signed and canonical like the rest.
     if (m is! Map<String, dynamic> ||
-        m.length != keys.length ||
         !m.keys.toSet().containsAll(keys) ||
         m['kind'] != 'velock-snapshot-trust' ||
         m['version'] != 2 ||
@@ -72,7 +72,7 @@ class VelockSnapshotTrust {
       throw const FormatException('Snapshot trust binding mismatch.');
     }
     final members = _members(m['members']);
-    final canonical = _encode(m.cast<String, Object>());
+    final canonical = _encode(m);
     if (canonical.length != bytes.length) {
       throw const FormatException('Noncanonical snapshot trust.');
     }
@@ -81,7 +81,7 @@ class VelockSnapshotTrust {
         throw const FormatException('Noncanonical snapshot trust.');
       }
     }
-    final body = Map<String, Object>.from(m)..remove('signature');
+    final body = Map<String, Object?>.from(m)..remove('signature');
     final signature = base64Url.decode(m['signature'] as String);
     if (signature.length != 64 ||
         !await Ed25519().verify(
@@ -116,11 +116,11 @@ class VelockSnapshotTrust {
     return result;
   }
 
-  static List<int> _payload(Map<String, Object> body) => [
+  static List<int> _payload(Map<String, Object?> body) => [
     ...utf8.encode('VelockSnapshotTrust/2\n'),
     ..._encode(body),
   ];
-  static Uint8List _encode(Map<String, Object> body) {
+  static Uint8List _encode(Map<String, Object?> body) {
     final keys = body.keys.toList()..sort();
     final members = body['members'] as Map;
     final ids = members.keys.cast<String>().toList()..sort();

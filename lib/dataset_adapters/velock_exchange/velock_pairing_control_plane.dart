@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_extensions.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_v1_contract.dart';
 
 final RegExp _opaqueId = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$');
@@ -132,6 +133,7 @@ class VelockPairingControlResponse {
     required this.expiresAt,
     required this.signature,
     this.trustedProducerIds,
+    this.extensions = const {},
   });
 
   final String requestId;
@@ -150,25 +152,40 @@ class VelockPairingControlResponse {
   /// Optional in older response artifacts. New responses sign this allow-list.
   final List<String>? trustedProducerIds;
 
+  /// Fields a later Velock added; signed after the v1 fields.
+  final Map<String, Object?> extensions;
+
+  static const _fields = {
+    'approvedAt',
+    'challenge',
+    'deviceDisplayName',
+    'exchangeBindingId',
+    'expiresAt',
+    'producerId',
+    'producerPublicKeyId',
+    'producerSigningPublicKey',
+    'requestId',
+    'signature',
+    'trustedProducerIds',
+    'vaultDisplayName',
+    'vaultId',
+  };
+
   static VelockPairingControlResponse parse(Uint8List bytes) {
-    final json = _objectAllowingOptional(
-      bytes,
-      required: const {
-        'approvedAt',
-        'challenge',
-        'deviceDisplayName',
-        'exchangeBindingId',
-        'expiresAt',
-        'producerId',
-        'producerPublicKeyId',
-        'producerSigningPublicKey',
-        'requestId',
-        'signature',
-        'vaultDisplayName',
-        'vaultId',
-      },
-      optional: const {'trustedProducerIds'},
-    );
+    final json = _object(bytes, const {
+      'approvedAt',
+      'challenge',
+      'deviceDisplayName',
+      'exchangeBindingId',
+      'expiresAt',
+      'producerId',
+      'producerPublicKeyId',
+      'producerSigningPublicKey',
+      'requestId',
+      'signature',
+      'vaultDisplayName',
+      'vaultId',
+    });
     final signatureText = json['signature'];
     if (signatureText is! String) {
       throw const FormatException('Invalid Velock pairing signature.');
@@ -193,6 +210,7 @@ class VelockPairingControlResponse {
       expiresAt: _utc(json, 'expiresAt'),
       signature: signature,
       trustedProducerIds: _trustedProducerIds(json['trustedProducerIds']),
+      extensions: exchangeExtensions(json, _fields),
     );
     if (!response.expiresAt.isAfter(response.approvedAt)) {
       throw const FormatException('Invalid Velock pairing response lifetime.');
@@ -200,7 +218,7 @@ class VelockPairingControlResponse {
     return response;
   }
 
-  Map<String, Object> unsignedJson() => {
+  Map<String, Object?> unsignedJson() => withExchangeExtensions({
     'approvedAt': approvedAt.toIso8601String(),
     'challenge': challenge,
     'deviceDisplayName': deviceDisplayName,
@@ -214,7 +232,7 @@ class VelockPairingControlResponse {
     'vaultId': vaultId,
     if (trustedProducerIds != null)
       'trustedProducerIds': List<String>.from(trustedProducerIds!),
-  };
+  }, extensions);
 
   Uint8List signaturePayload() =>
       Uint8List.fromList(utf8.encode(jsonEncode(unsignedJson())));
@@ -257,11 +275,15 @@ class VelockPairingRevocation {
     required this.deviceId,
     required this.revokedAt,
     required this.signature,
+    this.extensions = const {},
   });
 
   final String deviceId;
   final DateTime revokedAt;
   final Uint8List signature;
+
+  /// Fields a later Velock added; signed after `deviceId` and `revokedAt`.
+  final Map<String, Object?> extensions;
 
   static VelockPairingRevocation parse(Uint8List bytes) {
     final json = _object(bytes, const {
@@ -286,15 +308,23 @@ class VelockPairingRevocation {
       deviceId: _id(json, 'deviceId'),
       revokedAt: _utc(json, 'revokedAt'),
       signature: signature,
+      extensions: exchangeExtensions(json, const {
+        'deviceId',
+        'revokedAt',
+        'signatureAlgorithm',
+        'signature',
+      }),
     );
   }
 
   Future<bool> verify({required VelockPairingDescriptor descriptor}) async {
     final payload = utf8.encode(
-      jsonEncode({
-        'deviceId': deviceId,
-        'revokedAt': revokedAt.toIso8601String(),
-      }),
+      jsonEncode(
+        withExchangeExtensions({
+          'deviceId': deviceId,
+          'revokedAt': revokedAt.toIso8601String(),
+        }, extensions),
+      ),
     );
     return Ed25519().verify(
       payload,
@@ -376,32 +406,15 @@ List<String>? _trustedProducerIds(Object? value) {
   return (ids.toList()..sort());
 }
 
-Map<String, dynamic> _objectAllowingOptional(
-  Uint8List bytes, {
-  required Set<String> required,
-  required Set<String> optional,
-}) {
-  if (bytes.length > 16 * 1024) {
-    throw const FormatException('Velock pairing object is too large.');
-  }
-  final value = jsonDecode(utf8.decode(bytes, allowMalformed: false));
-  final allowed = {...required, ...optional};
-  if (value is! Map<String, dynamic> ||
-      !value.keys.toSet().containsAll(required) ||
-      value.keys.any((key) => !allowed.contains(key))) {
-    throw const FormatException('Invalid Velock pairing object.');
-  }
-  return value;
-}
-
-Map<String, dynamic> _object(Uint8List bytes, Set<String> expected) {
+/// Requires [required]; other keys are extensions (see
+/// `velock_exchange_extensions.dart`).
+Map<String, dynamic> _object(Uint8List bytes, Set<String> required) {
   if (bytes.length > 16 * 1024) {
     throw const FormatException('Velock pairing object is too large.');
   }
   final value = jsonDecode(utf8.decode(bytes, allowMalformed: false));
   if (value is! Map<String, dynamic> ||
-      value.keys.toSet().difference(expected).isNotEmpty ||
-      expected.difference(value.keys.toSet()).isNotEmpty) {
+      !value.keys.toSet().containsAll(required)) {
     throw const FormatException('Invalid Velock pairing object.');
   }
   return value;

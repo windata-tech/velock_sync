@@ -36,8 +36,8 @@ class AppliedVelockSnapshot {
       'completedAt',
       'signature',
     };
+    // Other keys are extensions: signed and canonical like the rest.
     if (m is! Map<String, dynamic> ||
-        m.length != fields.length ||
         !m.keys.toSet().containsAll(fields) ||
         m['kind'] != 'velock-current-state-snapshot-applied' ||
         m['version'] != 2 ||

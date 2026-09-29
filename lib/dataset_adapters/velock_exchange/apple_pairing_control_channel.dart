@@ -189,11 +189,6 @@ String _opaque(String value) {
 VelockPairingControlStatus _decisionStatus(Uint8List bytes, String requestId) {
   final value = jsonDecode(utf8.decode(bytes, allowMalformed: false));
   if (value is! Map<String, dynamic> ||
-      value.keys.toSet().difference({
-        'decidedAt',
-        'requestId',
-        'status',
-      }).isNotEmpty ||
       value['requestId'] != requestId ||
       value['decidedAt'] is! String) {
     throw const FormatException('Pairing decision is invalid.');

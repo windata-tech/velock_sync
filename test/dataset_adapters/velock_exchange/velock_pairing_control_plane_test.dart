@@ -121,15 +121,63 @@ void main() {
       );
     });
 
-    test('strictly parses descriptor and rejects schema extension', () {
+    test('descriptor ignores extensions but requires every v1 field', () {
       expect(descriptor.producerId, 'producer-1');
       final json =
           jsonDecode(utf8.decode(_descriptorBytes(publicKey, now)))
               as Map<String, dynamic>;
-      json['unexpected'] = true;
+      json['laterField'] = true;
+      expect(
+        VelockPairingDescriptor.parse(_bytes(json)).producerId,
+        'producer-1',
+      );
+      json.remove('publishedAt');
       expect(
         () => VelockPairingDescriptor.parse(_bytes(json)),
         throwsFormatException,
+      );
+    });
+
+    test('response extensions are signed after the v1 fields', () async {
+      final unsigned = <String, Object?>{
+        ..._unsignedResponse(publicKey, now),
+        'laterField': {'z': 1, 'a': 2},
+      };
+      final ordered = {
+        ..._unsignedResponse(publicKey, now),
+        'laterField': {'a': 2, 'z': 1},
+      };
+      final signature = await Ed25519().sign(
+        _bytes(ordered),
+        keyPair: signingKey,
+      );
+      final signed = {
+        ...unsigned,
+        'signature': base64UrlEncode(signature.bytes),
+      };
+      final response = VelockPairingControlResponse.parse(_bytes(signed));
+      expect(response.signaturePayload(), _bytes(ordered));
+      expect(
+        await response.verify(
+          descriptor: descriptor,
+          request: request,
+          now: () => now.add(const Duration(minutes: 1)),
+        ),
+        isTrue,
+      );
+      final tampered = VelockPairingControlResponse.parse(
+        _bytes({
+          ...signed,
+          'laterField': {'a': 3, 'z': 1},
+        }),
+      );
+      expect(
+        await tampered.verify(
+          descriptor: descriptor,
+          request: request,
+          now: () => now.add(const Duration(minutes: 1)),
+        ),
+        isFalse,
       );
     });
 
@@ -261,6 +309,29 @@ void main() {
         }),
       );
       expect(await forged.verify(descriptor: descriptor), isFalse);
+
+      final extendedPayload = {...unsigned, 'reason': 'lost'};
+      final extendedSignature = await Ed25519().sign(
+        _bytes(extendedPayload),
+        keyPair: signingKey,
+      );
+      final extended = {
+        ...extendedPayload,
+        'signatureAlgorithm': 'Ed25519',
+        'signature': base64UrlEncode(extendedSignature.bytes),
+      };
+      expect(
+        await VelockPairingRevocation.parse(
+          _bytes(extended),
+        ).verify(descriptor: descriptor),
+        isTrue,
+      );
+      expect(
+        await VelockPairingRevocation.parse(
+          _bytes({...extended, 'reason': 'stolen'}),
+        ).verify(descriptor: descriptor),
+        isFalse,
+      );
       expect(
         () => VelockPairingRevocation.parse(
           _bytes({

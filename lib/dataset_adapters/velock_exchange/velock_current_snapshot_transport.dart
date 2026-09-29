@@ -402,9 +402,10 @@ Map<String, dynamic> _object(List<int> bytes, int limit) {
   return result;
 }
 
+/// Requires [expected]; other keys are extensions, signed and canonical like
+/// the rest (see `velock_exchange_extensions.dart`).
 void _keys(Map<String, dynamic> map, Set<String> expected) {
-  if (map.length != expected.length ||
-      !map.keys.toSet().containsAll(expected)) {
+  if (!map.keys.toSet().containsAll(expected)) {
     throw const FormatException('Unexpected snapshot fields.');
   }
 }

@@ -181,6 +181,25 @@ void main() {
     expect(parsed.batchId, 'batch-1');
     expect(parsed.blobs.single.chunkSize, 0);
 
+    final extended = Map<String, dynamic>.from(
+      jsonDecode(utf8.decode(envelope)) as Map,
+    )..['laterField'] = {'any': true};
+    (extended['operations'] as Map)['laterOperationsField'] = 1;
+    ((extended['blobs'] as List).single as Map)['laterBlobField'] = 'x';
+    expect(
+      VelockExchangeV1Contract.parseEnvelope(
+        Uint8List.fromList(utf8.encode(jsonEncode(extended))),
+      ).batchId,
+      'batch-1',
+    );
+    final missing = Map<String, dynamic>.from(extended)..remove('keyId');
+    expect(
+      () => VelockExchangeV1Contract.parseEnvelope(
+        Uint8List.fromList(utf8.encode(jsonEncode(missing))),
+      ),
+      throwsFormatException,
+    );
+
     final unsupported = Map<String, dynamic>.from(
       jsonDecode(utf8.decode(envelope)) as Map,
     )..['protocolVersion'] = 2;

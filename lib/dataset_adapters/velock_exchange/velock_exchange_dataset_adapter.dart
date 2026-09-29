@@ -474,14 +474,13 @@ class VelockExchangeDatasetAdapter
       utf8.decode(pointerBytes, allowMalformed: false),
     );
     if (decoded is! Map<String, dynamic> ||
-        decoded.keys.toSet().difference({
+        !decoded.keys.toSet().containsAll({
           'schemaVersion',
           'vaultId',
           'checkpointId',
           'envelopeBase64',
           'commitBase64',
-        }).isNotEmpty ||
-        decoded.length != 5 ||
+        }) ||
         decoded['schemaVersion'] != 1 ||
         decoded['vaultId'] != vaultId) {
       throw const FormatException('Sync checkpoint pointer is invalid.');
@@ -566,7 +565,7 @@ class VelockExchangeDatasetAdapter
       utf8.decode(envelope, allowMalformed: false),
     );
     if (envelopeJson is! Map<String, dynamic> ||
-        envelopeJson.keys.toSet().difference({
+        !envelopeJson.keys.toSet().containsAll({
           'schemaVersion',
           'vaultId',
           'producerDeviceId',
@@ -575,8 +574,7 @@ class VelockExchangeDatasetAdapter
           'signatureAlgorithm',
           'keyId',
           'signature',
-        }).isNotEmpty ||
-        envelopeJson.length != 8 ||
+        }) ||
         envelopeJson['schemaVersion'] != 1 ||
         envelopeJson['vaultId'] != vaultId ||
         envelopeJson['producerDeviceId'] != producerDeviceId ||
@@ -619,13 +617,12 @@ class VelockExchangeDatasetAdapter
 
     final commitJson = jsonDecode(utf8.decode(commit, allowMalformed: false));
     if (commitJson is! Map<String, dynamic> ||
-        commitJson.keys.toSet().difference({
+        !commitJson.keys.toSet().containsAll({
           'schemaVersion',
           'checkpointId',
           'vaultId',
           'envelopeSha256',
-        }).isNotEmpty ||
-        commitJson.length != 4 ||
+        }) ||
         commitJson['schemaVersion'] != 1 ||
         commitJson['checkpointId'] != checkpointId ||
         commitJson['vaultId'] != vaultId ||
