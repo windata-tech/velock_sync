@@ -14,9 +14,8 @@
 library;
 
 import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
@@ -380,18 +379,16 @@ Future<void> _pump(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: PlatformProvider(
-        initialPlatform: TargetPlatform.iOS,
-        builder: (_) => PlatformApp(
-          locale: const Locale('en'),
-          supportedLocales: const [
-            Locale('en'),
-            Locale('zh'),
-            Locale('zh', 'CN'),
-          ],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          home: page,
-        ),
+      child: MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: const [
+          Locale('en'),
+          Locale('zh'),
+          Locale('zh', 'CN'),
+        ],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        home: page,
       ),
     ),
   );

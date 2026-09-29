@@ -225,7 +225,8 @@ class SyncUploadEngine {
     try {
       final existing = await remote.stat(logicalKey);
       if (existing != null) {
-        if (existing.size != artifact.length) {
+        if (existing.size != artifact.length ||
+            !await _sameContent(remote, logicalKey, artifact, expectedHash)) {
           throw ImmutableRemoteObjectMismatchException(logicalKey);
         }
         await _database.completeTransferJob(
@@ -265,7 +266,8 @@ class SyncUploadEngine {
     } on RemoteObjectAlreadyExistsException {
       final concurrentlyCreated = await remote.stat(logicalKey);
       if (concurrentlyCreated == null ||
-          concurrentlyCreated.size != artifact.length) {
+          concurrentlyCreated.size != artifact.length ||
+          !await _sameContent(remote, logicalKey, artifact, expectedHash)) {
         throw ImmutableRemoteObjectMismatchException(logicalKey);
       }
       await _database.completeTransferJob(
@@ -285,6 +287,27 @@ class SyncUploadEngine {
       );
       rethrow;
     }
+  }
+
+  /// Whether an object already stored under [logicalKey] is this artifact.
+  ///
+  /// Batch artifacts (envelope, operations, retention, commit) are compared
+  /// by SHA-256 of both sides: matching size alone accepted a same-length
+  /// object with other bytes for good. Blobs keep the size check: they are
+  /// published atomically, their ID names one encrypted file revision, and a
+  /// batch re-references many existing ones, so hashing them would download
+  /// the whole photo library again on every batch. Velock verifies blob
+  /// hashes when it imports them.
+  Future<bool> _sameContent(
+    RemoteObjectStore remote,
+    String logicalKey,
+    ImmutableArtifact artifact,
+    String? expectedHash,
+  ) async {
+    if (expectedHash != null) return true;
+    final local = await sha256.bind(await artifact.openRead()).first;
+    final stored = await sha256.bind(remote.read(logicalKey)).first;
+    return local == stored;
   }
 
   String _transferId({

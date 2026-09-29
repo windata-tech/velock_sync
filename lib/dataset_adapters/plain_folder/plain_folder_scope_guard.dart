@@ -42,10 +42,7 @@ Future<void> assertPlainScopeAvoidsBackups({
     }
     final profile = await backups.read(summary.profileId);
     if (profile == null || profile.connectionId != connectionId) continue;
-    if (!remoteScopesOverlap(
-      wanted,
-      envelopeRemoteRootSegments(profile),
-    )) {
+    if (!remoteScopesOverlap(wanted, envelopeRemoteRootSegments(profile))) {
       continue;
     }
     throw BackupFolderOverlapException(
@@ -78,8 +75,7 @@ class PlainLocationOverlapException implements Exception {
   final String existingDisplayName;
 
   @override
-  String toString() =>
-      'Plain sync locations overlap: $existingDisplayName';
+  String toString() => 'Plain sync locations overlap: $existingDisplayName';
 }
 
 /// Refuses a scope that contains, sits inside, or equals another location's.
@@ -100,18 +96,21 @@ Future<void> assertPlainScopeAvoidsOtherLocations({
     if (existing.profileId == selfProfileId) continue;
     if (!existing.isActive) continue;
     if (existing.connectionId != connectionId) continue;
-    final existingScope = PlainFolderSyncProfile.canonicalPlainRemoteRootSegments(
-      existing.remoteRootSegments,
-    );
+    final existingScope =
+        PlainFolderSyncProfile.canonicalPlainRemoteRootSegments(
+          existing.remoteRootSegments,
+        );
     if (!remoteScopesOverlap(wanted, existingScope)) continue;
     // Exactly the same remote folder is allowed from a DIFFERENT local folder
     // (two devices, or two local folders feeding one share: the documented
     // multi-device usage). One scope inside the other is not: those two
     // locations would mirror each other's files through independent baselines
     // and fight over every deletion.
-    final sameScope = wanted.length == existingScope.length &&
+    final sameScope =
+        wanted.length == existingScope.length &&
         wanted.join('/') == existingScope.join('/');
-    final sameLocal = localRootReference != null &&
+    final sameLocal =
+        localRootReference != null &&
         localRootReference == existing.localRootReference;
     if (sameScope && !sameLocal) continue;
     throw PlainLocationOverlapException(existing.displayName);

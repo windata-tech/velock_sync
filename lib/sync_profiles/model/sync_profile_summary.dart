@@ -96,6 +96,7 @@ class SyncProfileSummary {
     this.connectionId,
     this.activity,
     this.isolationReason,
+    this.locationChangedAt,
   });
 
   final String profileId;
@@ -108,11 +109,13 @@ class SyncProfileSummary {
   final String? displayName;
   final String? connectionId;
   final SyncProfileActivitySummary? activity;
+  final DateTime? locationChangedAt;
   final String? isolationReason;
 
   bool get isIsolated => isolationReason != null;
   bool get isRunnable =>
       !isIsolated && state == SyncProfileState.active && kind != null;
+
   /// The encrypted folder-sync kind is retired: it has no entry anywhere in the
   /// app any more, so scheduling it would keep a task running that the user can
   /// no longer see, pause or delete. Its rows and remote data stay untouched.

@@ -25,6 +25,56 @@ void main() {
 
     tearDown(() => database.close());
 
+    for (final applied in [0, 6, 7]) {
+      test(
+        'missing commits only allowed at verified snapshot head: $applied',
+        () async {
+          final missing = _MissingCommitsStore();
+          final covered = _SnapshotCoveredDataset();
+          await database.advanceAppliedSequencesFromCheckpoint(
+            profileId: 'profile-1',
+            coveredSequences: {'producer-1': applied},
+          );
+          final run = SyncDownloadEngine(database).importAvailable(
+            profileId: 'profile-1',
+            vaultId: 'vault-1',
+            consumerDeviceId: 'consumer-1',
+            trustedProducerDeviceIds: ['producer-1'],
+            dataset: covered,
+            remote: missing,
+          );
+          if (applied == 6) {
+            expect((await run).importedBatchCount, 0);
+          } else {
+            await expectLater(
+              run,
+              throwsA(isA<RemoteObjectNotFoundException>()),
+            );
+          }
+          expect(
+            await database.appliedSequence(
+              profileId: 'profile-1',
+              producerDeviceId: 'producer-1',
+            ),
+            applied,
+          );
+        },
+      );
+    }
+    test('ordinary datasets still reject missing commit collections', () async {
+      await expectLater(
+        SyncDownloadEngine(database).importAvailable(
+          profileId: 'profile-1',
+          vaultId: 'vault-1',
+          consumerDeviceId: 'consumer-1',
+          trustedProducerDeviceIds: ['producer-1'],
+          dataset: dataset,
+          remote: _MissingCommitsStore(),
+        ),
+        throwsA(isA<RemoteObjectNotFoundException>()),
+      );
+    });
+
     test(
       'imports the next trusted sequence, verifies hashes, and publishes the dataset ack',
       () async {
@@ -389,6 +439,7 @@ void main() {
           0,
         );
         expect(deferred.imported, hasLength(1));
+        expect(deferred.completed, isEmpty);
         expect(
           await database.appliedSequence(
             profileId: 'profile-1',
@@ -426,6 +477,8 @@ void main() {
           ),
           1,
         );
+        // Only after the ACK is stored may the hand-off copy be released.
+        expect(deferred.completed, ['batch-1']);
       },
     );
   });
@@ -548,8 +601,13 @@ class _ImportingDataset implements SyncDatasetAdapter {
 }
 
 class _DeferredDataset extends _ImportingDataset
-    implements DeferredIncomingBatchAdapter {
+    implements DeferredIncomingBatchAdapter, CompletedIncomingBatchAdapter {
   bool receiptReady = false;
+  final completed = <String>[];
+
+  @override
+  Future<void> incomingBatchCompleted(IncomingBatchReference batch) async =>
+      completed.add(batch.batchId);
 
   @override
   Future<ImportResult> acceptIncomingBatch(IncomingBatch batch) async {
@@ -670,4 +728,28 @@ class _QueuedDataset extends _DeferredDataset
   Future<ImportResult?> reconcileIncomingBatch(
     IncomingBatchReference batch,
   ) async => receipts.contains(batch.sequence) ? const ImportResult() : null;
+}
+
+class _MissingCommitsStore extends InMemoryObjectStore {
+  @override
+  Future<RemoteObjectPage> list({
+    String prefix = '',
+    String? cursor,
+    int limit = 100,
+    RemoteOperationCancellation? cancellation,
+  }) async => throw RemoteObjectNotFoundException(prefix);
+}
+
+class _SnapshotCoveredDataset extends _ImportingDataset
+    implements SnapshotCoveredCommitCollectionAdapter {
+  @override
+  bool permitsMissingCommitCollection({
+    required RemoteObjectStore remote,
+    required String vaultId,
+    required String producerDeviceId,
+    required int appliedSequence,
+  }) =>
+      vaultId == 'vault-1' &&
+      producerDeviceId == 'producer-1' &&
+      appliedSequence == 6;
 }

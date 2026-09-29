@@ -17,10 +17,17 @@ class InMemoryObjectStore implements RemoteObjectStore {
       supportsHiddenAppFolder: false,
       hasStrongListConsistency: true,
     ),
+    this.answerNotFoundForMissingCollections = false,
   });
 
   @override
   final RemoteCapabilities capabilities;
+
+  /// Models providers that answer 404 for a collection that was never created
+  /// (WebDAV does). Off by default so existing fixtures keep the lenient
+  /// "unknown prefix lists empty" behaviour; discovery paths that must treat
+  /// "never created" as a normal empty state opt in.
+  final bool answerNotFoundForMissingCollections;
 
   final Map<String, Uint8List> _objects = {};
   final Map<String, DateTime> _updatedAt = {};
@@ -48,6 +55,11 @@ class InMemoryObjectStore implements RemoteObjectStore {
     cancellation?.throwIfCancelled();
     if (limit < 1) {
       throw ArgumentError.value(limit, 'limit');
+    }
+    if (answerNotFoundForMissingCollections &&
+        prefix.isNotEmpty &&
+        !_objects.keys.any((key) => key.startsWith(prefix))) {
+      throw RemoteObjectNotFoundException(prefix);
     }
     final keys = _objects.keys.where((key) => key.startsWith(prefix)).toList()
       ..sort();

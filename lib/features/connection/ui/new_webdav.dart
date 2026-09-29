@@ -1,6 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -128,7 +127,7 @@ class NewWebDav extends HookConsumerWidget {
     }
 
     if (replacementConnectionId != null && replacement.isLoading) {
-      return const Center(child: PlatformCircularProgressIndicator());
+      return const Center(child: AdaptiveSpinner());
     }
     if (replacementConnectionId != null && existingWebDav == null) {
       return Center(
@@ -142,8 +141,7 @@ class NewWebDav extends HookConsumerWidget {
       );
     }
 
-    return PlatformScaffold(
-      iosContentPadding: false,
+    return AdaptivePageScaffold(
       appBar: WDAppBar(
         leading: AppBackButton(
           semanticLabel: syncText(context, '返回', 'Back'),
@@ -155,7 +153,7 @@ class NewWebDav extends HookConsumerWidget {
               : syncText(context, '编辑 WebDAV 连接', 'Edit WebDAV Connection'),
         ),
         trailingActions: [
-          PlatformTextButton(
+          AdaptiveTextButton(
             padding: EdgeInsets.zero,
             onPressed: () => context.pushNamed(
               AppRoutes.connectionHelp.name,
@@ -166,7 +164,7 @@ class NewWebDav extends HookConsumerWidget {
               style: TextStyle(color: context.appSecondaryLabel),
             ),
           ),
-          PlatformTextButton(
+          AdaptiveTextButton(
             padding: EdgeInsets.zero,
             onPressed: isLoading.value
                 ? null
@@ -323,17 +321,6 @@ class NewWebDav extends HookConsumerWidget {
   }
 }
 
-class PrefixWrapper extends StatelessWidget {
-  final Widget child;
-
-  const PrefixWrapper({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(width: 112, child: child);
-  }
-}
-
 class _WebDavFormFields extends StatelessWidget {
   final TextEditingController addressController;
   final TextEditingController portController;
@@ -367,7 +354,7 @@ class _WebDavFormFields extends StatelessWidget {
             Semantics(
               label: syncText(context, '启用 HTTPS', 'Enable HTTPS'),
               identifier: 'webdav_https',
-              child: PlatformSwitch(
+              child: AdaptiveSwitch(
                 value: enableHTTPS,
                 onChanged: onEnableHTTPSChanged,
               ),
@@ -375,8 +362,9 @@ class _WebDavFormFields extends StatelessWidget {
           ],
         ),
       ),
-      PlatformTextFormField(
+      AdaptiveTextFormField(
         key: const ValueKey('webdav_address'),
+        label: syncText(context, '服务器地址', 'Server Address'),
         controller: addressController,
         validator: (value) {
           if (value == null || value.isEmpty) {
@@ -405,33 +393,15 @@ class _WebDavFormFields extends StatelessWidget {
           }
           return null;
         },
-        hintText: syncText(
+        hint: syncText(
           context,
           '例如：https://example.com/webdav',
           'e.g. https://example.com/webdav',
         ),
-        material: (context, platform) {
-          return MaterialTextFormFieldData(
-            decoration: InputDecoration(
-              labelText: syncText(context, '服务器地址', 'Server Address'),
-            ),
-          );
-        },
-        cupertino: (context, platform) {
-          return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(
-              child: Text(syncText(context, '服务器地址', 'Server Address')),
-            ),
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            // decoration: BoxDecoration(
-            //   border: Border.all(color: context.dividerColor),
-            //   borderRadius: BorderRadius.circular(8),
-            // ),
-          );
-        },
       ),
-      PlatformTextFormField(
+      AdaptiveTextFormField(
         key: const ValueKey('webdav_port'),
+        label: syncText(context, '端口', 'Port'),
         controller: portController,
         validator: (value) {
           if (value == null || value.isEmpty) {
@@ -439,62 +409,28 @@ class _WebDavFormFields extends StatelessWidget {
           }
           return null;
         },
-        hintText: syncText(context, '例如：8888', 'e.g. 8888'),
-        material: (context, platform) {
-          return MaterialTextFormFieldData(
-            decoration: InputDecoration(
-              labelText: syncText(context, '端口', 'Port'),
-            ),
-          );
-        },
-        cupertino: (context, platform) {
-          return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(child: Text(syncText(context, '端口', 'Port'))),
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            // decoration: BoxDecoration(
-            //   border: Border.all(color: context.dividerColor),
-            //   borderRadius: BorderRadius.circular(8),
-            // ),
-          );
-        },
+        hint: syncText(context, '例如：8888', 'e.g. 8888'),
       ),
     ];
 
     final formOptionalChildren = [
-      PlatformTextFormField(
+      AdaptiveTextFormField(
         key: const ValueKey('webdav_path'),
+        label: syncText(context, '子路径', 'Subpath'),
         controller: pathController,
         validator: (value) {
           return null;
         },
         maxLines: 1,
-        hintText: syncText(
+        hint: syncText(
           context,
           '例如：/ 或者 /path/to/webdav',
           'e.g. / or /path/to/webdav',
         ),
-        material: (context, platform) {
-          return MaterialTextFormFieldData(
-            decoration: InputDecoration(
-              labelText: syncText(context, '子路径', 'Subpath'),
-            ),
-          );
-        },
-        cupertino: (context, platform) {
-          return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(
-              child: Text(syncText(context, '子路径', 'Subpath')),
-            ),
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            // decoration: BoxDecoration(
-            //   border: Border.all(color: context.dividerColor),
-            //   borderRadius: BorderRadius.circular(8),
-            // ),
-          );
-        },
       ),
-      PlatformTextFormField(
+      AdaptiveTextFormField(
         key: const ValueKey('webdav_user'),
+        label: syncText(context, '用户名', 'Username'),
         controller: userController,
         validator: (value) {
           if (passwordController.text.isNotEmpty &&
@@ -503,29 +439,11 @@ class _WebDavFormFields extends StatelessWidget {
           }
           return null;
         },
-        hintText: syncText(context, '请输入用户名', 'Enter a username'),
-        material: (context, platform) {
-          return MaterialTextFormFieldData(
-            decoration: InputDecoration(
-              labelText: syncText(context, '用户名', 'Username'),
-            ),
-          );
-        },
-        cupertino: (context, platform) {
-          return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(
-              child: Text(syncText(context, '用户名', 'Username')),
-            ),
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            // decoration: BoxDecoration(
-            //   border: Border.all(color: context.dividerColor),
-            //   borderRadius: BorderRadius.circular(8),
-            // ),
-          );
-        },
+        hint: syncText(context, '请输入用户名', 'Enter a username'),
       ),
-      PlatformTextFormField(
+      AdaptiveTextFormField(
         key: const ValueKey('webdav_password'),
+        label: syncText(context, '密码', 'Password'),
         controller: passwordController,
         obscureText: true,
         autocorrect: false,
@@ -538,32 +456,13 @@ class _WebDavFormFields extends StatelessWidget {
           }
           return null;
         },
-        hintText: passwordOptional
+        hint: passwordOptional
             ? syncText(
                 context,
                 '留空则保留原密码',
                 'Leave blank to keep the current password',
               )
             : syncText(context, '请输入密码', 'Enter a password'),
-        material: (context, platform) {
-          return MaterialTextFormFieldData(
-            decoration: InputDecoration(
-              labelText: syncText(context, '密码', 'Password'),
-            ),
-          );
-        },
-        cupertino: (context, platform) {
-          return CupertinoTextFormFieldData(
-            prefix: PrefixWrapper(
-              child: Text(syncText(context, '密码', 'Password')),
-            ),
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            // decoration: BoxDecoration(
-            //   border: Border.all(color: context.dividerColor),
-            //   borderRadius: BorderRadius.circular(8),
-            // ),
-          );
-        },
       ),
     ];
 

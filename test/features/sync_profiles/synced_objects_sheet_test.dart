@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -79,17 +79,17 @@ void main() {
 
     // Every amount shares the same right edge, and every timestamp starts at
     // the same x: the sheet is a table, not a ragged sentence.
-    final amounts = ['296 B', '767 B', '1.4 KB']
-        .map((text) => tester.getRect(find.text(text)))
-        .toList();
+    final amounts = [
+      '296 B',
+      '767 B',
+      '1.4 KB',
+    ].map((text) => tester.getRect(find.text(text))).toList();
     for (final rect in amounts) {
       expect(rect.right, closeTo(amounts.first.right, 0.5));
     }
     expect(amounts.first.width, lessThan(90));
 
-    final stamps = ['2026-09-26 17:20']
-        .map((text) => find.text(text))
-        .toList();
+    final stamps = ['2026-09-26 17:20'].map((text) => find.text(text)).toList();
     expect(stamps.first, findsNWidgets(3));
     final stampRects = tester
         .widgetList<Text>(find.text('2026-09-26 17:20'))
@@ -115,20 +115,22 @@ void main() {
           backgroundColor: const Color(0xFFF2F2F7),
           body: Align(
             alignment: Alignment.bottomCenter,
-            child: _SheetPreview(rows: [
-              for (final entry in [
-                ('commit:1', 296),
-                ('batch:2', 767),
-                ('batch:3', 1433),
-              ])
-                AppDetailSheetRow(
-                  label: entry.$1.startsWith('commit') ? '提交校验 · 上传' : '增量批次 · 上传',
-                  value: '2026-09-26 17:20',
-                  trailing: entry.$2 == 1433
-                      ? '1.4 KB'
-                      : '${entry.$2} B',
-                ),
-            ]),
+            child: _SheetPreview(
+              rows: [
+                for (final entry in [
+                  ('commit:1', 296),
+                  ('batch:2', 767),
+                  ('batch:3', 1433),
+                ])
+                  AppDetailSheetRow(
+                    label: entry.$1.startsWith('commit')
+                        ? '提交校验 · 上传'
+                        : '增量批次 · 上传',
+                    value: '2026-09-26 17:20',
+                    trailing: entry.$2 == 1433 ? '1.4 KB' : '${entry.$2} B',
+                  ),
+              ],
+            ),
           ),
         ),
       ),

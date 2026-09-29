@@ -8,9 +8,8 @@
 /// English.
 library;
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
@@ -50,14 +49,7 @@ void main() {
 
     await tester.tap(find.text('同步失败'));
     await tester.pumpAndSettle();
-    for (final label in const [
-      '同步配置',
-      '开始时间',
-      '结束时间',
-      '结果',
-      '可能原因',
-      '建议操作',
-    ]) {
+    for (final label in const ['同步配置', '开始时间', '结束时间', '结果', '可能原因', '建议操作']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
     expect(find.text('未完成'), findsOneWidget);
@@ -114,10 +106,7 @@ void main() {
     addTearDown(database.close);
     await _pumpActivity(tester, database, const Locale('zh', 'CN'));
     expect(find.text('还没有同步活动'), findsOneWidget);
-    expect(
-      find.text('同步运行、待恢复传输和需要处理的冲突会集中显示在这里。'),
-      findsOneWidget,
-    );
+    expect(find.text('同步运行、待恢复传输和需要处理的冲突会集中显示在这里。'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     // A second mount gets its own container; the empty state is what the user
@@ -222,14 +211,12 @@ Future<void> _pumpActivity(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: PlatformProvider(
-        initialPlatform: TargetPlatform.iOS,
-        builder: (_) => PlatformApp(
-          locale: locale,
-          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          home: const SyncActivity(),
-        ),
+      child: MaterialApp(
+        locale: locale,
+        supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        home: const SyncActivity(),
       ),
     ),
   );

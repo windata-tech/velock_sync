@@ -12,8 +12,8 @@
 /// picker flows are exercised on the Material app bar instead.
 library;
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
@@ -184,9 +184,7 @@ void main() {
 
     expect(find.text('还没有可用的远端连接'), findsOneWidget);
     expect(
-      find.text(
-        '文件夹同步用的是 WebDAV（NAS 或网盘提供的 WebDAV 地址）。先添加一个连接，选好文件夹后就能开始同步。',
-      ),
+      find.text('文件夹同步用的是 WebDAV（NAS 或网盘提供的 WebDAV 地址）。先添加一个连接，选好文件夹后就能开始同步。'),
       findsOneWidget,
     );
     // Not a dead end: the wizard offers the connection form itself instead of
@@ -194,7 +192,9 @@ void main() {
     expect(find.byKey(const Key('plain-add-connection')), findsOneWidget);
     expect(
       tester
-          .widget<BackupActionButton>(find.byKey(const Key('plain-add-connection')))
+          .widget<BackupActionButton>(
+            find.byKey(const Key('plain-add-connection')),
+          )
           .onPressed,
       isNotNull,
     );

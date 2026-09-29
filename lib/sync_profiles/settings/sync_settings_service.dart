@@ -270,6 +270,7 @@ class DurableSyncSettingsService implements SyncSettingsService {
       'no-candidates',
       'retention-manifest-invalid',
       'no-valid-retention-manifest',
+      'deletion-paused',
       'gc-error',
     };
     return allowed.contains(value) ? value : null;

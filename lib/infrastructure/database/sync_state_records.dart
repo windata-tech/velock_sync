@@ -5,6 +5,7 @@
 /// are secure-storage references.
 library;
 
+import 'dart:convert';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 
 class OutgoingBatchReservation {
@@ -29,8 +30,48 @@ class PublishedOutgoingBatchReference {
   final int sequence;
 }
 
+/// Immutable successful new-location snapshot result, not incremental traffic.
+class BackupRebuildCompletion {
+  const BackupRebuildCompletion({
+    required this.runId,
+    required this.startedAt,
+    required this.completedAt,
+    required this.destination,
+    required this.objectCount,
+    required this.totalBytes,
+    this.recovered = false,
+  });
+  final String runId, destination;
+  final DateTime startedAt, completedAt;
+  final int objectCount, totalBytes;
+  final bool recovered;
+  String encode() => jsonEncode({
+    'runId': runId,
+    'startedAt': startedAt.toUtc().toIso8601String(),
+    'completedAt': completedAt.toUtc().toIso8601String(),
+    'destination': destination,
+    'objectCount': objectCount,
+    'totalBytes': totalBytes,
+    'recovered': recovered,
+  });
+  static BackupRebuildCompletion? decode(String? value) {
+    if (value == null) return null;
+    final m = jsonDecode(value) as Map<String, dynamic>;
+    return BackupRebuildCompletion(
+      runId: m['runId'] as String,
+      startedAt: DateTime.parse(m['startedAt'] as String),
+      completedAt: DateTime.parse(m['completedAt'] as String),
+      destination: m['destination'] as String,
+      objectCount: m['objectCount'] as int,
+      totalBytes: m['totalBytes'] as int,
+      recovered: m['recovered'] == true,
+    );
+  }
+}
+
 class SyncRunRecord {
   const SyncRunRecord({
+    this.rebuild,
     required this.runId,
     required this.profileId,
     required this.state,
@@ -44,6 +85,7 @@ class SyncRunRecord {
     required this.providerStatusCode,
   });
 
+  final BackupRebuildCompletion? rebuild;
   final String runId;
   final String profileId;
   final String state;

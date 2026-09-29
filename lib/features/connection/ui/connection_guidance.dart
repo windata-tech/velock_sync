@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
@@ -42,7 +41,7 @@ class ConnectionHelpPage extends StatelessWidget {
             ),
       actions: providerType == RemoteProviderType.baiduNetdisk
           ? [
-              PlatformTextButton(
+              AdaptiveTextButton(
                 padding: EdgeInsets.zero,
                 onPressed: () =>
                     context.pushNamed(AppRoutes.newBaiduToken.name),

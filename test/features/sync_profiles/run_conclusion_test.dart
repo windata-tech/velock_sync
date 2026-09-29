@@ -6,8 +6,7 @@
 /// run itself moved.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -31,9 +30,7 @@ void main() {
     test('an object moved inside the window is part of that run', () {
       final transferred = runWindowTransfers(
         _run(startedAt: startedAt, completedAt: finishedAt),
-        [
-          _transfer(completedAt: startedAt.add(const Duration(seconds: 30))),
-        ],
+        [_transfer(completedAt: startedAt.add(const Duration(seconds: 30)))],
       );
       expect(transferred, hasLength(1));
     });
@@ -74,7 +71,9 @@ void main() {
       expect(
         syncRunConclusionLabel(
           _run(state: 'completed'),
-          transfers: [_transfer(completedAt: DateTime.utc(2026, 9, 26, 22, 28))],
+          transfers: [
+            _transfer(completedAt: DateTime.utc(2026, 9, 26, 22, 28)),
+          ],
         ),
         '已完成',
       );
@@ -97,6 +96,63 @@ void main() {
       );
     });
   });
+
+  for (final locale in [const Locale('zh', 'CN'), const Locale('en')]) {
+    testWidgets(
+      'rebuild sheet keeps verified totals separate from incremental traffic $locale',
+      (tester) async {
+        final completed = DateTime.utc(2026, 9, 27, 14, 40);
+        await _pumpRunSheet(
+          tester,
+          _run(
+            completedAt: completed,
+            rebuild: BackupRebuildCompletion(
+              runId: 'snapshot',
+              startedAt: completed,
+              completedAt: completed,
+              destination: 'NAS /ttt',
+              objectCount: 3,
+              totalBytes: 2048,
+              recovered: true,
+            ),
+          ),
+          const [],
+          locale: locale,
+        );
+        expect(
+          find.text(
+            locale.languageCode == 'en'
+                ? 'Sync run · New backup created'
+                : '同步记录 · 新备份已建立',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('NAS /ttt'), findsOneWidget);
+        expect(
+          find.textContaining(
+            locale.languageCode == 'en' ? '3 encrypted objects' : '3 个加密对象',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(locale.languageCode == 'en' ? 'Uploaded objects' : '上传对象'),
+          findsNothing,
+        );
+        expect(
+          find.text(
+            locale.languageCode == 'en' ? 'Nothing to transfer' : '无需传输',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.textContaining(
+            locale.languageCode == 'en' ? 'original completion time' : '原完成时间',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  }
 
   testWidgets('the run sheet says “无需传输” above its zero object counts', (
     tester,
@@ -228,11 +284,13 @@ void main() {
 }
 
 SyncRunRecord _run({
+  BackupRebuildCompletion? rebuild,
   String state = 'completed',
   DateTime? startedAt,
   DateTime? completedAt,
   String profileId = _profileId,
 }) => SyncRunRecord(
+  rebuild: rebuild,
   runId: 'run-$state-${startedAt?.millisecondsSinceEpoch ?? 0}',
   profileId: profileId,
   state: state,
@@ -283,11 +341,7 @@ Future<void> _pumpRunSheet(
     MaterialApp(
       locale: locale,
       supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      localizationsDelegates: const [...GlobalMaterialLocalizations.delegates],
       home: Builder(
         builder: (context) => Scaffold(
           body: Center(
@@ -342,9 +396,7 @@ Future<void> _pumpDetail(
         locale: const Locale('zh', 'CN'),
         supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
         localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
+          ...GlobalMaterialLocalizations.delegates,
         ],
         routerConfig: router,
       ),

@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -146,9 +145,7 @@ void main() {
           locale: const Locale('zh'),
           supportedLocales: const [Locale('zh'), Locale('en')],
           localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
+            ...GlobalMaterialLocalizations.delegates,
           ],
           theme: ThemeData(platform: TargetPlatform.iOS),
         ),
@@ -218,10 +215,7 @@ void main() {
       await tester.tap(find.byKey(const Key('storage-confirm-folder')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('保存位置已更新，请重新检查；本次只保存目录，尚未同步。'),
-        findsOneWidget,
-      );
+      expect(find.text('保存位置已更新，请重新检查；本次只保存目录，尚未同步。'), findsOneWidget);
       expect(find.text('/base/entry/111'), findsOneWidget);
       expect(find.byKey(const Key('storage-sync')), findsNothing);
       // Saving a location does not transfer anything: neither a blocking
@@ -229,19 +223,13 @@ void main() {
       expect(find.byKey(const Key('sync-progress-dialog')), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(destination.checkCalls, 1);
-      expect(
-        (await fileSyncProfiles.read('p'))!.remoteRootSegments,
-        ['111'],
-      );
+      expect((await fileSyncProfiles.read('p'))!.remoteRootSegments, ['111']);
       // The connection itself and the local folder are untouched.
       expect(
         (connections.connection.protocol as WebDavProtocolModel).path,
         '/entry',
       );
-      expect(
-        (await fileSyncProfiles.read('p'))!.rootPath,
-        '/safe/Documents',
-      );
+      expect((await fileSyncProfiles.read('p'))!.rootPath, '/safe/Documents');
     },
   );
 
@@ -293,27 +281,28 @@ void main() {
     expect(find.byKey(const Key('storage-sync')), findsOneWidget);
   });
 
-  testWidgets('a rejected relocation keeps the previous scope and explains it', (
-    tester,
-  ) async {
-    await mount(tester);
+  testWidgets(
+    'a rejected relocation keeps the previous scope and explains it',
+    (tester) async {
+      await mount(tester);
 
-    await tester.tap(find.byKey(const Key('storage-change-folder')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('backup-folder-111')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('use-backup-folder')));
-    await tester.pumpAndSettle();
-    // The task is paused underneath the page, so the save must be rejected.
-    await fileSyncProfiles.pause('p');
-    await tester.tap(find.byKey(const Key('storage-confirm-folder')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('storage-change-folder')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('backup-folder-111')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('use-backup-folder')));
+      await tester.pumpAndSettle();
+      // The task is paused underneath the page, so the save must be rejected.
+      await fileSyncProfiles.pause('p');
+      await tester.tap(find.byKey(const Key('storage-confirm-folder')));
+      await tester.pumpAndSettle();
 
-    expect(find.textContaining('位置未保存'), findsOneWidget);
-    expect(find.text('保存位置已更新，请重新检查；本次只保存目录，尚未同步。'), findsNothing);
-    expect(
-      (await database.readSyncProfilePayload('p'))!,
-      isNot(contains('"remoteRootSegments":["111"]')),
-    );
-  });
+      expect(find.textContaining('位置未保存'), findsOneWidget);
+      expect(find.text('保存位置已更新，请重新检查；本次只保存目录，尚未同步。'), findsNothing);
+      expect(
+        (await database.readSyncProfilePayload('p'))!,
+        isNot(contains('"remoteRootSegments":["111"]')),
+      );
+    },
+  );
 }

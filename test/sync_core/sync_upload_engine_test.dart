@@ -20,6 +20,51 @@ void main() {
     tearDown(() => database.close());
 
     test(
+      'a same-size object with different bytes is not taken as uploaded',
+      () async {
+        // A partial or corrupt object of the right length used to count as
+        // already uploaded for good.
+        final remote = _RecordingStore();
+        final batch = _batch();
+        final operationsKey = LogicalKeys.batchOperations(
+          batch.vaultId,
+          batch.sourceDeviceId,
+          batch.sequence,
+          batch.batchId,
+        );
+        final corrupt = Uint8List(batch.operations.length);
+        await remote.put(
+          operationsKey,
+          Stream.value(corrupt),
+          contentLength: corrupt.length,
+          ifAbsent: true,
+        );
+
+        await expectLater(
+          SyncUploadEngine(database).publishNext(
+            profileId: 'profile-1',
+            dataset: _Dataset(batch),
+            remote: remote,
+            cursor: ExportCursor.empty,
+            limits: const BatchLimits(),
+          ),
+          throwsA(isA<ImmutableRemoteObjectMismatchException>()),
+        );
+        expect(
+          await remote.stat(
+            LogicalKeys.commit(
+              batch.vaultId,
+              batch.sourceDeviceId,
+              batch.sequence,
+              batch.batchId,
+            ),
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
       'deduplicates blobs and makes a batch visible only at commit',
       () async {
         final remote = _RecordingStore();

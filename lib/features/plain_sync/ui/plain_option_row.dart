@@ -1,4 +1,4 @@
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 
 /// One selectable option whose explanation is shown in full.

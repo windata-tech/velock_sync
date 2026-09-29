@@ -161,40 +161,42 @@ void main() {
     );
   });
 
+  test(
+    'resolves a stored folder name and leaves the label to the UI',
+    () async {
+      final provisionerUnderTest = provisioner();
 
-  test('resolves a stored folder name and leaves the label to the UI', () async {
-    final provisionerUnderTest = provisioner();
-
-    expect(
-      await provisionerUnderTest.resolveLocalDisplayName(
-        FolderAccessGrant.localPath(localFolder),
-      ),
-      localFolder.uri.pathSegments.where((part) => part.isNotEmpty).last,
-    );
-    // The UI is localized, so an undecidable name is empty instead of a
-    // hard-coded word.
-    expect(
-      await provisionerUnderTest.resolveLocalDisplayName(
-        FolderAccessGrant.localPath(Directory('/')),
-      ),
-      isEmpty,
-    );
-    expect(
-      await provisionerUnderTest.resolveLocalDisplayName(
-        FolderAccessGrant.androidDocumentTree(
-          'content://com.android.externalstorage.documents/tree/'
-          'primary%3APhotos',
+      expect(
+        await provisionerUnderTest.resolveLocalDisplayName(
+          FolderAccessGrant.localPath(localFolder),
         ),
-      ),
-      'Photos',
-    );
-    expect(
-      await provisionerUnderTest.resolveLocalDisplayName(
-        FolderAccessGrant.androidDocumentTree('content://'),
-      ),
-      isEmpty,
-    );
-  });
+        localFolder.uri.pathSegments.where((part) => part.isNotEmpty).last,
+      );
+      // The UI is localized, so an undecidable name is empty instead of a
+      // hard-coded word.
+      expect(
+        await provisionerUnderTest.resolveLocalDisplayName(
+          FolderAccessGrant.localPath(Directory('/')),
+        ),
+        isEmpty,
+      );
+      expect(
+        await provisionerUnderTest.resolveLocalDisplayName(
+          FolderAccessGrant.androidDocumentTree(
+            'content://com.android.externalstorage.documents/tree/'
+            'primary%3APhotos',
+          ),
+        ),
+        'Photos',
+      );
+      expect(
+        await provisionerUnderTest.resolveLocalDisplayName(
+          FolderAccessGrant.androidDocumentTree('content://'),
+        ),
+        isEmpty,
+      );
+    },
+  );
 
   test('a paused duplicate does not block a fresh location', () async {
     final first = await create();

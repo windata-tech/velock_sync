@@ -89,10 +89,7 @@ void main() {
       expect(profile.datasetId, 'dataset-1');
       expect(profile.deviceId, 'device-1');
       expect(profile.displayName, 'Photos');
-      expect(
-        profile.localRootReference,
-        _fullDataset['localRootReference'],
-      );
+      expect(profile.localRootReference, _fullDataset['localRootReference']);
       expect(profile.localDisplayName, 'Photos (phone)');
       expect(profile.accessKind, FolderAccessKind.androidDocumentTree);
       expect(profile.connectionId, 'connection-1');
@@ -160,28 +157,37 @@ void main() {
 
     test('keeps an empty remote scope at the connection root', () {
       final profile = PlainFolderSyncProfile.fromJson(
-        _envelope(dataset: const {
-          'localRootReference': '/safe/photos',
-          'remoteRootSegments': <String>[],
-        }),
+        _envelope(
+          dataset: const {
+            'localRootReference': '/safe/photos',
+            'remoteRootSegments': <String>[],
+          },
+        ),
       );
 
       expect(profile.remoteRootSegments, isEmpty);
       expect(
-        PlainFolderSyncProfile.remoteLocationLabel('NAS', profile.remoteRootSegments),
+        PlainFolderSyncProfile.remoteLocationLabel(
+          'NAS',
+          profile.remoteRootSegments,
+        ),
         'NAS',
       );
       expect(
-        PlainFolderSyncProfile.remoteLocationLabel('NAS', const ['phone', 'photos']),
+        PlainFolderSyncProfile.remoteLocationLabel('NAS', const [
+          'phone',
+          'photos',
+        ]),
         'NAS · /phone/photos',
       );
     });
 
     test('keeps the paused lifecycle state across a round-trip', () {
       final profile = PlainFolderSyncProfile.fromJson(
-        _envelope(state: 'paused', dataset: const {
-          'localRootReference': '/safe/photos',
-        }),
+        _envelope(
+          state: 'paused',
+          dataset: const {'localRootReference': '/safe/photos'},
+        ),
       );
 
       expect(profile.state, PlainFolderProfileState.paused);
@@ -205,7 +211,8 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => PlainFolderSyncProfile.fromJson(_envelope(kind: 'plain-folder-v2')),
+        () =>
+            PlainFolderSyncProfile.fromJson(_envelope(kind: 'plain-folder-v2')),
         throwsA(isA<UnsupportedSyncProfileEnvelopeException>()),
       );
     });
@@ -264,7 +271,10 @@ void main() {
         {'localRootReference': '/safe/photos', 'direction': 'bothWays'},
         {'localRootReference': '/safe/photos', 'conflictPolicy': 'keepNewest'},
         {'localRootReference': '/safe/photos', 'conflictPolicy': 'rename'},
-        {'localRootReference': '/safe/photos', 'initialSyncPolicy': 'overwrite'},
+        {
+          'localRootReference': '/safe/photos',
+          'initialSyncPolicy': 'overwrite',
+        },
         {'localRootReference': '/safe/photos', 'accessKind': 'cloudPath'},
         {'localRootReference': '/safe/photos', 'direction': 3},
         {'localRootReference': '/safe/photos', 'conflictPolicy': true},
@@ -279,7 +289,9 @@ void main() {
 
     test('rejects a payload without a usable local root reference', () {
       for (final dataset in const <Map<String, Object?>>[
-        {'remoteRootSegments': <String>['photos']},
+        {
+          'remoteRootSegments': <String>['photos'],
+        },
         {'localRootReference': ''},
         {'localRootReference': 42},
         {'localRootReference': null},
@@ -332,7 +344,8 @@ void main() {
           'vault-1',
         );
         expect(
-          () => SyncProfileEnvelope.fromJson(_envelope(kind: kind, vaultId: '')),
+          () =>
+              SyncProfileEnvelope.fromJson(_envelope(kind: kind, vaultId: '')),
           throwsFormatException,
           reason: '$kind must name its vault',
         );
@@ -365,7 +378,10 @@ void main() {
 
     test('keeps the persisted kind value stable and unambiguous', () {
       expect(SyncDatasetKind.plainFolder.persistedValue, 'plain-folder');
-      expect(SyncDatasetKind.tryParse('plain-folder'), SyncDatasetKind.plainFolder);
+      expect(
+        SyncDatasetKind.tryParse('plain-folder'),
+        SyncDatasetKind.plainFolder,
+      );
       expect(SyncDatasetKind.tryParse('plainFolder'), isNull);
       expect(SyncDatasetKind.tryParse('plain-folder-v2'), isNull);
       expect(SyncDatasetKind.tryParse(null), isNull);
@@ -427,9 +443,7 @@ void main() {
         signingKeyRef: 'velock-sync/device-signing/opaque',
         createdAt: DateTime.utc(2026, 9, 19, 9),
       );
-      await SelectedFolderSyncProfileRepository(
-        database,
-      ).save(selectedFolder);
+      await SelectedFolderSyncProfileRepository(database).save(selectedFolder);
 
       expect((await repository.list()).map((p) => p.profileId), ['profile-1']);
       expect(await repository.read(selectedFolder.profileId), isNull);
@@ -528,29 +542,28 @@ void main() {
       expect(resumed.isActive, isTrue);
     });
 
-    test('lets the database lifecycle state override a stale payload state', () async {
-      await repository.save(_profile(state: PlainFolderProfileState.paused));
-      // The payload still says paused after a resume.
-      final payloadBefore =
-          jsonDecode(
-                (await database.readSyncProfilePayload('profile-1'))!,
-              )
-              as Map<String, dynamic>;
-      expect(payloadBefore['state'], 'paused');
+    test(
+      'lets the database lifecycle state override a stale payload state',
+      () async {
+        await repository.save(_profile(state: PlainFolderProfileState.paused));
+        // The payload still says paused after a resume.
+        final payloadBefore =
+            jsonDecode((await database.readSyncProfilePayload('profile-1'))!)
+                as Map<String, dynamic>;
+        expect(payloadBefore['state'], 'paused');
 
-      await repository.resume('profile-1');
+        await repository.resume('profile-1');
 
-      expect(
-        (await repository.read('profile-1'))!.state,
-        PlainFolderProfileState.active,
-      );
-      final payloadAfter =
-          jsonDecode(
-                (await database.readSyncProfilePayload('profile-1'))!,
-              )
-              as Map<String, dynamic>;
-      expect(payloadAfter['state'], 'paused');
-    });
+        expect(
+          (await repository.read('profile-1'))!.state,
+          PlainFolderProfileState.active,
+        );
+        final payloadAfter =
+            jsonDecode((await database.readSyncProfilePayload('profile-1'))!)
+                as Map<String, dynamic>;
+        expect(payloadAfter['state'], 'paused');
+      },
+    );
 
     test('removes one location while keeping its durable payload', () async {
       await repository.save(_profile());
@@ -559,10 +572,7 @@ void main() {
 
       expect(await repository.read('profile-1'), isNull);
       expect(await repository.list(), isEmpty);
-      expect(
-        await database.readSyncProfilePayload('profile-1'),
-        isNotNull,
-      );
+      expect(await database.readSyncProfilePayload('profile-1'), isNotNull);
       await expectLater(repository.resume('profile-1'), throwsStateError);
     });
 
@@ -622,10 +632,7 @@ void main() {
         ),
         throwsStateError,
       );
-      expect(
-        (await repository.read('profile-1'))!.displayName,
-        'Second',
-      );
+      expect((await repository.read('profile-1'))!.displayName, 'Second');
     });
 
     test('rejects a running location', () async {
@@ -644,10 +651,7 @@ void main() {
         ),
         throwsStateError,
       );
-      expect(
-        (await repository.read('profile-1'))!.displayName,
-        'Photos',
-      );
+      expect((await repository.read('profile-1'))!.displayName, 'Photos');
     });
 
     test('rejects an edit for a missing location', () async {
@@ -678,128 +682,133 @@ void main() {
       );
     });
 
-    test('relocation moves the folder and drops the old mirror state at once',
-        () async {
-      final profile = _profile();
-      await repository.save(profile);
-      // A finished location: baseline rows, a conflict log and a run row.
-      await database.upsertMirrorEntries(profile.profileId, [
-        MirrorBaselineEntry(
-          relativePath: 'phone/photos/a.jpg',
-          kind: MirrorEntryKind.file,
-          localSize: 3,
-          remoteSize: 3,
-          syncedAt: DateTime.utc(2026, 9, 19, 9),
-        ),
-      ]);
-      await database.recordMirrorConflicts(
-        profile.profileId,
-        [
+    test(
+      'relocation moves the folder and drops the old mirror state at once',
+      () async {
+        final profile = _profile();
+        await repository.save(profile);
+        // A finished location: baseline rows, a conflict log and a run row.
+        await database.upsertMirrorEntries(profile.profileId, [
+          MirrorBaselineEntry(
+            relativePath: 'phone/photos/a.jpg',
+            kind: MirrorEntryKind.file,
+            localSize: 3,
+            remoteSize: 3,
+            syncedAt: DateTime.utc(2026, 9, 19, 9),
+          ),
+        ]);
+        await database.recordMirrorConflicts(profile.profileId, [
           MirrorPlannedConflict(
             relativePath: 'phone/photos/a.jpg',
             kind: MirrorConflictKind.bothModified,
             resolution: MirrorConflictResolution.keepBoth,
           ),
-        ],
-        detectedAt: DateTime.utc(2026, 9, 19, 9),
-      );
-      await database.saveMirrorRunStats(
-        MirrorRunStats(
-          runId: 'run-before',
-          profileId: profile.profileId,
-          startedAt: DateTime.utc(2026, 9, 19, 9),
-          uploadedFileCount: 1,
-        ),
-      );
-      final stored = (await repository.read(profile.profileId))!;
+        ], detectedAt: DateTime.utc(2026, 9, 19, 9));
+        await database.saveMirrorRunStats(
+          MirrorRunStats(
+            runId: 'run-before',
+            profileId: profile.profileId,
+            startedAt: DateTime.utc(2026, 9, 19, 9),
+            uploadedFileCount: 1,
+          ),
+        );
+        final stored = (await repository.read(profile.profileId))!;
 
-      final relocated = await repository.relocate(
-        stored,
-        (current) => current.copyWith(
-          localRootReference: '/Users/example/Pictures/New',
-          remoteRootSegments: const ['phone', 'new'],
-        ),
-      );
-
-      expect(relocated.localRootReference, '/Users/example/Pictures/New');
-      expect(relocated.remoteRootSegments, ['phone', 'new']);
-      // The stored payload is the new binding...
-      final reread = (await repository.read(profile.profileId))!;
-      expect(reread.localRootReference, '/Users/example/Pictures/New');
-      expect(reread.remoteRootSegments, ['phone', 'new']);
-      // ...and nothing of the old folders is left to plan deletions with.
-      expect(await database.readMirrorEntries(profile.profileId), isEmpty);
-      expect(await database.readMirrorConflicts(profile.profileId), isEmpty);
-      expect(await database.readLatestMirrorRunStats(profile.profileId), isNull);
-    });
-
-    test('relocation can keep the baseline when the folders did not move',
-        () async {
-      final profile = _profile();
-      await repository.save(profile);
-      await database.upsertMirrorEntries(profile.profileId, [
-        MirrorBaselineEntry(
-          relativePath: 'phone/photos/a.jpg',
-          kind: MirrorEntryKind.file,
-          syncedAt: DateTime.utc(2026, 9, 19, 9),
-        ),
-      ]);
-      final stored = (await repository.read(profile.profileId))!;
-
-      await repository.relocate(
-        stored,
-        (current) => current.copyWith(displayName: 'Photos (renamed)'),
-        resetBaseline: false,
-      );
-
-      expect(
-        (await database.readMirrorEntries(profile.profileId)).keys,
-        ['phone/photos/a.jpg'],
-      );
-      expect(
-        (await repository.read(profile.profileId))!.displayName,
-        'Photos (renamed)',
-      );
-    });
-
-    test('a refused remote probe leaves the location and its baseline alone',
-        () async {
-      final profile = _profile();
-      await repository.save(profile);
-      await database.upsertMirrorEntries(profile.profileId, [
-        MirrorBaselineEntry(
-          relativePath: 'phone/photos/a.jpg',
-          kind: MirrorEntryKind.file,
-          syncedAt: DateTime.utc(2026, 9, 19, 9),
-        ),
-      ]);
-      final stored = (await repository.read(profile.profileId))!;
-
-      await expectLater(
-        repository.relocate(
+        final relocated = await repository.relocate(
           stored,
-          (current) => current.copyWith(remoteRootSegments: const ['phone', 'x']),
-          confirmRemoteWrite: (_) async =>
-              throw const PlainFolderSyncException(
-                SyncFailure(
-                  errorCode: 'plain_folder.remote_folder_unwritable',
-                  category: SyncErrorCategory.permissionRequired,
-                  retryable: false,
-                  suggestedAction: '远端文件夹不存在或这个账号不能写入。',
-                ),
-              ),
-        ),
-        throwsA(isA<PlainFolderSyncException>()),
-      );
+          (current) => current.copyWith(
+            localRootReference: '/Users/example/Pictures/New',
+            remoteRootSegments: const ['phone', 'new'],
+          ),
+        );
 
-      final after = (await repository.read(profile.profileId))!;
-      expect(after.remoteRootSegments, ['phone', 'photos']);
-      expect(
-        await database.readMirrorEntries(profile.profileId),
-        hasLength(1),
-        reason: 'a refused relocation never drops the baseline',
-      );
-    });
+        expect(relocated.localRootReference, '/Users/example/Pictures/New');
+        expect(relocated.remoteRootSegments, ['phone', 'new']);
+        // The stored payload is the new binding...
+        final reread = (await repository.read(profile.profileId))!;
+        expect(reread.localRootReference, '/Users/example/Pictures/New');
+        expect(reread.remoteRootSegments, ['phone', 'new']);
+        // ...and nothing of the old folders is left to plan deletions with.
+        expect(await database.readMirrorEntries(profile.profileId), isEmpty);
+        expect(await database.readMirrorConflicts(profile.profileId), isEmpty);
+        expect(
+          await database.readLatestMirrorRunStats(profile.profileId),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'relocation can keep the baseline when the folders did not move',
+      () async {
+        final profile = _profile();
+        await repository.save(profile);
+        await database.upsertMirrorEntries(profile.profileId, [
+          MirrorBaselineEntry(
+            relativePath: 'phone/photos/a.jpg',
+            kind: MirrorEntryKind.file,
+            syncedAt: DateTime.utc(2026, 9, 19, 9),
+          ),
+        ]);
+        final stored = (await repository.read(profile.profileId))!;
+
+        await repository.relocate(
+          stored,
+          (current) => current.copyWith(displayName: 'Photos (renamed)'),
+          resetBaseline: false,
+        );
+
+        expect((await database.readMirrorEntries(profile.profileId)).keys, [
+          'phone/photos/a.jpg',
+        ]);
+        expect(
+          (await repository.read(profile.profileId))!.displayName,
+          'Photos (renamed)',
+        );
+      },
+    );
+
+    test(
+      'a refused remote probe leaves the location and its baseline alone',
+      () async {
+        final profile = _profile();
+        await repository.save(profile);
+        await database.upsertMirrorEntries(profile.profileId, [
+          MirrorBaselineEntry(
+            relativePath: 'phone/photos/a.jpg',
+            kind: MirrorEntryKind.file,
+            syncedAt: DateTime.utc(2026, 9, 19, 9),
+          ),
+        ]);
+        final stored = (await repository.read(profile.profileId))!;
+
+        await expectLater(
+          repository.relocate(
+            stored,
+            (current) =>
+                current.copyWith(remoteRootSegments: const ['phone', 'x']),
+            confirmRemoteWrite: (_) async =>
+                throw const PlainFolderSyncException(
+                  SyncFailure(
+                    errorCode: 'plain_folder.remote_folder_unwritable',
+                    category: SyncErrorCategory.permissionRequired,
+                    retryable: false,
+                    suggestedAction: '远端文件夹不存在或这个账号不能写入。',
+                  ),
+                ),
+          ),
+          throwsA(isA<PlainFolderSyncException>()),
+        );
+
+        final after = (await repository.read(profile.profileId))!;
+        expect(after.remoteRootSegments, ['phone', 'photos']);
+        expect(
+          await database.readMirrorEntries(profile.profileId),
+          hasLength(1),
+          reason: 'a refused relocation never drops the baseline',
+        );
+      },
+    );
 
     test('a stale relocation snapshot is refused', () async {
       final profile = _profile();
@@ -814,14 +823,15 @@ void main() {
       await expectLater(
         repository.relocate(
           stale,
-          (current) => current.copyWith(remoteRootSegments: const ['elsewhere']),
+          (current) =>
+              current.copyWith(remoteRootSegments: const ['elsewhere']),
         ),
         throwsStateError,
       );
-      expect(
-        (await repository.read(profile.profileId))!.remoteRootSegments,
-        ['phone', 'photos'],
-      );
+      expect((await repository.read(profile.profileId))!.remoteRootSegments, [
+        'phone',
+        'photos',
+      ]);
     });
 
     test('refuses to persist an unsafe remote scope', () async {
@@ -835,10 +845,10 @@ void main() {
         ),
         throwsFormatException,
       );
-      expect(
-        (await repository.read('profile-1'))!.remoteRootSegments,
-        ['phone', 'photos'],
-      );
+      expect((await repository.read('profile-1'))!.remoteRootSegments, [
+        'phone',
+        'photos',
+      ]);
     });
   });
 }

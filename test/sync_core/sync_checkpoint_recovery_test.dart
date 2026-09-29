@@ -92,6 +92,72 @@ void main() {
         expect(dataset.accepted, hasLength(1));
       },
     );
+
+    test(
+      'recovers a partless checkpoint when uncreated collections answer 404',
+      () async {
+        // WebDAV answers 404 for a collection that was never created. A Velock
+        // checkpoint has no parts collection at all, so recovery must not probe
+        // it: doing so used to skip every candidate and record
+        // `checkpoint-missing` on every garbage-collection pass.
+        final remote = InMemoryObjectStore(
+          answerNotFoundForMissingCollections: true,
+        );
+        await _putPartlessCheckpoint(remote, checkpointId: 'checkpoint-local');
+        final dataset = _PartlessCheckpointDataset();
+
+        final result = await const SyncCheckpointRecovery().recoverLatest(
+          vaultId: 'vault-1',
+          dataset: dataset,
+          remote: remote,
+        );
+
+        expect(result.didRecover, isTrue);
+        expect(result.checkpointId, 'checkpoint-local');
+        expect(dataset.accepted.single.parts, isEmpty);
+      },
+    );
+
+    test(
+      'skips a parts-carrying candidate whose parts collection is missing',
+      () async {
+        // The tolerance above is scoped to datasets that declare they ship no
+        // parts. A dataset that does ship them must keep failing closed when
+        // the collection is gone instead of accepting a truncated checkpoint.
+        final remote = InMemoryObjectStore(
+          answerNotFoundForMissingCollections: true,
+        );
+        await _putPartlessCheckpoint(remote, checkpointId: 'checkpoint-local');
+        final dataset = _CheckpointDataset();
+
+        final result = await const SyncCheckpointRecovery().recoverLatest(
+          vaultId: 'vault-1',
+          dataset: dataset,
+          remote: remote,
+        );
+
+        expect(result.checkpointId, isNull);
+        expect(result.consideredCheckpointCount, 1);
+        expect(dataset.accepted, isEmpty);
+      },
+    );
+
+    test('reports no checkpoint before the first one is published', () async {
+      final remote = InMemoryObjectStore(
+        answerNotFoundForMissingCollections: true,
+      );
+      final dataset = _PartlessCheckpointDataset();
+
+      final result = await const SyncCheckpointRecovery().recoverLatest(
+        vaultId: 'vault-1',
+        dataset: dataset,
+        remote: remote,
+      );
+
+      expect(result.checkpointId, isNull);
+      expect(result.consideredCheckpointCount, 0);
+      expect(dataset.accepted, isEmpty);
+    });
   });
 }
 
@@ -126,6 +192,17 @@ Future<void> _put(RemoteObjectStore remote, String key, List<int> value) =>
       ifAbsent: true,
     );
 
+Future<void> _putPartlessCheckpoint(
+  RemoteObjectStore remote, {
+  required String checkpointId,
+}) async {
+  const vaultId = 'vault-1';
+  await _put(remote, LogicalKeys.checkpointEnvelope(vaultId, checkpointId), [
+    4,
+  ]);
+  await _put(remote, LogicalKeys.checkpointCommit(vaultId, checkpointId), [6]);
+}
+
 class _CheckpointDataset implements CheckpointRecoveringDatasetAdapter {
   _CheckpointDataset({Set<String>? reject}) : _reject = reject ?? {};
 
@@ -144,3 +221,6 @@ class _CheckpointDataset implements CheckpointRecoveringDatasetAdapter {
           );
   }
 }
+
+class _PartlessCheckpointDataset extends _CheckpointDataset
+    implements CheckpointWithoutPartsDatasetAdapter {}

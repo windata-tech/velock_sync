@@ -94,7 +94,9 @@ class PlainFolderSyncProfile {
       'accessKind': accessKind.name,
       'localRootReference': localRootReference,
       'localDisplayName': localDisplayName,
-      'remoteRootSegments': canonicalPlainRemoteRootSegments(remoteRootSegments),
+      'remoteRootSegments': canonicalPlainRemoteRootSegments(
+        remoteRootSegments,
+      ),
       'direction': direction.name,
       'conflictPolicy': conflictPolicy.name,
       'initialSyncPolicy': initialSyncPolicy.name,
@@ -115,8 +117,8 @@ class PlainFolderSyncProfile {
       deviceId: envelope.deviceId,
       displayName: envelope.displayName,
       localRootReference: _requiredString(dataset, 'localRootReference'),
-      localDisplayName: _optionalString(dataset, 'localDisplayName') ??
-          envelope.displayName,
+      localDisplayName:
+          _optionalString(dataset, 'localDisplayName') ?? envelope.displayName,
       accessKind: _accessKind(dataset['accessKind']),
       connectionId: envelope.connectionId,
       remoteRootSegments: _remoteRootSegments(dataset),
@@ -186,7 +188,9 @@ class PlainFolderSyncProfile {
   static String remoteLocationLabel(
     String connectionName,
     List<String> segments,
-  ) => segments.isEmpty ? connectionName : '$connectionName · /${segments.join('/')}';
+  ) => segments.isEmpty
+      ? connectionName
+      : '$connectionName · /${segments.join('/')}';
 
   static String _requiredString(Map<String, Object?> value, String key) {
     final field = value[key];
@@ -245,7 +249,9 @@ class PlainFolderSyncProfile {
   static MirrorInitialSyncPolicy _initialSyncPolicy(Object? value) {
     if (value == null) return MirrorInitialSyncPolicy.merge;
     if (value is! String) {
-      throw const FormatException('Sync profile initial sync policy is invalid.');
+      throw const FormatException(
+        'Sync profile initial sync policy is invalid.',
+      );
     }
     return MirrorInitialSyncPolicy.values.firstWhere(
       (policy) => policy.name == value,
@@ -336,7 +342,9 @@ class PlainFolderSyncProfileRepository {
     if (current == null ||
         jsonEncode(current.toJson()) != jsonEncode(expected.toJson()) ||
         await _database.hasRunningSyncRun(expected.profileId)) {
-      throw StateError('Sync location changed or is running. Reopen and retry.');
+      throw StateError(
+        'Sync location changed or is running. Reopen and retry.',
+      );
     }
     final updated = change(current);
     await save(updated);
@@ -371,7 +379,9 @@ class PlainFolderSyncProfileRepository {
     if (current == null ||
         jsonEncode(current.toJson()) != jsonEncode(expected.toJson()) ||
         await _database.hasRunningSyncRun(expected.profileId)) {
-      throw StateError('Sync location changed or is running. Reopen and retry.');
+      throw StateError(
+        'Sync location changed or is running. Reopen and retry.',
+      );
     }
     final updated = change(current);
     // Still inside the lease and before the transaction: a failed probe leaves

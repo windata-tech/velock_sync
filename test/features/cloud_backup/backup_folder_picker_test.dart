@@ -1,8 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
@@ -20,38 +18,35 @@ void main() {
     bool restoring = false,
   }) async {
     await tester.pumpWidget(
-      PlatformProvider(
-        initialPlatform: TargetPlatform.iOS,
-        builder: (_) => MaterialApp(
-          locale: locale,
-          supportedLocales: const [Locale('zh'), Locale('en')],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          theme: ThemeData(platform: TargetPlatform.iOS),
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(textScale)),
-            child: child!,
-          ),
-          home: Builder(
-            builder: (context) => Scaffold(
-              body: TextButton(
-                onPressed: () async {
-                  final result = await Navigator.of(context).push<List<String>>(
-                    MaterialPageRoute(
-                      builder: (_) => BackupFolderPicker(
-                        connectionName: '我的 NAS',
-                        basePath: '/dav',
-                        loadFolders: load,
-                        createFolder: create,
-                        restoring: restoring,
-                      ),
+      MaterialApp(
+        locale: locale,
+        supportedLocales: const [Locale('zh'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                final result = await Navigator.of(context).push<List<String>>(
+                  MaterialPageRoute(
+                    builder: (_) => BackupFolderPicker(
+                      connectionName: '我的 NAS',
+                      basePath: '/dav',
+                      loadFolders: load,
+                      createFolder: create,
+                      restoring: restoring,
                     ),
-                  );
-                  onSelected?.call(result);
-                },
-                child: const Text('open'),
-              ),
+                  ),
+                );
+                onSelected?.call(result);
+              },
+              child: const Text('open'),
             ),
           ),
         ),
@@ -467,6 +462,11 @@ void main() {
           matching: find.byType(Scrollable),
         ),
       );
+      // Let the scrollable toolbar settle before tapping a wrapped action.
+      await tester.pumpAndSettle();
+      await Scrollable.ensureVisible(tester.element(newFolder), alignment: 0.5);
+      await tester.pumpAndSettle();
+      expect(newFolder.hitTestable(), findsOneWidget);
       await tester.tap(newFolder);
       await tester.pumpAndSettle();
       await tester.enterText(

@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_verification_record.dart';
 import 'dart:io';
 
 import 'package:velock_sync/dataset_adapters/velock_exchange/android_exchange_channel.dart';
@@ -40,7 +42,9 @@ class PlatformVelockDatasetAdapterFactory
     required AppleExchangeRootLocator appleRootLocator,
     VelockPairingControlChannel? pairingControl,
     VelockExchangePlatform Function()? platform,
-  }) : _discovery = discovery,
+    VelockSnapshotVerificationRecord? snapshotVerificationRecord,
+  }) : _snapshotVerificationRecord = snapshotVerificationRecord,
+       _discovery = discovery,
        _discoveryForCandidate = discoveryForCandidate,
        _androidExchange = androidExchange,
        _appleRootLocator = appleRootLocator,
@@ -58,6 +62,7 @@ class PlatformVelockDatasetAdapterFactory
   final AppleExchangeRootLocator _appleRootLocator;
   final VelockPairingControlChannel? _pairingControl;
   final VelockExchangePlatform Function() _platform;
+  final VelockSnapshotVerificationRecord? _snapshotVerificationRecord;
 
   @override
   Future<SyncDatasetAdapter> create(VelockSyncProfile profile) async {
@@ -117,6 +122,14 @@ class PlatformVelockDatasetAdapterFactory
           exchange: VelockExchangeStore(root),
           expectedProducerPublicKeyId: profile.pairedProducerPublicKeyId,
           expectedExchangeBindingId: profile.exchangeBindingId,
+          currentSnapshotId: profile.currentSnapshotId,
+          currentSnapshotProducerId: profile.currentSnapshotProducerId,
+          snapshotVerificationRecord: _snapshotVerificationRecord,
+          snapshotLocationScope: jsonEncode([
+            profile.profileId,
+            profile.connectionId,
+            ...profile.remoteRootSegments,
+          ]),
         );
       case VelockExchangePlatform.unsupported:
         throw const VelockDatasetAdapterUnavailableException(

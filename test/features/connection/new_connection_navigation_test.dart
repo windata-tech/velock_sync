@@ -1,6 +1,5 @@
-import 'package:flutter/cupertino.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/connection/ui/new_connection.dart';
@@ -13,9 +12,9 @@ void main() {
     (tester) async {
       await tester.pumpWidget(
         ProviderScope(
-          child: PlatformProvider(
-            initialPlatform: TargetPlatform.iOS,
-            builder: (context) => PlatformApp(home: const NewConnection()),
+          child: MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.iOS),
+            home: const NewConnection(),
           ),
         ),
       );
@@ -47,9 +46,9 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        child: PlatformProvider(
-          initialPlatform: TargetPlatform.iOS,
-          builder: (context) => PlatformApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          routerConfig: router,
         ),
       ),
     );

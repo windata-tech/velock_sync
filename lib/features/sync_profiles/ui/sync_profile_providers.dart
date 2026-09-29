@@ -2,6 +2,7 @@
 /// pages (home, wizard, detail, settings).
 library;
 
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_verification_record.dart';
 import 'dart:async';
 
 import 'dart:io';
@@ -387,6 +388,8 @@ class _ForegroundSyncProfileRunService implements SyncProfileRunService {
       profiles: _profiles,
       connections: connections,
       adapterFactory: PlatformVelockDatasetAdapterFactory(
+        snapshotVerificationRecord:
+            FileVelockSnapshotVerificationRecord.inSupportDirectory(),
         androidExchange: MethodChannelAndroidExchangeChannel(),
         appleRootLocator: AppleExchangeRootLocator(),
       ),

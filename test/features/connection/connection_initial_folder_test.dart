@@ -1,6 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
@@ -55,6 +53,7 @@ class FakeBrowser extends RemoteFileBrowser {
     path = value;
     state = AsyncData(listing(value));
   }
+
   @override
   Future<void> refresh() async {}
 }
@@ -72,14 +71,11 @@ Future<FakeBrowser> pumpBrowser(
           connectionModel: _connection,
         ).overrideWith(() => browser = FakeBrowser()),
       ],
-      child: PlatformProvider(
-        initialPlatform: TargetPlatform.iOS,
-        builder: (_) => MaterialApp(
-          locale: const Locale('zh'),
-          supportedLocales: const [Locale('zh'), Locale('en')],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          home: Connection('test', initialSegments: initialSegments),
-        ),
+      child: MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: const [Locale('zh'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: Connection('test', initialSegments: initialSegments),
       ),
     ),
   );

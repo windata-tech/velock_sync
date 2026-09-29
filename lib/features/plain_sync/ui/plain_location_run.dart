@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
@@ -90,11 +90,12 @@ Future<bool> reviewHeldDeletions(
   MirrorRunOutcome outcome,
 ) async {
   const maxListedPaths = 20;
-  final paths = held.actions
-      .map((action) => action.relativePath)
-      .where((path) => path.isNotEmpty)
-      .toList(growable: false)
-    ..sort();
+  final paths =
+      held.actions
+          .map((action) => action.relativePath)
+          .where((path) => path.isNotEmpty)
+          .toList(growable: false)
+        ..sort();
   final listed = paths.take(maxListedPaths).join('\n');
   final remaining = paths.length - maxListedPaths;
   final detail = remaining > 0
@@ -172,4 +173,3 @@ String plainRunResultMessage(BuildContext context, MirrorRunOutcome outcome) {
   ];
   return lines.join('\n');
 }
-

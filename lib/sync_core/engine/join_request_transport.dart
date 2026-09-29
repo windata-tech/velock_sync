@@ -20,8 +20,15 @@ class JoinRequestTransport {
   Directory get localRequests =>
       Directory('${exchangeRoot.path}/Control/JoinRequests');
 
+  /// Largest join request accepted from either side.
+  static const maxRequestBytes = 16 * 1024;
+
   /// Uploads every locally published join request. Failures are ignored so a
   /// malformed artifact can never break an unrelated sync run.
+  ///
+  /// The folder also holds copies downloaded from peers, so a request is only
+  /// uploaded when the remote has none or an older one: a stale copy must
+  /// never replace a request its device published again.
   Future<int> uploadLocal({
     required String vaultId,
     required RemoteObjectStore remote,
@@ -34,7 +41,15 @@ class JoinRequestTransport {
       if (deviceId == null) continue;
       try {
         final bytes = await entity.readAsBytes();
-        if (bytes.isEmpty) continue;
+        if (bytes.isEmpty || bytes.length > maxRequestBytes) continue;
+        if (!_looksLikeJoinRequest(bytes, deviceId)) continue;
+        final key = LogicalKeys.joinRequest(vaultId, deviceId);
+        final existing = await remote.stat(key);
+        if (existing != null) {
+          if (existing.size > maxRequestBytes) continue;
+          final remoteBytes = await _readAll(remote.read(key));
+          if (!_isNewer(bytes, than: remoteBytes)) continue;
+        }
         await remote.put(
           LogicalKeys.joinRequest(vaultId, deviceId),
           Stream.value(bytes),
@@ -64,11 +79,17 @@ class JoinRequestTransport {
         final deviceId = _deviceIdFromKey(key, prefix);
         if (deviceId == null) continue;
         try {
+          if (item.size > maxRequestBytes) continue;
           final bytes = await _readAll(remote.read(key));
-          if (bytes.isEmpty) continue;
+          if (bytes.isEmpty || bytes.length > maxRequestBytes) continue;
           // Only transport well-formed JSON with a matching device id; the
-          // signature itself is verified by the Velock app at approval time.
+          // signature and vault proof are verified by Velock at approval time.
           if (!_looksLikeJoinRequest(bytes, deviceId)) continue;
+          final local = File('${localRequests.path}/$deviceId.json');
+          if (await local.exists() &&
+              !_isNewer(bytes, than: await local.readAsBytes())) {
+            continue;
+          }
           await _writeAtomic(localRequests, deviceId, bytes);
           downloaded += 1;
         } on Object {
@@ -117,6 +138,26 @@ class JoinRequestTransport {
           decoded['vaultId'] is String;
     } on Object {
       return false;
+    }
+  }
+
+  /// Whether [candidate] was requested strictly later than [than]. An
+  /// unreadable existing copy is always replaced.
+  bool _isNewer(List<int> candidate, {required List<int> than}) {
+    final next = _requestedAt(candidate);
+    if (next == null) return false;
+    final current = _requestedAt(than);
+    return current == null || next.isAfter(current);
+  }
+
+  DateTime? _requestedAt(List<int> bytes) {
+    try {
+      final decoded = jsonDecode(utf8.decode(bytes, allowMalformed: false));
+      if (decoded is! Map<String, dynamic>) return null;
+      final value = decoded['requestedAt'];
+      return value is String ? DateTime.parse(value).toUtc() : null;
+    } on Object {
+      return null;
     }
   }
 

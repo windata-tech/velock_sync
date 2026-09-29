@@ -15,8 +15,7 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_providers.dart';
@@ -65,12 +64,15 @@ void main() {
       'Background sync',
       'Defaults for new profiles',
       'Deletion protection',
-      'Staging space',
       'Privacy & Diagnostics',
       'Version & Licenses',
     ]) {
       expect(seen, contains(header), reason: 'missing section: $header');
     }
+    // The staging card is gone: nothing writes app-private staging batches any
+    // more, so a permanent "0 B" card with a no-op button was only noise.
+    expect(seen, isNot(contains('Staging space')));
+    expect(seen, isNot(contains('Cleanup keeps recoverable batches')));
     for (final row in const [
       'Last cleanup',
       'Waiting for confirmation',

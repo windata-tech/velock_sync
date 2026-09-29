@@ -30,6 +30,31 @@ void main() {
     );
   }
 
+  test(
+    'eleven immutable snapshot objects create four parents only once',
+    () async {
+      const prefix = 'vaults/vault/current-snapshots/snapshot';
+      for (var i = 0; i < 11; i++) {
+        await create('$prefix/object-$i', [i]);
+      }
+      final parents = adapter.requests.where(
+        (r) => r.method == 'MKCOL' && r.uri.path.startsWith('/root/vaults'),
+      );
+      expect(parents, hasLength(4));
+      for (var i = 0; i < 11; i++) {
+        expect(adapter.files['/root/$prefix/object-$i'], [i]);
+      }
+      expect(
+        adapter.requests.where(
+          (r) =>
+              r.method == 'MOVE' &&
+              r.headers['Destination'].toString().contains('/vaults/'),
+        ),
+        hasLength(11),
+      );
+    },
+  );
+
   test('NAS ignoring If-None-Match cannot overwrite immutable bytes', () async {
     adapter.files['/root/object'] = [1, 2, 3];
     await expectLater(

@@ -7,10 +7,8 @@
 /// shared `showConnectionInfoSheet`, which never probes or writes anything.
 library;
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -63,17 +61,14 @@ ConnectionModel _oAuth() => ConnectionModel(
   status: ConnectionStatus.active,
 );
 
-Future<GoRouter> _mount(
-  WidgetTester tester,
-  ConnectionModel connection,
-) async {
+Future<GoRouter> _mount(WidgetTester tester, ConnectionModel connection) async {
   await tester.binding.setSurfaceSize(const Size(390, 844));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final container = ProviderContainer(
     overrides: [
-      state.connectionsProvider.overrideWith(() => _TestConnections([
-        connection,
-      ])),
+      state.connectionsProvider.overrideWith(
+        () => _TestConnections([connection]),
+      ),
     ],
   );
   addTearDown(container.dispose);
@@ -83,9 +78,8 @@ Future<GoRouter> _mount(
       GoRoute(
         name: 'newWebDav',
         path: '/protocol/webdav/new',
-        builder: (_, state) => Text(
-          'WebDAV 表单 replace=${state.uri.queryParameters['replace']}',
-        ),
+        builder: (_, state) =>
+            Text('WebDAV 表单 replace=${state.uri.queryParameters['replace']}'),
       ),
       GoRoute(
         name: 'newOAuth',
@@ -101,15 +95,12 @@ Future<GoRouter> _mount(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: PlatformProvider(
-        initialPlatform: TargetPlatform.iOS,
-        builder: (_) => MaterialApp.router(
-          locale: const Locale('zh'),
-          supportedLocales: const [Locale('zh'), Locale('en')],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          theme: ThemeData(platform: TargetPlatform.iOS),
-          routerConfig: router,
-        ),
+      child: MaterialApp.router(
+        locale: const Locale('zh'),
+        supportedLocales: const [Locale('zh'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        routerConfig: router,
       ),
     ),
   );
@@ -142,10 +133,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // The technical notes, with their non-probing disclaimer intact.
-    expect(
-      find.text('这些是连接方式的技术说明，不是当前服务器的检测结果。'),
-      findsOneWidget,
-    );
+    expect(find.text('这些是连接方式的技术说明，不是当前服务器的检测结果。'), findsOneWidget);
     expect(find.text('WebDAV'), findsOneWidget);
     expect(
       find.text(
@@ -154,25 +142,14 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      find.textContaining('不支持断点续传：大文件中断后要从头重新上传'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('密码存在系统安全存储里，不写进连接记录、备份或日志'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('浏览文件夹不需要设置这些项目。能否备份，以实际连接和备份检查为准。'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('不支持断点续传：大文件中断后要从头重新上传'), findsOneWidget);
+    expect(find.text('密码存在系统安全存储里，不写进连接记录、备份或日志'), findsOneWidget);
+    expect(find.text('浏览文件夹不需要设置这些项目。能否备份，以实际连接和备份检查为准。'), findsOneWidget);
     expect(find.text('关闭'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a WebDAV connection reopens its form prefilled', (
-    tester,
-  ) async {
+  testWidgets('a WebDAV connection reopens its form prefilled', (tester) async {
     await _mount(tester, _webDav());
     await _openEdit(tester);
 

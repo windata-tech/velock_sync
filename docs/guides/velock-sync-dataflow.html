@@ -1,0 +1,394 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>格间与 Sync 的数据交接</title>
+<meta name="description" content="按 velock_codex 与 velock_sync 的代码梳理：两个 App 之间怎样交接、加密、上传、恢复。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#f3f6f4; --surface:#ffffff; --surface-2:#e9efec; --ink:#15201b; --ink-2:#55635d; --line:#d3ddd8;
+  --vault:#177a4d; --vault-soft:#e2f1e9;
+  --sync:#2a55c8; --sync-soft:#e5ebfb;
+  --cloud:#56667c; --cloud-soft:#e7ebf1;
+  --shared:#76684e; --shared-soft:#f0ede6;
+  --seal:#a95c07; --seal-soft:#f8ead7;
+  --serif:"Noto Serif SC","Songti SC","STSong",serif;
+  --sans:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0e1311; --surface:#151c19; --surface-2:#1b2420; --ink:#e2eae6; --ink-2:#9dada6; --line:#2d3934;
+    --vault:#52c48e; --vault-soft:#142820;
+    --sync:#8aa5f7; --sync-soft:#172039;
+    --cloud:#a0adbf; --cloud-soft:#1b222c;
+    --shared:#c7b58f; --shared-soft:#221f18;
+    --seal:#e6a650; --seal-soft:#2c2112;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0e1311; --surface:#151c19; --surface-2:#1b2420; --ink:#e2eae6; --ink-2:#9dada6; --line:#2d3934;
+  --vault:#52c48e; --vault-soft:#142820;
+  --sync:#8aa5f7; --sync-soft:#172039;
+  --cloud:#a0adbf; --cloud-soft:#1b222c;
+  --shared:#c7b58f; --shared-soft:#221f18;
+  --seal:#e6a650; --seal-soft:#2c2112;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.75;padding-inline:20px}
+.wrap{max-width:1200px;margin:0 auto;padding-block:40px 80px;display:grid;grid-template-columns:190px minmax(0,1fr);gap:48px}
+nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 24px);align-self:start;font-size:13.5px;display:flex;flex-direction:column;gap:2px}
+nav.toc .tl{font-size:11.5px;letter-spacing:.12em;color:var(--ink-2);margin-bottom:6px}
+nav.toc a{color:var(--ink-2);text-decoration:none;padding:4px 10px;border-left:2px solid var(--line)}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--ink);border-left-color:var(--vault);outline:none}
+main{min-width:0;display:flex;flex-direction:column;gap:64px}
+header.hero{display:flex;flex-direction:column;gap:14px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--ink-2)}
+h1{font-family:var(--serif);font-size:clamp(30px,4.4vw,44px);line-height:1.2;margin:0;text-wrap:balance;letter-spacing:.01em}
+h1 .v{color:var(--vault)} h1 .s{color:var(--sync)}
+.lede{font-size:17.5px;max-width:40em;margin:0;color:var(--ink)}
+h2{font-family:var(--serif);font-size:25px;line-height:1.35;margin:0;text-wrap:balance}
+h2 small{display:block;font-family:var(--mono);font-size:12px;font-weight:400;color:var(--ink-2);letter-spacing:.04em;margin-bottom:4px}
+h3{font-size:15.5px;margin:0}
+section{display:flex;flex-direction:column;gap:18px;scroll-margin-top:24px}
+p{margin:0;max-width:44em}
+code,.m{font-family:var(--mono);font-size:.86em;background:var(--surface-2);padding:1px 5px;border-radius:4px;word-break:break-all}
+.rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.rule{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:6px}
+.rule b{font-size:15.5px}
+.rule span{font-size:14px;color:var(--ink-2);line-height:1.65}
+.rule.v b{color:var(--vault)} .rule.s b{color:var(--sync)} .rule.k b{color:var(--seal)}
+figure{margin:0;display:flex;flex-direction:column;gap:10px}
+.canvas{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;overflow-x:auto}
+.canvas svg{display:block;width:100%;height:auto;min-width:860px}
+figcaption{font-size:13.5px;color:var(--ink-2);max-width:62em;line-height:1.7}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
+.chips .lbl{color:var(--ink-2);margin-right:4px}
+.chips button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer;display:inline-flex;gap:7px;align-items:center}
+.chips button i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.chips button[aria-pressed="true"]{border-color:var(--ink);background:var(--surface-2)}
+.chips button:focus-visible{outline:2px solid var(--sync);outline-offset:2px}
+
+/* svg vocabulary */
+svg text{font-family:var(--sans)}
+svg .mono{font-family:var(--mono)}
+svg .t{fill:var(--ink)} svg .t2{fill:var(--ink-2)}
+svg .lblbg{fill:var(--surface)}
+svg .zone{stroke-width:1.2}
+.zone-a{fill:var(--vault-soft);stroke:var(--vault)}
+.zone-b{fill:var(--shared-soft);stroke:var(--shared);stroke-dasharray:6 4}
+.zone-c{fill:var(--sync-soft);stroke:var(--sync)}
+.zone-d{fill:var(--cloud-soft);stroke:var(--cloud)}
+svg .zt-a{fill:var(--vault)} svg .zt-b{fill:var(--shared)} svg .zt-c{fill:var(--sync)} svg .zt-d{fill:var(--cloud)}
+svg .hold{fill:var(--surface);stroke:var(--line)}
+svg .boundary{stroke:var(--vault);stroke-width:2;stroke-dasharray:2 5;stroke-linecap:round}
+svg .bandbg{fill:var(--surface);fill-opacity:.35;stroke:var(--line);stroke-dasharray:3 4}
+svg .bt-up{fill:var(--vault)} svg .bt-down{fill:var(--sync)} svg .bt-ctl{fill:var(--ink-2)} svg .bt-rec{fill:var(--seal)}
+svg .ovl{stroke-width:2.4;fill:none}
+.ovl-v{stroke:var(--vault)} .ovl-s,.ovl-c{stroke:var(--sync)} .ovl-n{stroke:var(--ink-2)} .ovl-k{stroke:var(--seal)}
+.dot-v{fill:var(--vault)} .dot-s{fill:var(--sync)} .dot-k{fill:var(--seal)}
+.mk-v{fill:var(--vault)} .mk-s,.mk-c{fill:var(--sync)} .mk-n{fill:var(--ink-2)} .mk-k{fill:var(--seal)} .mk-b{fill:var(--shared)} .mk-d{fill:var(--cloud)}
+svg .band{transition:opacity .2s}
+.ov[data-focus] .band{opacity:.16}
+.ov[data-focus="up"] .band[data-band="up"],.ov[data-focus="down"] .band[data-band="down"],
+.ov[data-focus="ctl"] .band[data-band="ctl"],.ov[data-focus="rec"] .band[data-band="rec"]{opacity:1}
+/* sequence */
+svg .life{stroke:var(--line);stroke-width:1.5;stroke-dasharray:4 4}
+svg .lh{stroke-width:1.2}
+.lh-n{fill:var(--surface-2);stroke:var(--line)} .lh-v{fill:var(--vault-soft);stroke:var(--vault)}
+.lh-b{fill:var(--shared-soft);stroke:var(--shared);stroke-dasharray:5 3} .lh-c{fill:var(--sync-soft);stroke:var(--sync)} .lh-d{fill:var(--cloud-soft);stroke:var(--cloud)}
+svg .ar{stroke-width:1.8}
+.ar-n{stroke:var(--ink-2)} .ar-v{stroke:var(--vault)} .ar-b{stroke:var(--shared)} .ar-c{stroke:var(--sync)} .ar-d{stroke:var(--cloud)}
+svg .num{stroke:none}
+.num-n{fill:var(--ink-2)} .num-v{fill:var(--vault)} .num-b{fill:var(--shared)} .num-c{fill:var(--sync)} .num-d{fill:var(--cloud)}
+svg .numt{fill:var(--surface)}
+svg .act{stroke:none;opacity:.5}
+.act-n{fill:var(--ink-2)} .act-v{fill:var(--vault)} .act-b{fill:var(--shared)} .act-c{fill:var(--sync)} .act-d{fill:var(--cloud)}
+svg .divider{stroke:var(--ink-2);stroke-dasharray:2 5;stroke-width:1.2}
+/* anatomy badges */
+.b-sig{fill:var(--vault-soft);stroke:var(--vault)} .b-sig-t{fill:var(--vault)}
+.b-enc{fill:var(--seal-soft);stroke:var(--seal)} .b-enc-t{fill:var(--seal)}
+.b-mark{fill:var(--surface-2);stroke:var(--line)} .b-mark-t{fill:var(--ink-2)}
+.b-sync{fill:var(--sync-soft);stroke:var(--sync)} .b-sync-t{fill:var(--sync)}
+
+/* triggers */
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.panel h3{display:flex;gap:8px;align-items:center}
+.panel h3 i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.panel ul{margin:0;padding-left:1.2em;font-size:14px;color:var(--ink-2);display:flex;flex-direction:column;gap:4px}
+.panel ul b{color:var(--ink);font-weight:600}
+
+/* restore stages */
+ol.stages{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;counter-reset:st}
+ol.stages li{counter-increment:st;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px 16px;display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:1.65}
+ol.stages li::before{content:counter(st);font-family:var(--mono);font-weight:600;font-size:13px;color:var(--ink-2)}
+ol.stages .who{align-self:flex-start;font-size:12px;font-weight:600;border-radius:999px;padding:1px 10px;border:1px solid}
+.who.v{color:var(--vault);border-color:var(--vault);background:var(--vault-soft)}
+.who.s{color:var(--sync);border-color:var(--sync);background:var(--sync-soft)}
+.who.x{color:var(--ink-2);border-color:var(--line);background:var(--surface-2)}
+ol.stages p{color:var(--ink-2)}
+
+/* matrix */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14px}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+thead th{font-size:12.5px;letter-spacing:.06em;color:var(--ink-2);font-weight:600;background:var(--surface-2)}
+thead th.a{color:var(--vault)} thead th.c{color:var(--sync)} thead th.d{color:var(--cloud)} thead th.b{color:var(--shared)}
+td:first-child{font-weight:600;white-space:nowrap}
+.y{color:var(--ink)} .no{color:var(--ink-2);opacity:.6}
+.ek{color:var(--seal)}
+
+/* states */
+.states{display:flex;flex-direction:column;gap:12px}
+.chain{display:grid;grid-template-columns:200px minmax(0,1fr);gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.chain .nm{font-size:13.5px;font-weight:600}
+.chain .nm small{display:block;font-weight:400;color:var(--ink-2);font-family:var(--mono);font-size:11.5px}
+.chain .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px}
+.st{font-family:var(--mono);font-size:12.5px;padding:2px 9px;border-radius:6px;background:var(--surface-2);border:1px solid var(--line)}
+.st.v{border-color:var(--vault);color:var(--vault)} .st.s{border-color:var(--sync);color:var(--sync)}
+.to{color:var(--ink-2)}
+.note{color:var(--ink-2);font-size:12.5px}
+
+/* findings */
+.finds{display:flex;flex-direction:column;gap:10px}
+.find{display:grid;grid-template-columns:78px minmax(0,1fr);gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.tag{align-self:start;justify-self:start;font-size:12px;font-weight:600;padding:2px 10px;border-radius:999px;white-space:nowrap}
+.tag.w{color:var(--seal);background:var(--seal-soft)}
+.tag.i{color:var(--sync);background:var(--sync-soft)}
+.tag.u{color:var(--cloud);background:var(--cloud-soft)}
+.find b{display:block;margin-bottom:2px}
+.find p{font-size:14px;color:var(--ink-2)}
+.refs{font-size:12.5px;color:var(--ink-2);columns:2;column-gap:32px}
+.refs div{break-inside:avoid;margin-bottom:4px}
+footer{font-size:13px;color:var(--ink-2);border-top:1px solid var(--line);padding-top:18px}
+
+@media (max-width:980px){
+  .wrap{grid-template-columns:minmax(0,1fr);gap:28px}
+  nav.toc{position:static;flex-direction:row;flex-wrap:wrap;gap:4px}
+  nav.toc .tl{width:100%}
+  nav.toc a{border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+  ol.stages{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  body{padding-inline:16px}
+  .rules,.two,ol.stages{grid-template-columns:minmax(0,1fr)}
+  .chain{grid-template-columns:minmax(0,1fr)}
+  .find{grid-template-columns:minmax(0,1fr)}
+  .refs{columns:1}
+  main{gap:48px}
+}
+@media (prefers-reduced-motion:reduce){svg .band{transition:none}}
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="目录">
+  <div class="tl">目录</div>
+  <a href="#overview">全景</a>
+  <a href="#backup">备份：一次写入</a>
+  <a href="#anatomy">一个批次</a>
+  <a href="#down">回流与 ACK</a>
+  <a href="#pair">配对授权</a>
+  <a href="#snapshot">新目录与换手机</a>
+  <a href="#custody">谁拿着什么</a>
+  <a href="#states">状态口径</a>
+  <a href="#findings">需要留意</a>
+  <a href="#refs">代码位置</a>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">velock_codex ⇄ velock_sync · 按 2026-09-28 的代码梳理</div>
+  <h1><span class="v">格间</span>与 <span class="s">Sync</span> 的数据交接</h1>
+  <p class="lede">格间把数据加密、签名后放进两个 App 共用的一个文件夹。Sync 从那里把密封好的包搬到 WebDAV，也把其他设备的包搬回同一个文件夹。解密、验签、写回业务数据都只发生在格间里。</p>
+  <div class="rules">
+    <div class="rule v"><b>明文和私钥不出格间</b><span>根密钥和设备签名私钥放在格间的系统安全存储里。共享文件夹、Sync 和云端只见得到密文、签名和公钥。</span></div>
+    <div class="rule s"><b>两个 App 只靠文件交接</b><span>iOS 上是 App Group <code>group.tech.windata.velock.sync.exchange</code> 下的 <code>SyncExchange/</code>。<code>velock://</code> 链接只负责打开格间的对应页面。</span></div>
+    <div class="rule k"><b>云端只增不改</b><span>每个对象都用 ifAbsent 写入，WebDAV 上是 <code>MOVE</code> 加 <code>Overwrite: F</code>。内容先传，<code>commit</code> 最后写；commit 出现之前，其他设备看不到这一批。</span></div>
+  </div>
+</header>
+
+<section id="overview">
+  <h2><small>OVERVIEW</small>四个区域，四条通道</h2>
+  <p>从左到右依次是格间、共享交接区、Sync 和云端。绿色虚线是明文边界：线的左边才有能打开数据的东西。每条通道用一种颜色，可以单独看其中一条。</p>
+  <figure>
+    <div class="chips" role="group" aria-label="突出显示通道">
+      <span class="lbl">只看：</span>
+      <button type="button" id="f-all" data-f="" aria-pressed="true">全部</button>
+      <button type="button" id="f-up" data-f="up" aria-pressed="false"><i style="background:var(--vault)"></i>上行 · 备份</button>
+      <button type="button" id="f-down" data-f="down" aria-pressed="false"><i style="background:var(--sync)"></i>下行 · 恢复</button>
+      <button type="button" id="f-ctl" data-f="ctl" aria-pressed="false"><i style="background:var(--ink-2)"></i>授权与控制</button>
+      <button type="button" id="f-rec" data-f="rec" aria-pressed="false"><i style="background:var(--seal)"></i>恢复文件</button>
+    </div>
+    <div class="canvas"><svg viewBox="0 0 1120 704" role="img" class="ov" id="ov" aria-label="格间、共享交接区、Sync、云端四个区域之间的四条数据通道：上行备份、下行恢复、授权控制、恢复文件"><defs><marker id="ov-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-v"/></marker><marker id="ov-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-s"/></marker><marker id="ov-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-c"/></marker><marker id="ov-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-n"/></marker><marker id="ov-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-k"/></marker><marker id="ov-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-b"/></marker><marker id="ov-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-d"/></marker></defs><rect x="24" y="14" width="250" height="676" rx="14" class="zone zone-a"/><text x="42.0" y="44.0" class="t zt-a" font-size="17" text-anchor="start" font-weight="700">格间</text><text x="42.0" y="64.0" class="t2" font-size="11.5" text-anchor="start">Velock 本体 · 整理并上锁</text><rect x="298" y="14" width="250" height="676" rx="14" class="zone zone-b"/><text x="316.0" y="44.0" class="t zt-b" font-size="17" text-anchor="start" font-weight="700">共享交接区</text><text x="316.0" y="64.0" class="t2 mono" font-size="11.5" text-anchor="start">App Group · SyncExchange/</text><rect x="572" y="14" width="230" height="676" rx="14" class="zone zone-c"/><text x="590.0" y="44.0" class="t zt-c" font-size="17" text-anchor="start" font-weight="700">Velock Sync</text><text x="590.0" y="64.0" class="t2" font-size="11.5" text-anchor="start">只搬运，不开锁</text><rect x="826" y="14" width="270" height="676" rx="14" class="zone zone-d"/><text x="844.0" y="44.0" class="t zt-d" font-size="17" text-anchor="start" font-weight="700">云端 WebDAV</text><text x="844.0" y="64.0" class="t2 mono" font-size="11.5" text-anchor="start">velock-sync/v1/&lt;vault&gt;/</text><rect x="36" y="80" width="226" height="120" rx="8" class="hold"/><text x="48.0" y="102.0" class="t" font-size="12" text-anchor="start">业务数据库（正文、原图，明文）</text><text x="48.0" y="123.0" class="t" font-size="12" text-anchor="start">保险库根密钥 · 设备签名私钥</text><text x="48.0" y="144.0" class="t" font-size="12" text-anchor="start">↳ 系统安全存储，不进共享区</text><rect x="310" y="80" width="226" height="120" rx="8" class="hold"/><text x="322.0" y="102.0" class="t mono" font-size="11" text-anchor="start">Outbox/  格间 → Sync 的批次</text><text x="322.0" y="123.0" class="t mono" font-size="11" text-anchor="start">Inbox/  Sync → 格间 的批次</text><text x="322.0" y="144.0" class="t mono" font-size="11" text-anchor="start">Control/  配对、快照、检查点</text><text x="322.0" y="165.0" class="t mono" font-size="11" text-anchor="start">Snapshots/ · Recovery/</text><rect x="584" y="80" width="206" height="120" rx="8" class="hold"/><text x="596.0" y="102.0" class="t" font-size="12" text-anchor="start">sync_state 库：进度、回执</text><text x="596.0" y="123.0" class="t" font-size="12" text-anchor="start">已固定的格间签名公钥</text><text x="596.0" y="144.0" class="t" font-size="12" text-anchor="start">WebDAV 账号密码</text><rect x="838" y="80" width="246" height="120" rx="8" class="hold"/><text x="850.0" y="102.0" class="t mono" font-size="11" text-anchor="start">devices/…/batches · commits</text><text x="850.0" y="123.0" class="t mono" font-size="11" text-anchor="start">blobs/ · acknowledgements/</text><text x="850.0" y="144.0" class="t mono" font-size="11" text-anchor="start">checkpoints/ · retention/ · gc/</text><text x="850.0" y="165.0" class="t mono" font-size="11" text-anchor="start">vaults/…/current-snapshots/</text><text x="850.0" y="186.0" class="t mono" font-size="11" text-anchor="start">velock-recovery-*.json</text><line x1="286" y1="14" x2="286" y2="690" class="boundary"/><rect x="259.0" y="672.5" width="54.0" height="16.5" rx="3" class="lblbg"/><text x="286.0" y="684.0" class="t zt-a" font-size="11.5" text-anchor="middle" font-weight="600">明文边界</text><g class="band" data-band="up"><rect x="18" y="212" width="1084" height="112" rx="10" class="bandbg"/><rect x="36.0" y="219.5" width="76.5" height="17.5" rx="3" class="lblbg"/><text x="40.0" y="232.0" class="t bt-up" font-size="12.5" text-anchor="start" font-weight="700">上行 · 备份</text><line x1="60" y1="268" x2="1078" y2="268" class="ovl ovl-v" marker-end="url(#ov-v)"/><circle cx="149.0" cy="268" r="5" class="dot-v"/><circle cx="423.0" cy="268" r="5" class="dot-v"/><circle cx="687.0" cy="268" r="5" class="dot-v"/><circle cx="961.0" cy="268" r="5" class="dot-v"/><rect x="228.2" y="244.0" width="115.5" height="17.0" rx="3" class="lblbg"/><text x="286.0" y="256.0" class="t" font-size="12" text-anchor="middle">加密 · 签名 · 写入</text><rect x="507.3" y="244.0" width="105.4" height="17.0" rx="3" class="lblbg"/><text x="560.0" y="256.0" class="t" font-size="12" text-anchor="middle">改名认领 Claimed</text><rect x="745.2" y="244.0" width="137.6" height="17.0" rx="3" class="lblbg"/><text x="814.0" y="256.0" class="t" font-size="12" text-anchor="middle">只增不改，commit 最后</text><rect x="84.7" y="276.5" width="128.5" height="16.5" rx="3" class="lblbg"/><text x="149.0" y="288.0" class="t2" font-size="11.5" text-anchor="middle">打包器（400ms 去抖）</text><rect x="347.7" y="276.5" width="150.6" height="16.5" rx="3" class="lblbg"/><text x="423.0" y="288.0" class="t2 mono" font-size="11.5" text-anchor="middle">Outbox/Ready/&lt;batch&gt;</text><rect x="660.0" y="276.5" width="54.0" height="16.5" rx="3" class="lblbg"/><text x="687.0" y="288.0" class="t2" font-size="11.5" text-anchor="middle">上传引擎</text><rect x="886.9" y="276.5" width="148.3" height="16.5" rx="3" class="lblbg"/><text x="961.0" y="288.0" class="t2 mono" font-size="11.5" text-anchor="middle">commit 出现 = 批次可见</text><line x1="680" y1="310" x2="170" y2="310" class="ovl ovl-v" stroke-dasharray="6 5" marker-end="url(#ov-v)"/><rect x="283.4" y="294.5" width="279.2" height="16.5" rx="3" class="lblbg"/><text x="423.0" y="306.0" class="t2" font-size="11.5" text-anchor="middle">Outbox/Receipts → change_log 记为 published</text></g><g class="band" data-band="down"><rect x="18" y="336" width="1084" height="110" rx="10" class="bandbg"/><rect x="36.0" y="343.5" width="148.2" height="17.5" rx="3" class="lblbg"/><text x="40.0" y="356.0" class="t bt-down" font-size="12.5" text-anchor="start" font-weight="700">下行 · 其他设备 / 恢复</text><line x1="1062" y1="386" x2="42" y2="386" class="ovl ovl-s" marker-end="url(#ov-s)"/><circle cx="149.0" cy="386" r="5" class="dot-s"/><circle cx="423.0" cy="386" r="5" class="dot-s"/><circle cx="687.0" cy="386" r="5" class="dot-s"/><circle cx="961.0" cy="386" r="5" class="dot-s"/><rect x="750.0" y="362.0" width="128.0" height="17.0" rx="3" class="lblbg"/><text x="814.0" y="374.0" class="t" font-size="12" text-anchor="middle">按序号下载、核对哈希</text><rect x="502.2" y="362.0" width="115.5" height="17.0" rx="3" class="lblbg"/><text x="560.0" y="374.0" class="t" font-size="12" text-anchor="middle">写入 Inbox/Ready</text><rect x="225.1" y="362.0" width="121.8" height="17.0" rx="3" class="lblbg"/><text x="286.0" y="374.0" class="t" font-size="12" text-anchor="middle">验签 → 解密 → 写库</text><rect x="899.7" y="394.5" width="122.5" height="16.5" rx="3" class="lblbg"/><text x="961.0" y="406.0" class="t2 mono" font-size="11.5" text-anchor="middle">其他设备的 commits</text><rect x="641.1" y="394.5" width="91.7" height="16.5" rx="3" class="lblbg"/><text x="687.0" y="406.0" class="t2" font-size="11.5" text-anchor="middle">状态 delivered</text><rect x="351.3" y="394.5" width="143.5" height="16.5" rx="3" class="lblbg"/><text x="423.0" y="406.0" class="t2 mono" font-size="11.5" text-anchor="middle">Inbox/Ready/&lt;batch&gt;</text><rect x="127.8" y="394.5" width="42.5" height="16.5" rx="3" class="lblbg"/><text x="149.0" y="406.0" class="t2" font-size="11.5" text-anchor="middle">导入器</text><line x1="170" y1="430" x2="950" y2="430" class="ovl ovl-s" stroke-dasharray="6 5" marker-end="url(#ov-s)"/><rect x="409.0" y="414.5" width="301.9" height="16.5" rx="3" class="lblbg"/><text x="560.0" y="426.0" class="t2" font-size="11.5" text-anchor="middle">签名 ACK → acknowledgements/（Sync 下一轮上传）</text></g><g class="band" data-band="ctl"><rect x="18" y="454" width="1084" height="108" rx="10" class="bandbg"/><rect x="36.0" y="461.5" width="70.5" height="17.5" rx="3" class="lblbg"/><text x="40.0" y="474.0" class="t bt-ctl" font-size="12.5" text-anchor="start" font-weight="700">授权与控制</text><line x1="680" y1="498" x2="160" y2="498" class="ovl ovl-n" stroke-dasharray="6 5" marker-end="url(#ov-n)"/><rect x="230.1" y="478.5" width="385.9" height="16.5" rx="3" class="lblbg"/><text x="423.0" y="490.0" class="t mono" font-size="11.5" text-anchor="middle">velock://sync-pairing · sync-snapshot · sync-settings</text><rect x="309.8" y="504.5" width="226.5" height="16.5" rx="3" class="lblbg"/><text x="423.0" y="516.0" class="t2" font-size="11.5" text-anchor="middle">只把格间带到对应页面，链接本身不带权限</text><line x1="680" y1="544" x2="436" y2="544" class="ovl ovl-c" marker-end="url(#ov-c)"/><line x1="160" y1="544" x2="410" y2="544" class="ovl ovl-v" marker-end="url(#ov-v)"/><rect x="499.9" y="527.0" width="120.2" height="16.0" rx="3" class="lblbg"/><text x="560.0" y="538.0" class="t2 mono" font-size="11" text-anchor="middle">Requests（5 分钟）</text><rect x="218.3" y="527.0" width="135.4" height="16.0" rx="3" class="lblbg"/><text x="286.0" y="538.0" class="t2 mono" font-size="11" text-anchor="middle">Responses（格间签名）</text></g><g class="band" data-band="rec"><rect x="18" y="576" width="1084" height="76" rx="10" class="bandbg"/><rect x="36.0" y="583.5" width="58.0" height="17.5" rx="3" class="lblbg"/><text x="40.0" y="596.0" class="t bt-rec" font-size="12.5" text-anchor="start" font-weight="700">恢复文件</text><line x1="60" y1="620" x2="1078" y2="620" class="ovl ovl-k" marker-end="url(#ov-k)"/><circle cx="149.0" cy="620" r="5" class="dot-k"/><circle cx="423.0" cy="620" r="5" class="dot-k"/><circle cx="687.0" cy="620" r="5" class="dot-k"/><circle cx="961.0" cy="620" r="5" class="dot-k"/><rect x="221.4" y="596.5" width="129.2" height="16.5" rx="3" class="lblbg"/><text x="286.0" y="608.0" class="t mono" font-size="11.5" text-anchor="middle">Recovery/Outgoing</text><rect x="499.1" y="596.0" width="121.8" height="17.0" rx="3" class="lblbg"/><text x="560.0" y="608.0" class="t" font-size="12" text-anchor="middle">读取（≤16KB 密文）</text><rect x="762.0" y="596.0" width="104.0" height="17.0" rx="3" class="lblbg"/><text x="814.0" y="608.0" class="t" font-size="12" text-anchor="middle">上传后逐字节回读</text><rect x="81.8" y="628.5" width="134.5" height="16.5" rx="3" class="lblbg"/><text x="149.0" y="640.0" class="t2" font-size="11.5" text-anchor="middle">根密钥，用账号密码加密</text><rect x="888.0" y="628.5" width="146.0" height="16.5" rx="3" class="lblbg"/><text x="961.0" y="640.0" class="t2" font-size="11.5" text-anchor="middle">换手机时只凭纸卡找回账号</text></g></svg></div>
+    <figcaption>实线是数据，虚线是回执、ACK 或唤起链接。Android 上没有共享文件夹：同样的 Outbox/Inbox 由格间的 ContentProvider 提供，需要签名级权限 <code>tech.windata.velock.permission.SYNC_EXCHANGE</code>。目前 Android 只有增量上行和下行；快照、检查点、历史连续性检查和恢复文件只在 Apple 端实现。</figcaption>
+  </figure>
+</section>
+
+<section id="backup">
+  <h2><small>UPSTREAM</small>备份：一次写入怎样到云端</h2>
+  <p>中间的虚线把过程分成两段。上半段只在格间里跑，写完 <code>READY</code> 就结束。下半段要等 Sync 运行。两段之间的交接物就是 <code>Outbox/Ready</code> 里的一个目录。</p>
+  <figure>
+    <div class="canvas"><svg viewBox="0 0 1100 858" role="img" aria-label="一次本机写入从格间到云端的完整时序" class="seq"><defs><marker id="up-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-v"/></marker><marker id="up-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-s"/></marker><marker id="up-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-c"/></marker><marker id="up-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-n"/></marker><marker id="up-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-k"/></marker><marker id="up-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-b"/></marker><marker id="up-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-d"/></marker></defs><rect x="59.0" y="16" width="74.0" height="54" rx="9" class="lh lh-n"/><text x="96.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">你</text><text x="96.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">操作格间</text><line x1="96.0" y1="72" x2="96.0" y2="850" class="life"/><rect x="217.2" y="16" width="120.7" height="54" rx="9" class="lh lh-v"/><text x="277.6" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">格间 · 业务库</text><text x="277.6" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">SQLite</text><line x1="277.6" y1="72" x2="277.6" y2="850" class="life"/><rect x="398.8" y="16" width="120.7" height="54" rx="9" class="lh lh-v"/><text x="459.2" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">格间 · 打包器</text><text x="459.2" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">exporter</text><line x1="459.2" y1="72" x2="459.2" y2="850" class="life"/><rect x="584.3" y="16" width="112.9" height="54" rx="9" class="lh lh-b"/><text x="640.8" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">共享交接区</text><text x="640.8" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">SyncExchange/</text><line x1="640.8" y1="72" x2="640.8" y2="850" class="life"/><rect x="785.4" y="16" width="74.0" height="54" rx="9" class="lh lh-c"/><text x="822.4" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">Sync</text><text x="822.4" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">上传引擎</text><line x1="822.4" y1="72" x2="822.4" y2="850" class="life"/><rect x="969.9" y="16" width="68.3" height="54" rx="9" class="lh lh-d"/><text x="1004.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">云端</text><text x="1004.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">WebDAV</text><line x1="1004.0" y1="72" x2="1004.0" y2="850" class="life"/><line x1="108.0" y1="112" x2="273.6" y2="112" class="ar ar-n" marker-end="url(#up-n)"/><rect x="110.0" y="91.5" width="232.5" height="17.5" rx="3" class="lblbg"/><text x="114.0" y="104.0" class="t" font-size="12.5" text-anchor="start">保存文件 / 照片 / 账号 / 卡 / 备注</text><circle cx="96.0" cy="112" r="10" class="num num-n"/><text x="96.0" y="116.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">1</text><rect x="272.6" y="146" width="10" height="40" rx="3" class="act act-v"/><circle cx="277.6" cy="158" r="10" class="num num-v"/><text x="277.6" y="162.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">2</text><rect x="291.6" y="149.5" width="199.0" height="17.5" rx="3" class="lblbg"/><text x="295.6" y="162.0" class="t" font-size="12.5" text-anchor="start">同一事务写业务表 + change_log</text><rect x="291.6" y="168.5" width="252.3" height="16.5" rx="3" class="lblbg"/><text x="295.6" y="180.0" class="t2" font-size="11.5" text-anchor="start">记录先加密（VLP1）· 版本向量 +1 · pending</text><line x1="289.6" y1="216" x2="455.2" y2="216" class="ar ar-v" marker-end="url(#up-v)"/><rect x="298.8" y="195.5" width="139.2" height="17.5" rx="3" class="lblbg"/><text x="368.4" y="208.0" class="t" font-size="12.5" text-anchor="middle">notifyLocalChange()</text><rect x="291.6" y="221.5" width="174.5" height="16.5" rx="3" class="lblbg"/><text x="295.6" y="233.0" class="t2" font-size="11.5" text-anchor="start">400ms 去抖，连续修改合成一次</text><circle cx="277.6" cy="216" r="10" class="num num-v"/><text x="277.6" y="220.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">3</text><rect x="454.2" y="262" width="10" height="40" rx="3" class="act act-v"/><circle cx="459.2" cy="274" r="10" class="num num-v"/><text x="459.2" y="278.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">4</text><rect x="473.2" y="265.5" width="267.5" height="17.5" rx="3" class="lblbg"/><text x="477.2" y="278.0" class="t" font-size="12.5" text-anchor="start">取 ≤500 条，预留 sequence = 上一批 + 1</text><rect x="473.2" y="284.5" width="320.3" height="16.5" rx="3" class="lblbg"/><text x="477.2" y="296.0" class="t2" font-size="11.5" text-anchor="start">AES-256-GCM 加密 operations · Ed25519 签 envelope</text><line x1="471.2" y1="332" x2="636.8" y2="332" class="ar ar-v" marker-end="url(#up-v)"/><rect x="473.2" y="311.5" width="245.2" height="17.5" rx="3" class="lblbg"/><text x="477.2" y="324.0" class="t" font-size="12.5" text-anchor="start">写 Outbox/Ready/&lt;batch&gt;.tmp → 改名</text><rect x="497.2" y="337.5" width="105.5" height="16.5" rx="3" class="lblbg"/><text x="550.0" y="349.0" class="t2" font-size="11.5" text-anchor="middle">READY 标记最后写</text><circle cx="459.2" cy="332" r="10" class="num num-v"/><text x="459.2" y="336.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">5</text><line x1="18" y1="398" x2="1082" y2="398" class="divider"/><rect x="343.3" y="390.0" width="413.4" height="17.0" rx="3" class="lblbg"/><text x="550.0" y="402.0" class="t2 divtxt" font-size="12" text-anchor="middle">等 Sync 运行：点「立即备份」/ 回到前台 / 网络恢复 / 后台周期任务</text><line x1="810.4" y1="434" x2="644.8" y2="434" class="ar ar-c" stroke-dasharray="5 4" marker-end="url(#up-c)"/><rect x="567.1" y="413.5" width="241.2" height="17.5" rx="3" class="lblbg"/><text x="804.4" y="426.0" class="t" font-size="12.5" text-anchor="end">Ready 改名为 Claimed + 租约 10 分钟</text><rect x="610.9" y="439.5" width="197.5" height="16.5" rx="3" class="lblbg"/><text x="804.4" y="451.0" class="t2" font-size="11.5" text-anchor="end">两个 Sync 进程不会同时拿到同一批</text><circle cx="822.4" cy="434" r="10" class="num num-c"/><text x="822.4" y="438.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">6</text><rect x="817.4" y="480" width="10" height="40" rx="3" class="act act-c"/><circle cx="822.4" cy="492" r="10" class="num num-c"/><text x="822.4" y="496.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">7</text><rect x="836.4" y="483.5" width="304.2" height="17.5" rx="3" class="lblbg"/><text x="840.4" y="496.0" class="t" font-size="12.5" text-anchor="start">核对 READY 哈希、设备身份、密文大小与 SHA-256</text><rect x="836.4" y="502.5" width="238.0" height="16.5" rx="3" class="lblbg"/><text x="840.4" y="514.0" class="t2" font-size="11.5" text-anchor="start">不解密，也不验签（签名留给接收方的格间）</text><line x1="834.4" y1="550" x2="1000.0" y2="550" class="ar ar-c" marker-end="url(#up-c)"/><rect x="836.4" y="529.5" width="318.0" height="17.5" rx="3" class="lblbg"/><text x="840.4" y="542.0" class="t" font-size="12.5" text-anchor="start">blobs → operations.enc → envelope → retention</text><rect x="836.4" y="555.5" width="203.0" height="16.5" rx="3" class="lblbg"/><text x="840.4" y="567.0" class="t2" font-size="11.5" text-anchor="start">每个都是 ifAbsent：已存在就不覆盖</text><circle cx="822.4" cy="550" r="10" class="num num-c"/><text x="822.4" y="554.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">8</text><line x1="834.4" y1="608" x2="1000.0" y2="608" class="ar ar-c" marker-end="url(#up-c)"/><rect x="836.4" y="587.5" width="201.2" height="17.5" rx="3" class="lblbg"/><text x="840.4" y="600.0" class="t" font-size="12.5" text-anchor="start">commits/&lt;seq&gt;-&lt;batch&gt;.commit</text><rect x="836.4" y="613.5" width="203.5" height="16.5" rx="3" class="lblbg"/><text x="840.4" y="625.0" class="t2" font-size="11.5" text-anchor="start">最后写；此刻其他设备才看得见这一批</text><circle cx="822.4" cy="608" r="10" class="num num-c"/><text x="822.4" y="612.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">9</text><rect x="817.4" y="654" width="10" height="40" rx="3" class="act act-c"/><circle cx="822.4" cy="666" r="10" class="num num-c"/><text x="822.4" y="670.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">10</text><rect x="836.4" y="657.5" width="195.0" height="17.5" rx="3" class="lblbg"/><text x="840.4" y="670.0" class="t" font-size="12.5" text-anchor="start">列 commits 名称，检查序号连续</text><rect x="836.4" y="676.5" width="249.5" height="16.5" rx="3" class="lblbg"/><text x="840.4" y="688.0" class="t2" font-size="11.5" text-anchor="start">缺号 → remote.velock_history_incomplete</text><line x1="810.4" y1="724" x2="644.8" y2="724" class="ar ar-c" stroke-dasharray="5 4" marker-end="url(#up-c)"/><rect x="603.9" y="703.5" width="204.5" height="17.5" rx="3" class="lblbg"/><text x="804.4" y="716.0" class="t" font-size="12.5" text-anchor="end">Outbox/Receipts/&lt;batch&gt;.json</text><rect x="604.4" y="729.5" width="204.0" height="16.5" rx="3" class="lblbg"/><text x="804.4" y="741.0" class="t2" font-size="11.5" text-anchor="end">status = published，删除 Claimed</text><circle cx="822.4" cy="724" r="10" class="num num-c"/><text x="822.4" y="728.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">11</text><line x1="628.8" y1="782" x2="463.2" y2="782" class="ar ar-b" stroke-dasharray="5 4" marker-end="url(#up-b)"/><rect x="496.0" y="761.5" width="108.0" height="17.5" rx="3" class="lblbg"/><text x="550.0" y="774.0" class="t" font-size="12.5" text-anchor="middle">下次导出前读回执</text><rect x="464.7" y="787.5" width="162.1" height="16.5" rx="3" class="lblbg"/><text x="622.8" y="799.0" class="t2" font-size="11.5" text-anchor="end">change_log 记为 published</text><circle cx="640.8" cy="782" r="10" class="num num-b"/><text x="640.8" y="786.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">12</text></svg></div>
+    <figcaption>序号就是执行顺序。第 8 步里 Sync 只核对哈希和身份，签名到接收方的格间才验证。第 10 步的 commit 由 Sync 自己写，里面记着 envelope 的 SHA-256，而 envelope 带格间签名；伪造的 commit 最多让一批数据“看得见但验不过”。</figcaption>
+  </figure>
+  <div class="two">
+    <div class="panel">
+      <h3><i style="background:var(--vault)"></i>格间什么时候打包</h3>
+      <ul>
+        <li><b>每次写入后</b>：通过 <code>recordNextLocalChange</code> 通知打包器，等 400ms，把连续修改合成一次。</li>
+        <li><b>退到后台时</b>：立刻 <code>flush</code>，不等去抖。</li>
+        <li><b>启动时</b>：先导入 Inbox，再导出一次。</li>
+        <li>格间要运行过才会打包。改完就杀掉 App，这批改动会等到下次打开。</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3><i style="background:var(--sync)"></i>Sync 什么时候搬运</h3>
+      <ul>
+        <li><b>手动</b>：点「立即备份」。</li>
+        <li><b>前台自动</b>：回到前台、网络恢复时，只跑开了自动同步的位置。</li>
+        <li><b>后台</b>：Workmanager 周期任务，间隔至少 15 分钟，实际由系统决定。</li>
+        <li>所有入口共用同一把位置锁，加上 profile 锁（租约 10 分钟），同一时间只跑一个。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="anatomy">
+  <h2><small>ANATOMY</small>一个批次里有什么</h2>
+  <p>在格间里改一张照片，云端不会只多一个文件，而是一组对象。下图左边是本机交接目录里的一批，右边是它们上传后的位置。圆圈里的数字是上传顺序。</p>
+  <figure>
+    <div class="canvas"><svg viewBox="0 0 1100 380" role="img" class="an" aria-label="一个批次在本机 Outbox 中的五个文件，与上传到云端后的五个位置及上传顺序"><defs><marker id="an-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-v"/></marker><marker id="an-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-s"/></marker><marker id="an-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-c"/></marker><marker id="an-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-n"/></marker><marker id="an-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-k"/></marker><marker id="an-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-b"/></marker><marker id="an-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-d"/></marker></defs><rect x="24" y="14" width="416" height="352" rx="12" class="zone zone-b"/><rect x="650" y="14" width="426" height="352" rx="12" class="zone zone-d"/><text x="42.0" y="42.0" class="t mono" font-size="13" text-anchor="start" font-weight="600">本机  Outbox/Ready/&lt;batchId&gt;/</text><text x="668.0" y="42.0" class="t mono" font-size="13" text-anchor="start" font-weight="600">云端  velock-sync/v1/&lt;vault&gt;/</text><text x="545.0" y="42.0" class="t2" font-size="12" text-anchor="middle">Sync 上传</text><rect x="36" y="74" width="392" height="48" rx="7" class="hold"/><text x="50.0" y="94.0" class="t mono" font-size="12.5" text-anchor="start" font-weight="600">envelope.json</text><rect x="156.8" y="82" width="33.0" height="16" rx="8" class="b-sig"/><text x="162.8" y="94.0" class="b-sig-t" font-size="10.5" text-anchor="start" font-weight="600">签名</text><text x="50.0" y="113.0" class="t2" font-size="11.5" text-anchor="start">格间 Ed25519 签名；含密文 SHA-256、上一批编号</text><rect x="36" y="132" width="392" height="48" rx="7" class="hold"/><text x="50.0" y="152.0" class="t mono" font-size="12.5" text-anchor="start" font-weight="600">operations.enc</text><rect x="164.5" y="140" width="33.0" height="16" rx="8" class="b-enc"/><text x="170.5" y="152.0" class="b-enc-t" font-size="10.5" text-anchor="start" font-weight="600">加密</text><text x="50.0" y="171.0" class="t2" font-size="11.5" text-anchor="start">AES-256-GCM 整批加密，内含逐条加密记录</text><rect x="36" y="190" width="392" height="48" rx="7" class="hold"/><text x="50.0" y="210.0" class="t mono" font-size="12.5" text-anchor="start" font-weight="600">blobs/&lt;id&gt;.blob</text><rect x="172.2" y="198" width="33.0" height="16" rx="8" class="b-enc"/><text x="178.2" y="210.0" class="b-enc-t" font-size="10.5" text-anchor="start" font-weight="600">加密</text><text x="50.0" y="229.0" class="t2" font-size="11.5" text-anchor="start">文件、原图：本机已加密的文件原样搬运</text><rect x="36" y="248" width="392" height="48" rx="7" class="hold"/><text x="50.0" y="268.0" class="t mono" font-size="12.5" text-anchor="start" font-weight="600">retention.json</text><rect x="164.5" y="256" width="33.0" height="16" rx="8" class="b-sig"/><text x="170.5" y="268.0" class="b-sig-t" font-size="10.5" text-anchor="start" font-weight="600">签名</text><text x="50.0" y="287.0" class="t2" font-size="11.5" text-anchor="start">批次含删除时才有；格间签名，保留 37 天</text><rect x="36" y="306" width="392" height="48" rx="7" class="hold"/><text x="50.0" y="326.0" class="t mono" font-size="12.5" text-anchor="start" font-weight="600">READY</text><rect x="94.8" y="314" width="33.0" height="16" rx="8" class="b-mark"/><text x="100.8" y="326.0" class="b-mark-t" font-size="10.5" text-anchor="start" font-weight="600">标记</text><text x="50.0" y="345.0" class="t2" font-size="11.5" text-anchor="start">最后写入；带 envelope 的 SHA-256，不上传</text><rect x="662" y="74" width="402" height="48" rx="7" class="hold"/><circle cx="680" cy="98" r="10" class="num num-c"/><text x="680.0" y="102.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">3</text><text x="698.0" y="94.0" class="t mono" font-size="11.5" text-anchor="start" font-weight="600">devices/&lt;dev&gt;/batches/&lt;seq&gt;/&lt;batch&gt;/envelope.json</text><text x="698.0" y="113.0" class="t2" font-size="11.5" text-anchor="start">原样上传</text><rect x="662" y="132" width="402" height="48" rx="7" class="hold"/><circle cx="680" cy="156" r="10" class="num num-c"/><text x="680.0" y="160.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">2</text><text x="698.0" y="152.0" class="t mono" font-size="11.5" text-anchor="start" font-weight="600">devices/&lt;dev&gt;/batches/&lt;seq&gt;/&lt;batch&gt;/operations.enc</text><text x="698.0" y="171.0" class="t2" font-size="11.5" text-anchor="start">原样上传</text><rect x="662" y="190" width="402" height="48" rx="7" class="hold"/><circle cx="680" cy="214" r="10" class="num num-c"/><text x="680.0" y="218.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">1</text><text x="698.0" y="210.0" class="t mono" font-size="11.5" text-anchor="start" font-weight="600">blobs/&lt;xx&gt;/&lt;blobId&gt;.blob</text><text x="698.0" y="229.0" class="t2" font-size="11.5" text-anchor="start">按 blobId 去重，已存在则跳过</text><rect x="662" y="248" width="402" height="48" rx="7" class="hold"/><circle cx="680" cy="272" r="10" class="num num-c"/><text x="680.0" y="276.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">4</text><text x="698.0" y="268.0" class="t mono" font-size="11.5" text-anchor="start" font-weight="600">retention/&lt;batchId&gt;.json</text><text x="698.0" y="287.0" class="t2" font-size="11.5" text-anchor="start">供清理判断保留期</text><rect x="662" y="306" width="402" height="48" rx="7" class="hold"/><circle cx="680" cy="330" r="10" class="num num-c"/><text x="680.0" y="334.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">5</text><text x="698.0" y="326.0" class="t mono" font-size="11.5" text-anchor="start" font-weight="600">devices/&lt;dev&gt;/commits/&lt;seq&gt;-&lt;batch&gt;.commit</text><text x="698.0" y="345.0" class="t2" font-size="11.5" text-anchor="start">Sync 生成、未签名；最后写，写完批次才可见</text><rect x="999.0" y="334" width="53.0" height="16" rx="8" class="b-sync"/><text x="1005.0" y="346.0" class="b-sync-t" font-size="10.5" text-anchor="start" font-weight="600">Sync 写</text><path d="M428,98 C510,98 580,98 664,98" class="ovl ovl-c" fill="none" marker-end="url(#an-c)"/><path d="M428,156 C510,156 580,156 664,156" class="ovl ovl-c" fill="none" marker-end="url(#an-c)"/><path d="M428,214 C510,214 580,214 664,214" class="ovl ovl-c" fill="none" marker-end="url(#an-c)"/><path d="M428,272 C510,272 580,272 664,272" class="ovl ovl-c" fill="none" marker-end="url(#an-c)"/><path d="M428,330 C510,330 580,330 664,330" class="ovl ovl-n" stroke-dasharray="5 4" fill="none" marker-end="url(#an-n)"/><rect x="518.0" y="310.5" width="54.0" height="16.5" rx="3" class="lblbg"/><text x="545.0" y="322.0" class="t2" font-size="11.5" text-anchor="middle">据此生成</text></svg></div>
+    <figcaption>一批最多 500 条记录、500 个 blob，operations 密文不超过 64 MiB。上传前会先写一次 <code>protocol.json</code>（同样是 ifAbsent）。增量批次上传后不回读；远端已有同名对象时，只比较大小一致就接受。</figcaption>
+  </figure>
+</section>
+
+<section id="down">
+  <h2><small>DOWNSTREAM</small>回流：别的设备的改动，和 ACK 怎样回到云端</h2>
+  <p>换手机恢复和多台设备同步都走这个方向。Sync 只校验传输层：序号连续、大小和哈希对得上。签名、解密、冲突判断都在格间做完，格间再签一个 ACK 交回来。云端的清理（GC）要看到所有活跃设备的 ACK 才会删东西。</p>
+  <figure>
+    <div class="canvas"><svg viewBox="0 0 1100 786" role="img" aria-label="另一台设备的批次如何回到本机格间，以及 ACK 如何回到云端" class="seq"><defs><marker id="dn-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-v"/></marker><marker id="dn-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-s"/></marker><marker id="dn-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-c"/></marker><marker id="dn-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-n"/></marker><marker id="dn-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-k"/></marker><marker id="dn-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-b"/></marker><marker id="dn-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-d"/></marker></defs><rect x="35.6" y="16" width="120.7" height="54" rx="9" class="lh lh-v"/><text x="96.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">格间 · 业务库</text><text x="96.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">SQLite</text><line x1="96.0" y1="72" x2="96.0" y2="778" class="life"/><rect x="262.6" y="16" width="120.7" height="54" rx="9" class="lh lh-v"/><text x="323.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">格间 · 导入器</text><text x="323.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">importer</text><line x1="323.0" y1="72" x2="323.0" y2="778" class="life"/><rect x="493.5" y="16" width="112.9" height="54" rx="9" class="lh lh-b"/><text x="550.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">共享交接区</text><text x="550.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">SyncExchange/</text><line x1="550.0" y1="72" x2="550.0" y2="778" class="life"/><rect x="740.0" y="16" width="74.0" height="54" rx="9" class="lh lh-c"/><text x="777.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">Sync</text><text x="777.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">下载引擎</text><line x1="777.0" y1="72" x2="777.0" y2="778" class="life"/><rect x="969.9" y="16" width="68.3" height="54" rx="9" class="lh lh-d"/><text x="1004.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">云端</text><text x="1004.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">WebDAV</text><line x1="1004.0" y1="72" x2="1004.0" y2="778" class="life"/><line x1="789.0" y1="112" x2="1000.0" y2="112" class="ar ar-c" marker-end="url(#dn-c)"/><rect x="815.4" y="91.5" width="150.2" height="17.5" rx="3" class="lblbg"/><text x="890.5" y="104.0" class="t" font-size="12.5" text-anchor="middle">列出可信设备的 commits</text><rect x="791.0" y="117.5" width="293.2" height="16.5" rx="3" class="lblbg"/><text x="795.0" y="129.0" class="t2" font-size="11.5" text-anchor="start">只认本地已固定的设备，按 sequence 递增，遇缺号停</text><circle cx="777.0" cy="112" r="10" class="num num-c"/><text x="777.0" y="116.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">1</text><line x1="992.0" y1="170" x2="781.0" y2="170" class="ar ar-d" stroke-dasharray="5 4" marker-end="url(#dn-d)"/><rect x="719.5" y="149.5" width="270.5" height="17.5" rx="3" class="lblbg"/><text x="986.0" y="162.0" class="t" font-size="12.5" text-anchor="end">commit → envelope → operations → blobs</text><rect x="753.6" y="175.5" width="236.4" height="16.5" rx="3" class="lblbg"/><text x="986.0" y="187.0" class="t2" font-size="11.5" text-anchor="end">逐级核对 SHA-256 与大小，blob 流式校验</text><circle cx="1004.0" cy="170" r="10" class="num num-d"/><text x="1004.0" y="174.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">2</text><line x1="765.0" y1="228" x2="554.0" y2="228" class="ar ar-c" marker-end="url(#dn-c)"/><rect x="504.5" y="207.5" width="258.5" height="17.5" rx="3" class="lblbg"/><text x="759.0" y="220.0" class="t" font-size="12.5" text-anchor="end">Inbox/Staging → Inbox/Ready/&lt;batch&gt;</text><rect x="551.9" y="233.5" width="211.1" height="16.5" rx="3" class="lblbg"/><text x="759.0" y="245.0" class="t2" font-size="11.5" text-anchor="end">READY 最后写；Sync 记为 delivered</text><circle cx="777.0" cy="228" r="10" class="num num-c"/><text x="777.0" y="232.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">3</text><line x1="18" y1="294" x2="1082" y2="294" class="divider"/><rect x="422.0" y="286.0" width="256.0" height="17.0" rx="3" class="lblbg"/><text x="550.0" y="298.0" class="t2 divtxt" font-size="12" text-anchor="middle">格间打开并解锁时（启动、账号页、文档页）</text><line x1="335.0" y1="330" x2="546.0" y2="330" class="ar ar-v" marker-end="url(#dn-v)"/><rect x="376.5" y="309.5" width="120.0" height="17.5" rx="3" class="lblbg"/><text x="436.5" y="322.0" class="t" font-size="12.5" text-anchor="middle">读取 Inbox/Ready</text><rect x="337.0" y="335.5" width="272.0" height="16.5" rx="3" class="lblbg"/><text x="341.0" y="347.0" class="t2" font-size="11.5" text-anchor="start">previous 必须接上本地游标；生产者须是可信成员</text><circle cx="323.0" cy="330" r="10" class="num num-v"/><text x="323.0" y="334.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">4</text><rect x="318.0" y="376" width="10" height="40" rx="3" class="act act-v"/><circle cx="323.0" cy="388" r="10" class="num num-v"/><text x="323.0" y="392.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">5</text><rect x="337.0" y="379.5" width="262.2" height="17.5" rx="3" class="lblbg"/><text x="341.0" y="392.0" class="t" font-size="12.5" text-anchor="start">核对哈希 → 验 Ed25519 签名 → 核对 blob</text><rect x="337.0" y="398.5" width="160.0" height="16.5" rx="3" class="lblbg"/><text x="341.0" y="410.0" class="t2" font-size="11.5" text-anchor="start">全部通过后才 AES-GCM 解密</text><line x1="311.0" y1="446" x2="100.0" y2="446" class="ar ar-v" marker-end="url(#dn-v)"/><rect x="92.8" y="425.5" width="216.2" height="17.5" rx="3" class="lblbg"/><text x="305.0" y="438.0" class="t" font-size="12.5" text-anchor="end">逐条应用，applied_operation 去重</text><rect x="97.0" y="451.5" width="212.0" height="16.5" rx="3" class="lblbg"/><text x="305.0" y="463.0" class="t2" font-size="11.5" text-anchor="end">版本向量并发 → 写入冲突表，等你处理</text><circle cx="323.0" cy="446" r="10" class="num num-v"/><text x="323.0" y="450.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">6</text><line x1="335.0" y1="504" x2="546.0" y2="504" class="ar ar-v" marker-end="url(#dn-v)"/><rect x="337.0" y="483.5" width="298.7" height="17.5" rx="3" class="lblbg"/><text x="341.0" y="496.0" class="t" font-size="12.5" text-anchor="start">ack/&lt;producer&gt;-&lt;seq&gt;.ack + Inbox/Receipts</text><rect x="350.2" y="509.5" width="172.7" height="16.5" rx="3" class="lblbg"/><text x="436.5" y="521.0" class="t2" font-size="11.5" text-anchor="middle">ACK 由格间签名；之后推进游标</text><circle cx="323.0" cy="504" r="10" class="num num-v"/><text x="323.0" y="508.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">7</text><line x1="18" y1="570" x2="1082" y2="570" class="divider"/><rect x="494.6" y="562.0" width="110.8" height="17.0" rx="3" class="lblbg"/><text x="550.0" y="574.0" class="t2 divtxt" font-size="12" text-anchor="middle">Sync 下一轮运行</text><line x1="765.0" y1="606" x2="554.0" y2="606" class="ar ar-c" stroke-dasharray="5 4" marker-end="url(#dn-c)"/><rect x="620.0" y="585.5" width="87.0" height="17.5" rx="3" class="lblbg"/><text x="663.5" y="598.0" class="t" font-size="12.5" text-anchor="middle">读回执与 ACK</text><circle cx="777.0" cy="606" r="10" class="num num-c"/><text x="777.0" y="610.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">8</text><line x1="789.0" y1="652" x2="1000.0" y2="652" class="ar ar-c" marker-end="url(#dn-c)"/><rect x="791.0" y="631.5" width="349.5" height="17.5" rx="3" class="lblbg"/><text x="795.0" y="644.0" class="t" font-size="12.5" text-anchor="start">acknowledgements/&lt;consumer&gt;/&lt;producer&gt;/&lt;seq&gt;.ack</text><rect x="791.0" y="657.5" width="223.3" height="16.5" rx="3" class="lblbg"/><text x="795.0" y="669.0" class="t2" font-size="11.5" text-anchor="start">ifAbsent；本机 appliedSequence 前进</text><circle cx="777.0" cy="652" r="10" class="num num-c"/><text x="777.0" y="656.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">9</text><rect x="999.0" y="698" width="10" height="40" rx="3" class="act act-d"/><circle cx="1004.0" cy="710" r="10" class="num num-d"/><text x="1004.0" y="714.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">10</text><rect x="803.0" y="701.5" width="187.0" height="17.5" rx="3" class="lblbg"/><text x="986.0" y="714.0" class="t" font-size="12.5" text-anchor="end">清理依据：所有活跃设备的 ACK</text><rect x="768.8" y="720.5" width="221.2" height="16.5" rx="3" class="lblbg"/><text x="986.0" y="732.0" class="t2" font-size="11.5" text-anchor="end">+ 检查点覆盖 + 30 天保留 + 7 天缓冲</text></svg></div>
+    <figcaption>这里的 ACK 要经过两轮：格间写进 <code>Inbox/Ready/&lt;batch&gt;/ack/</code>，Sync 下一轮才上传到云端。所以刚恢复完、没有再跑一次 Sync 的设备，在云端看起来仍是“未确认”。</figcaption>
+  </figure>
+</section>
+
+<section id="pair">
+  <h2><small>PAIRING</small>配对：Sync 凭什么能搬</h2>
+  <p>Sync 没有自己的签名密钥。它能工作，是因为在配对时固定了格间的签名公钥，之后用这把公钥验证格间写的一切控制文件。请求 5 分钟后过期，所以“格间已允许连接”这个状态有时效。</p>
+  <figure>
+    <div class="canvas"><svg viewBox="0 0 1000 570" role="img" aria-label="Sync 如何取得格间授权" class="seq"><defs><marker id="pr-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-v"/></marker><marker id="pr-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-s"/></marker><marker id="pr-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-c"/></marker><marker id="pr-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-n"/></marker><marker id="pr-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-k"/></marker><marker id="pr-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-b"/></marker><marker id="pr-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-d"/></marker></defs><rect x="74.0" y="16" width="44.0" height="54" rx="9" class="lh lh-n"/><text x="96.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">你</text><text x="96.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle"></text><line x1="96.0" y1="72" x2="96.0" y2="562" class="life"/><rect x="333.8" y="16" width="63.0" height="54" rx="9" class="lh lh-v"/><text x="365.3" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">格间</text><text x="365.3" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">解锁后</text><line x1="365.3" y1="72" x2="365.3" y2="562" class="life"/><rect x="584.7" y="16" width="100.0" height="54" rx="9" class="lh lh-b"/><text x="634.7" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">共享交接区</text><text x="634.7" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">Control/</text><line x1="634.7" y1="72" x2="634.7" y2="562" class="life"/><rect x="867.0" y="16" width="74.0" height="54" rx="9" class="lh lh-c"/><text x="904.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">Sync</text><text x="904.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">配对向导</text><line x1="904.0" y1="72" x2="904.0" y2="562" class="life"/><line x1="377.3" y1="112" x2="630.7" y2="112" class="ar ar-v" marker-end="url(#pr-v)"/><rect x="444.9" y="91.5" width="110.2" height="17.5" rx="3" class="lblbg"/><text x="500.0" y="104.0" class="t" font-size="12.5" text-anchor="middle">descriptor.json</text><rect x="379.3" y="117.5" width="284.9" height="16.5" rx="3" class="lblbg"/><text x="383.3" y="129.0" class="t2" font-size="11.5" text-anchor="start">格间签名公钥 + exchangeBindingId（开启时写好）</text><circle cx="365.3" cy="112" r="10" class="num num-v"/><text x="365.3" y="116.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">1</text><line x1="892.0" y1="170" x2="638.7" y2="170" class="ar ar-c" stroke-dasharray="5 4" marker-end="url(#pr-c)"/><rect x="703.3" y="149.5" width="132.0" height="17.5" rx="3" class="lblbg"/><text x="769.3" y="162.0" class="t" font-size="12.5" text-anchor="middle">Requests/&lt;id&gt;.json</text><rect x="688.1" y="175.5" width="162.6" height="16.5" rx="3" class="lblbg"/><text x="769.3" y="187.0" class="t2" font-size="11.5" text-anchor="middle">随机 challenge，5 分钟有效</text><circle cx="904.0" cy="170" r="10" class="num num-c"/><text x="904.0" y="174.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">2</text><line x1="892.0" y1="228" x2="369.3" y2="228" class="ar ar-c" stroke-dasharray="5 4" marker-end="url(#pr-c)"/><rect x="517.5" y="207.5" width="234.2" height="17.5" rx="3" class="lblbg"/><text x="634.7" y="220.0" class="t" font-size="12.5" text-anchor="middle">velock://sync-pairing?requestId=…</text><rect x="596.2" y="233.5" width="77.0" height="16.5" rx="3" class="lblbg"/><text x="634.7" y="245.0" class="t2" font-size="11.5" text-anchor="middle">只是唤起页面</text><circle cx="904.0" cy="228" r="10" class="num num-c"/><text x="904.0" y="232.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">3</text><line x1="108.0" y1="286" x2="361.3" y2="286" class="ar ar-n" marker-end="url(#pr-n)"/><rect x="176.7" y="265.5" width="108.0" height="17.5" rx="3" class="lblbg"/><text x="230.7" y="278.0" class="t" font-size="12.5" text-anchor="middle">解锁并点「允许」</text><circle cx="96.0" cy="286" r="10" class="num num-n"/><text x="96.0" y="290.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">4</text><line x1="377.3" y1="332" x2="630.7" y2="332" class="ar ar-v" marker-end="url(#pr-v)"/><rect x="390.1" y="311.5" width="219.7" height="17.5" rx="3" class="lblbg"/><text x="500.0" y="324.0" class="t" font-size="12.5" text-anchor="middle">Responses/&lt;id&gt;.json + Decisions</text><rect x="406.1" y="337.5" width="187.9" height="16.5" rx="3" class="lblbg"/><text x="500.0" y="349.0" class="t2" font-size="11.5" text-anchor="middle">Ed25519 签名；附可信生产者列表</text><circle cx="365.3" cy="332" r="10" class="num num-v"/><text x="365.3" y="336.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">5</text><rect x="899.0" y="378" width="10" height="40" rx="3" class="act act-c"/><circle cx="904.0" cy="390" r="10" class="num num-c"/><text x="904.0" y="394.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">6</text><rect x="587.5" y="381.5" width="302.5" height="17.5" rx="3" class="lblbg"/><text x="886.0" y="394.0" class="t" font-size="12.5" text-anchor="end">用 descriptor 公钥验签，核对 challenge 与期限</text><rect x="790.0" y="400.5" width="100.0" height="16.5" rx="3" class="lblbg"/><text x="886.0" y="412.0" class="t2" font-size="11.5" text-anchor="end">过期就要重新授权</text><line x1="892.0" y1="448" x2="638.7" y2="448" class="ar ar-c" stroke-dasharray="5 4" marker-end="url(#pr-c)"/><rect x="615.8" y="427.5" width="274.2" height="17.5" rx="3" class="lblbg"/><text x="886.0" y="440.0" class="t" font-size="12.5" text-anchor="end">Consumed/&lt;id&gt;，删除 Request / Response</text><circle cx="904.0" cy="448" r="10" class="num num-c"/><text x="904.0" y="452.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">7</text><rect x="899.0" y="482" width="10" height="40" rx="3" class="act act-c"/><circle cx="904.0" cy="494" r="10" class="num num-c"/><text x="904.0" y="498.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">8</text><rect x="702.2" y="485.5" width="187.8" height="17.5" rx="3" class="lblbg"/><text x="886.0" y="498.0" class="t" font-size="12.5" text-anchor="end">把格间公钥固定进 sync_state</text><rect x="660.3" y="504.5" width="229.7" height="16.5" rx="3" class="lblbg"/><text x="886.0" y="516.0" class="t2" font-size="11.5" text-anchor="end">此后每次运行前重查授权与 Revocations/</text></svg></div>
+    <figcaption>Sync 同时读取 <code>Control/Revocations/</code>，在格间里撤销授权，下一次运行就会停下来。多设备时，新设备在 <code>Control/JoinRequests/</code> 发起加入请求，Sync 把它转到云端 <code>join-requests/</code>，由已有设备的格间批准并签发 <code>JoinApprovals</code>。</figcaption>
+  </figure>
+</section>
+
+<section id="snapshot">
+  <h2><small>SNAPSHOT &amp; RESTORE</small>新目录重建，和换手机恢复</h2>
+  <p>原来的备份目录丢了，增量批次没法重做：旧包在回执后已经删除，重新加密会产生新的 nonce 和签名。所以另走一条“当前内容快照”的路。它只在 Apple 端实现，而且只能写进空目录。</p>
+  <figure>
+    <div class="canvas"><svg viewBox="0 0 1000 628" role="img" aria-label="在新的空目录建立完整备份（快照）的时序" class="seq"><defs><marker id="sn-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-v"/></marker><marker id="sn-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-s"/></marker><marker id="sn-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-c"/></marker><marker id="sn-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-n"/></marker><marker id="sn-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-k"/></marker><marker id="sn-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-b"/></marker><marker id="sn-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-d"/></marker></defs><rect x="59.0" y="16" width="74.0" height="54" rx="9" class="lh lh-v"/><text x="96.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">格间</text><text x="96.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">快照生成</text><line x1="96.0" y1="72" x2="96.0" y2="620" class="life"/><rect x="286.2" y="16" width="158.3" height="54" rx="9" class="lh lh-b"/><text x="365.3" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">共享交接区</text><text x="365.3" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">Control/ · Snapshots/</text><line x1="365.3" y1="72" x2="365.3" y2="620" class="life"/><rect x="597.7" y="16" width="74.0" height="54" rx="9" class="lh lh-c"/><text x="634.7" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">Sync</text><text x="634.7" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">重建服务</text><line x1="634.7" y1="72" x2="634.7" y2="620" class="life"/><rect x="861.5" y="16" width="85.0" height="54" rx="9" class="lh lh-d"/><text x="904.0" y="40.0" class="t" font-size="14" text-anchor="middle" font-weight="600">云端</text><text x="904.0" y="59.0" class="t2 mono" font-size="11" text-anchor="middle">新的空目录</text><line x1="904.0" y1="72" x2="904.0" y2="620" class="life"/><line x1="646.7" y1="112" x2="900.0" y2="112" class="ar ar-c" marker-end="url(#sn-c)"/><rect x="709.1" y="91.5" width="120.5" height="17.5" rx="3" class="lblbg"/><text x="769.3" y="104.0" class="t" font-size="12.5" text-anchor="middle">确认目标目录是空的</text><circle cx="634.7" cy="112" r="10" class="num num-c"/><text x="634.7" y="116.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">1</text><line x1="622.7" y1="158" x2="369.3" y2="158" class="ar ar-c" stroke-dasharray="5 4" marker-end="url(#sn-c)"/><rect x="421.5" y="137.5" width="157.0" height="17.5" rx="3" class="lblbg"/><text x="500.0" y="150.0" class="t" font-size="12.5" text-anchor="middle">SnapshotRequests/&lt;id&gt;</text><rect x="408.4" y="163.5" width="183.3" height="16.5" rx="3" class="lblbg"/><text x="500.0" y="175.0" class="t2" font-size="11.5" text-anchor="middle">operation = build，5 分钟有效</text><circle cx="634.7" cy="158" r="10" class="num num-c"/><text x="634.7" y="162.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">2</text><line x1="622.7" y1="216" x2="100.0" y2="216" class="ar ar-c" stroke-dasharray="5 4" marker-end="url(#sn-c)"/><rect x="241.3" y="195.5" width="248.0" height="17.5" rx="3" class="lblbg"/><text x="365.3" y="208.0" class="t" font-size="12.5" text-anchor="middle">velock://sync-snapshot?requestId=…</text><circle cx="634.7" cy="216" r="10" class="num num-c"/><text x="634.7" y="220.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">3</text><rect x="91.0" y="250" width="10" height="40" rx="3" class="act act-v"/><circle cx="96.0" cy="262" r="10" class="num num-v"/><text x="96.0" y="266.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">4</text><rect x="110.0" y="253.5" width="208.0" height="17.5" rx="3" class="lblbg"/><text x="114.0" y="266.0" class="t" font-size="12.5" text-anchor="start">你确认后，从真实业务表读当前内容</text><rect x="110.0" y="272.5" width="292.7" height="16.5" rx="3" class="lblbg"/><text x="114.0" y="284.0" class="t2" font-size="11.5" text-anchor="start">含删除墓碑；每 500 条一个加密 part，签 manifest</text><line x1="108.0" y1="320" x2="361.3" y2="320" class="ar ar-v" marker-end="url(#sn-v)"/><rect x="110.0" y="299.5" width="314.0" height="17.5" rx="3" class="lblbg"/><text x="114.0" y="312.0" class="t" font-size="12.5" text-anchor="start">Snapshots/Local/&lt;id&gt; + SnapshotReceipts/&lt;id&gt;</text><rect x="186.4" y="325.5" width="88.5" height="16.5" rx="3" class="lblbg"/><text x="230.7" y="337.0" class="t2" font-size="11.5" text-anchor="middle">回执由格间签名</text><circle cx="96.0" cy="320" r="10" class="num num-v"/><text x="96.0" y="324.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">5</text><rect x="629.7" y="366" width="10" height="40" rx="3" class="act act-c"/><circle cx="634.7" cy="378" r="10" class="num num-c"/><text x="634.7" y="382.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">6</text><rect x="648.7" y="369.5" width="152.2" height="17.5" rx="3" class="lblbg"/><text x="652.7" y="382.0" class="t" font-size="12.5" text-anchor="start">验回执与 manifest 签名</text><rect x="648.7" y="388.5" width="232.9" height="16.5" rx="3" class="lblbg"/><text x="652.7" y="400.0" class="t2" font-size="11.5" text-anchor="start">签名域 VelockCurrentStateSnapshot/2</text><line x1="646.7" y1="436" x2="900.0" y2="436" class="ar ar-c" marker-end="url(#sn-c)"/><rect x="651.0" y="415.5" width="236.8" height="17.5" rx="3" class="lblbg"/><text x="769.3" y="428.0" class="t" font-size="12.5" text-anchor="middle">velock-rebuild.json 占位 → 恢复文件</text><rect x="719.6" y="441.5" width="99.5" height="16.5" rx="3" class="lblbg"/><text x="769.3" y="453.0" class="t2" font-size="11.5" text-anchor="middle">ifAbsent 后回读</text><circle cx="634.7" cy="436" r="10" class="num num-c"/><text x="634.7" y="440.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">7</text><line x1="646.7" y1="494" x2="900.0" y2="494" class="ar ar-c" marker-end="url(#sn-c)"/><rect x="648.7" y="473.5" width="300.2" height="17.5" rx="3" class="lblbg"/><text x="652.7" y="486.0" class="t" font-size="12.5" text-anchor="start">parts · blobs → manifest.json → commit.json</text><rect x="651.5" y="499.5" width="235.7" height="16.5" rx="3" class="lblbg"/><text x="769.3" y="511.0" class="t2" font-size="11.5" text-anchor="middle">每个对象完整回读并核对哈希；commit 最后</text><circle cx="634.7" cy="494" r="10" class="num num-c"/><text x="634.7" y="498.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">8</text><rect x="629.7" y="540" width="10" height="40" rx="3" class="act act-c"/><circle cx="634.7" cy="552" r="10" class="num num-c"/><text x="634.7" y="556.0" class="numt" font-size="11" text-anchor="middle" font-weight="700">9</text><rect x="648.7" y="543.5" width="170.5" height="17.5" rx="3" class="lblbg"/><text x="652.7" y="556.0" class="t" font-size="12.5" text-anchor="start">配置未被改动才切换到新目录</text><rect x="648.7" y="562.5" width="169.0" height="16.5" rx="3" class="lblbg"/><text x="652.7" y="574.0" class="t2" font-size="11.5" text-anchor="start">同一事务写入「新备份已建立」</text></svg></div>
+    <figcaption>和增量批次不同，快照的每个对象都会完整回读并核对哈希。准备快照之后的新改动不在这次快照里，要等下一轮普通备份。</figcaption>
+  </figure>
+  <h3>换手机恢复的顺序</h3>
+  <ol class="stages">
+    <li><span class="who s">Sync</span><b>选原来的连接和目录</b><p>从云端根目录列出 <code>velock-recovery-*.json</code>，把挑中的写进 <code>Recovery/Incoming/selection.json</code>。这一步不需要格间授权。</p></li>
+    <li><span class="who v">格间</span><b>用纸卡找回账号</b><p>账号密码加 secretKey 经 PBKDF2（20 万次）解开恢复文件，得到根密钥。新设备生成新的设备 ID 和签名密钥，旧设备登记为可信生产者。</p></li>
+    <li><span class="who x">两边</span><b>重新配对</b><p>和上面「配对」一节相同。新设备同时发起加入请求。</p></li>
+    <li><span class="who s">Sync</span><b>找到并验证备份</b><p>快照用 <code>SnapshotTrust.json</code> 里的公钥验证后下载到 <code>Snapshots/Incoming/</code>；增量批次按「回流」一节下载。</p></li>
+    <li><span class="who v">格间</span><b>真正写回数据</b><p>先装删除墓碑，再逐条写内容，全部读回核对，然后在同一事务里写游标，最后签发 <code>SnapshotApplied</code> 回执。</p></li>
+    <li><span class="who s">Sync</span><b>确认完成</b><p>下一轮读到签名回执，才推进进度。只下载完成，不算恢复完成。</p></li>
+  </ol>
+</section>
+
+<section id="custody">
+  <h2><small>CUSTODY</small>谁拿着什么</h2>
+  <p>这张表回答一个问题：哪一方丢了、被偷了、被入侵了，会泄露什么。</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>东西</th><th class="a">格间</th><th class="b">共享交接区</th><th class="c">Sync</th><th class="d">云端</th></tr></thead>
+      <tbody>
+        <tr><td>业务明文（正文、原图）</td><td class="y">有</td><td class="no">无</td><td class="no">无</td><td class="no">无</td></tr>
+        <tr><td>保险库根密钥</td><td class="y">安全存储</td><td class="ek">密文，在 Recovery/Outgoing</td><td class="ek">只搬运这份密文</td><td class="ek">密文，velock-recovery-*.json</td></tr>
+        <tr><td>设备签名私钥</td><td class="y">安全存储</td><td class="no">无</td><td class="no">无</td><td class="no">无</td></tr>
+        <tr><td>格间签名公钥</td><td class="y">有</td><td class="y">descriptor · SnapshotTrust</td><td class="y">配对时固定</td><td class="no">无</td></tr>
+        <tr><td>账号密码 · secretKey</td><td class="y">只在你输入时</td><td class="no">无</td><td class="no">无</td><td class="no">无</td></tr>
+        <tr><td>WebDAV 账号密码</td><td class="no">无</td><td class="no">无</td><td class="y">系统安全存储</td><td class="y">服务端本身</td></tr>
+        <tr><td>加密批次 / 快照</td><td class="y">生成、应用</td><td class="ek">暂存</td><td class="ek">搬运，只核对哈希</td><td class="ek">长期保存</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">根密钥这一行值得多看一眼：它确实会以密文形式离开设备，落在云端。能否解开，完全取决于账号密码和 secretKey 的强度。</p>
+</section>
+
+<section id="states">
+  <h2><small>STATES</small>各自的状态口径</h2>
+  <p>两个 App 各记各的账，界面上的一句话对应的往往只是其中一条链上的一个点。</p>
+  <div class="states">
+    <div class="chain"><div class="nm">格间 · 本机改动<small>change_log.export_state</small></div>
+      <div class="row"><span class="st v">pending</span><span class="to">→</span><span class="st v">packaged</span><span class="to">→</span><span class="st v">published</span><span class="to">→</span><span class="st v">acknowledged</span></div></div>
+    <div class="chain"><div class="nm">交接区 · 待上传目录<small>Outbox/</small></div>
+      <div class="row"><span class="st">Ready</span><span class="to">→</span><span class="st s">Claimed</span><span class="note">租约 10 分钟，过期退回 Ready</span><span class="to">→</span><span class="st s">Receipts</span><span class="note">发布后删 Claimed</span></div></div>
+    <div class="chain"><div class="nm">Sync · 下行批次<small>sync_state</small></div>
+      <div class="row"><span class="st s">下载校验</span><span class="to">→</span><span class="st s">delivered</span><span class="to">→</span><span class="st v">格间 imported + ACK</span><span class="to">→</span><span class="st s">ACK 上云 · appliedSequence 前进</span></div></div>
+    <div class="chain"><div class="nm">格间 · 快照恢复<small>t_sync_snapshot_restore</small></div>
+      <div class="row"><span class="st v">applying</span><span class="to">→</span><span class="st v">completed</span><span class="to">→</span><span class="st v">SnapshotApplied 回执</span><span class="to">→</span><span class="st s">Sync 推进进度</span></div></div>
+  </div>
+  <p>所以 Sync 的「无需传输」只说明那一轮 <code>Outbox/Ready</code> 是空的，格间可能还没打包。「已完成」说明搬运结束，另一台设备是否已经写入，要看它的 ACK 或 SnapshotApplied。</p>
+</section>
+
+<section id="findings">
+  <h2><small>FINDINGS</small>读代码时看到、需要留意的几处</h2>
+  <p>下面的结论来自读代码，没有实际运行验证。标“未确认”的是两个仓库里都没找到对应逻辑，可能在我没读到的地方。</p>
+  <div class="finds">
+    <div class="find"><span class="tag i">设计取舍</span><div><b>Sync 从头到尾不验格间的签名</b><p>上传时只核对 READY 哈希、身份和密文 SHA-256；下载引擎的注释也写明签名和 AEAD 交给 adapter，Velock adapter 再交给格间。安全上没问题，因为 Sync 本来就不被信任。代价是坏批次要等接收方的格间打开时才被发现。<code>join_approval_applier.dart:44</code> 的注释说下载引擎会验签，和实际不符。</p></div></div>
+    <div class="find"><span class="tag w">留意</span><div><b>增量批次上传后没有回读</b><p>快照和恢复文件每个对象都逐字节回读；增量批次没有。远端已有同名对象时，<code>_putImmutable</code> 只比较大小（<code>sync_upload_engine.dart:226-236</code>），大小相同、内容损坏的残件会被当成已上传。</p></div></div>
+    <div class="find"><span class="tag u">未确认</span><div><b><code>Inbox/Ready</code> 的清理</b><p>Sync 写入、格间读取并写 ACK，但两边都没找到删除已导入目录的代码。如果确实没有，App Group 里的已导入批次（含 blob）会一直累积。</p></div></div>
+    <div class="find"><span class="tag w">留意</span><div><b>加入请求用普通 PUT 上传</b><p><code>JoinRequestTransport</code> 写 <code>join-requests/&lt;dev&gt;.json</code> 用的是覆盖写，不是 ifAbsent；拉回本机时只检查格式，真实性交给格间验签（<code>join_request_transport.dart:25-81</code>）。与“云端只增不改”的总规则不一致。</p></div></div>
+    <div class="find"><span class="tag i">设计取舍</span><div><b>Sync 用格间的公钥登记自己</b><p>格间的 <code>_enrollAuthorizedMember</code> 用格间自己的公钥登记 Sync 实例（<code>velock_pairing_activation_service.dart:299-337</code>）。Sync 云端 ACK 路径里的 consumer 段是 Sync 的 ID，而 GC 只认 ACK 内容里格间签名的 consumerDeviceId；这两者是否总是对应，我没核实。</p></div></div>
+    <div class="find"><span class="tag i">平台差异</span><div><b>Android 只有增量上下行</b><p>快照重建、检查点、历史连续性检查、恢复文件上传都只有 Apple 实现（<code>android_velock_exchange_dataset_adapter.dart:15-19</code>）。格间 Android 端也不写 <code>Recovery/Outgoing</code>。</p></div></div>
+  </div>
+</section>
+
+<section id="refs">
+  <h2><small>SOURCES</small>对应代码位置</h2>
+  <div class="refs">
+    <div><b>格间 · 记录改动</b><br><code>lib/sync/repository/sync_state_repository.dart:228</code></div>
+    <div><b>格间 · 打包器</b><br><code>lib/sync/bridge/sync_pending_change_packager.dart</code></div>
+    <div><b>格间 · 导出</b><br><code>lib/sync/bridge/sync_password_exchange_runtime.dart:409</code></div>
+    <div><b>格间 · 加密与签名</b><br><code>lib/sync/protocol/velock_sync_v1.dart</code></div>
+    <div><b>格间 · 写 Outbox</b><br><code>lib/sync/bridge/sync_exchange_store.dart:207</code></div>
+    <div><b>格间 · 导入</b><br><code>lib/sync/bridge/sync_exchange_importer.dart:31</code></div>
+    <div><b>格间 · 配对</b><br><code>lib/sync/bridge/velock_pairing_control_plane.dart</code></div>
+    <div><b>格间 · 快照恢复</b><br><code>lib/sync/repository/sync_current_snapshot_restore.dart:118</code></div>
+    <div><b>Sync · 交接区</b><br><code>lib/dataset_adapters/velock_exchange/velock_exchange_store.dart</code></div>
+    <div><b>Sync · 适配器</b><br><code>…/velock_exchange/velock_exchange_dataset_adapter.dart</code></div>
+    <div><b>Sync · 上传</b><br><code>lib/sync_core/engine/sync_upload_engine.dart:89</code></div>
+    <div><b>Sync · 下载</b><br><code>lib/sync_core/engine/sync_download_engine.dart:81</code></div>
+    <div><b>Sync · 远端路径</b><br><code>lib/sync_core/engine/logical_keys.dart</code></div>
+    <div><b>Sync · 历史连续性</b><br><code>…/velock_exchange/velock_remote_history_guard.dart</code></div>
+    <div><b>Sync · 快照传输</b><br><code>…/velock_exchange/velock_current_snapshot_transport.dart</code></div>
+    <div><b>Sync · 恢复文件</b><br><code>…/velock_exchange/velock_recovery_transport.dart</code></div>
+  </div>
+</section>
+
+<footer>通俗版说明见 <code>docs/guides/velock-sync-explained.md</code>。本页只描述格间专用备份；「文件同步」是明文镜像，不经过共享交接区。</footer>
+</main>
+</div>
+
+<script>
+(function(){
+  var svg=document.getElementById('ov');
+  var btns=document.querySelectorAll('.chips button');
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      var f=b.getAttribute('data-f');
+      if(f){svg.setAttribute('data-focus',f);}else{svg.removeAttribute('data-focus');}
+      btns.forEach(function(o){o.setAttribute('aria-pressed',o===b?'true':'false');});
+    });
+  });
+})();
+</script>

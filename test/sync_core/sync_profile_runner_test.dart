@@ -161,12 +161,46 @@ void main() {
       );
       final dataset = _GcDataset(candidateKey: candidateKey);
 
+      // Production default: a fully eligible plan is only counted. Deleting a
+      // Velock commit marker would break the remote history guard for good.
+      final counted =
+          await SyncProfileRunner(
+            database,
+            garbageCollector: SyncGarbageCollector(
+              now: () => DateTime.utc(2026, 7, 15),
+            ),
+          ).run(
+            profileId: 'profile-1',
+            vaultId: 'vault-1',
+            deviceId: 'consumer-1',
+            protocol: VaultProtocolDocument(
+              vaultId: 'vault-1',
+              createdAt: DateTime.utc(2026, 7, 15),
+            ),
+            dataset: dataset,
+            remote: remote,
+            enableGarbageCollection: true,
+          );
+      expect(counted.garbageCollection, isNull);
+      expect(await remote.stat(candidateKey), isNotNull);
+      final paused = await database.latestGarbageCollectionDiagnostics();
+      expect(paused!.state, 'skipped');
+      expect(paused.skipReason, 'deletion-paused');
+      expect(paused.eligibleCandidateCount, 1);
+      expect(paused.deletedObjectCount, 0);
+      expect(paused.planId, isNull);
+      expect(
+        (await remote.list(prefix: 'velock-sync/v1/vault-1/gc/')).items,
+        isEmpty,
+      );
+
       final result =
           await SyncProfileRunner(
             database,
             garbageCollector: SyncGarbageCollector(
               now: () => DateTime.utc(2026, 7, 15),
             ),
+            allowGarbageCollectionDeletion: true,
           ).run(
             profileId: 'profile-1',
             vaultId: 'vault-1',
@@ -303,6 +337,7 @@ void main() {
           garbageCollector: SyncGarbageCollector(
             now: () => DateTime.utc(2026, 7, 15),
           ),
+          allowGarbageCollectionDeletion: true,
         ).run(
           profileId: 'profile-1',
           vaultId: 'vault-1',
@@ -318,6 +353,87 @@ void main() {
     expect(withManifest.garbageCollection, isNotNull);
     expect(await remote.stat(candidateKey), isNull);
   });
+
+  test(
+    'collects garbage for a partless checkpoint on a single-device vault',
+    () async {
+      // Regression: the shipped Velock configuration. The producer publishes a
+      // checkpoint without `parts/`, no device ever published an
+      // acknowledgement, and the provider answers 404 for the collections that
+      // were never created. Recovery used to skip the only candidate, so every
+      // pass recorded `checkpoint-missing` and the retention chain never ran.
+      final database = await SyncStateDatabase.inMemory();
+      addTearDown(database.close);
+      final producer = await Ed25519().newKeyPair();
+      final producerPublic = await producer.extractPublicKey();
+      await database.trustDevice(
+        vaultId: 'vault-1',
+        deviceId: 'producer-1',
+        signingPublicKey: Uint8List.fromList(producerPublic.bytes),
+      );
+      final remote = InMemoryObjectStore(
+        answerNotFoundForMissingCollections: true,
+      );
+      final retentionManifestKey = LogicalKeys.retentionManifest(
+        'vault-1',
+        'trash-1',
+      );
+      await _putRetentionManifest(
+        remote,
+        trashBatchId: 'trash-1',
+        signingKey: producer,
+      );
+      final candidateKey = LogicalKeys.commit(
+        'vault-1',
+        'producer-1',
+        7,
+        'batch-7',
+      );
+      await remote.put(
+        candidateKey,
+        Stream.value(const [1]),
+        contentLength: 1,
+        ifAbsent: true,
+      );
+      final dataset = _PartlessPublishingGcDataset(
+        candidateKey: candidateKey,
+        retentionManifestKey: retentionManifestKey,
+      );
+
+      final result =
+          await SyncProfileRunner(
+            database,
+            garbageCollector: SyncGarbageCollector(
+              now: () => DateTime.utc(2026, 7, 15),
+            ),
+            allowGarbageCollectionDeletion: true,
+          ).run(
+            profileId: 'profile-1',
+            vaultId: 'vault-1',
+            deviceId: 'consumer-1',
+            protocol: VaultProtocolDocument(
+              vaultId: 'vault-1',
+              createdAt: DateTime.utc(2026, 7, 15),
+            ),
+            dataset: dataset,
+            remote: remote,
+            enableGarbageCollection: true,
+          );
+
+      expect(result.checkpointRecovery!.checkpointId, 'checkpoint-local');
+      expect(result.garbageCollection, isNotNull);
+      expect(result.garbageCollection!.deletedObjectCount, 1);
+      expect(await remote.stat(candidateKey), isNull);
+      final diagnostics = await database.latestGarbageCollectionDiagnostics();
+      expect(diagnostics, isNotNull);
+      expect(diagnostics!.state, 'completed');
+      expect(diagnostics.skipReason, isNull);
+      expect(diagnostics.checkpointId, 'checkpoint-local');
+      expect(diagnostics.activeDeviceCount, 1);
+      expect(diagnostics.unackedDeviceCount, 0);
+      expect(diagnostics.eligibleCandidateCount, 1);
+    },
+  );
 
   test(
     'fails before remote access when the dataset authorization is unavailable',
@@ -710,6 +826,31 @@ class _PublishingCheckpointDataset extends _IdleDataset
       coveredSequences: {'producer-1': 7},
     );
   }
+}
+
+/// Publishes a partless checkpoint *and* offers one GC candidate, which is what
+/// a paired Velock device actually does.
+class _PartlessPublishingGcDataset extends _GcDataset
+    implements
+        CheckpointPreparingDatasetAdapter,
+        CheckpointWithoutPartsDatasetAdapter {
+  _PartlessPublishingGcDataset({
+    required super.candidateKey,
+    super.retentionManifestKey,
+  });
+
+  @override
+  Future<PreparedCheckpoint?> prepareCheckpoint() async => PreparedCheckpoint(
+    vaultId: 'vault-1',
+    checkpointId: 'checkpoint-local',
+    envelope: ImmutableArtifact.fromBytes(
+      Uint8List.fromList(utf8.encode('{"checkpoint":"local"}')),
+    ),
+    parts: const [],
+    commit: ImmutableArtifact.fromBytes(
+      Uint8List.fromList(utf8.encode('{"checkpointId":"checkpoint-local"}')),
+    ),
+  );
 }
 
 Future<void> _publishIncomingFixture(

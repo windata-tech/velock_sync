@@ -1,14 +1,17 @@
+import 'package:velock_sync/features/cloud_backup/application/velock_snapshot_providers.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_home.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
+import 'package:velock_sync/features/cloud_backup/application/backup_destination_service.dart';
+import 'package:velock_sync/sync_core/engine/logical_keys.dart';
+import 'package:velock_sync/sync_core/testing/in_memory_object_store.dart';
 import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -126,7 +129,24 @@ void main() {
     bool directly = false,
     bool home = false,
     bool settle = true,
+    bool missingBackup = false,
+    BackupFolderCreator? createFolder,
   }) async {
+    final remote = InMemoryObjectStore(
+      answerNotFoundForMissingCollections: true,
+    );
+    if (!missingBackup) {
+      await remote.put(
+        LogicalKeys.commit(
+          _profile.vaultId,
+          VelockSyncProfile.fromEnvelope(_profile).pairedProducerId,
+          1,
+          'fixture',
+        ),
+        Stream.value([1]),
+        contentLength: 1,
+      );
+    }
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -152,6 +172,15 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          velockBackupRebuildServiceProvider.overrideWith((ref) async => throw StateError('No draft in this navigation fixture')),
+          if (createFolder != null)
+            backupFolderCreatorProvider.overrideWithValue(createFolder),
+          backupDestinationServiceProvider.overrideWithValue(
+            BackupDestinationService(
+              open: (_) async => remote,
+              openScoped: (_, _) async => remote,
+            ),
+          ),
           syncStateDatabaseProvider.overrideWithValue(db),
           syncProfileRepositoryProvider.overrideWithValue(repository),
           syncProfileRunServiceProvider.overrideWithValue(runner),
@@ -167,9 +196,7 @@ void main() {
           locale: Locale(locale),
           supportedLocales: const [Locale('zh'), Locale('en')],
           localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
+            ...GlobalMaterialLocalizations.delegates,
           ],
           theme: ThemeData(
             platform: TargetPlatform.iOS,
@@ -213,6 +240,65 @@ void main() {
     return router;
   }
 
+  testWidgets(
+    'manage relocation can create a folder on the right without saving or syncing',
+    (tester) async {
+      final created = <String>[];
+      await mount(
+        tester,
+        createFolder:
+            ({
+              required protocol,
+              required relativeSegments,
+              required name,
+            }) async {
+              created.add([...relativeSegments, name].join('/'));
+            },
+      );
+      await tester.tap(find.text('管理'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('manage-change-location')));
+      await tester.pumpAndSettle();
+      expect(find.text('选择备份文件夹'), findsOneWidget);
+      expect(find.text('找到原备份文件夹'), findsNothing);
+      expect(find.text('新建文件夹'), findsOneWidget);
+      expect(
+        tester.getCenter(find.text('新建文件夹')).dx,
+        greaterThan(tester.getCenter(find.text('上一级')).dx),
+      );
+      await tester.tap(find.text('新建文件夹'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('new-backup-folder-name')),
+        '新的备份',
+      );
+      await tester.pump();
+      await tester.tap(find.text('创建并进入'));
+      await tester.pumpAndSettle();
+      expect(created, ['共享给我/new folder/新的备份']);
+      expect(find.text('/base/backup/共享给我/new folder/新的备份'), findsOneWidget);
+      expect(
+        VelockSyncProfile.fromEnvelope(
+          (await repository.read('p'))!,
+        ).remoteRootSegments,
+        ['共享给我', 'new folder'],
+      );
+      expect(runner.calls, 0);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('finding original history remains read only', (tester) async {
+    await mount(tester, directly: true);
+    await tester.tap(find.byKey(const Key('backup-history-browse-location')));
+    await tester.pumpAndSettle();
+    expect(find.text('找到原备份文件夹'), findsOneWidget);
+    expect(find.text('新建文件夹'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   for (final home in [false, true]) {
     for (final outcome in ['completed', 'failed']) {
       testWidgets(
@@ -249,9 +335,7 @@ void main() {
             expect(tester.widget<BackupActionButton>(primary).busy, isFalse);
             expect(find.byType(CircularProgressIndicator), findsNothing);
             expect(
-              find.text(
-                outcome == 'completed' ? '上次备份已完成' : '有一件事需要你处理',
-              ),
+              find.text(outcome == 'completed' ? '上次备份已完成' : '有一件事需要你处理'),
               findsOneWidget,
             );
             expect((await db.latestSyncRun('p'))!.state, outcome);
@@ -390,10 +474,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('use-backup-folder')));
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('backup-location-confirm')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('backup-location-confirm')), findsOneWidget);
       expect((await repository.read('p'))!.toJson(), _profile.toJson());
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
@@ -401,6 +482,48 @@ void main() {
       expect(runner.calls, 0);
     },
   );
+
+  for (final home in [true, false]) {
+    testWidgets(
+      'saved location offers check without clearing failed history (home: $home)',
+      (tester) async {
+        await repository.selectOriginalVelockFolder(
+          expected: _profile,
+          segments: ['original'],
+        );
+        await mount(tester, home: home);
+        expect(find.text('保存位置已更改'), findsOneWidget);
+        expect(find.text('检查并备份'), findsOneWidget);
+        expect(find.text('云端备份不完整'), findsNothing);
+        expect(
+          (await db.latestSyncRun('p'))!.errorCode,
+          'remote.velock_history_incomplete',
+        );
+        await tester.tap(find.byKey(const Key('backup-primary-action')));
+        await tester.pumpAndSettle();
+        expect(runner.calls, 1);
+        expect(find.byKey(const Key('backup-history-help')), findsNothing);
+      },
+    );
+  }
+
+  testWidgets('unrelated folder is rejected before confirmation and save', (
+    tester,
+  ) async {
+    await mount(tester, directly: true, missingBackup: true);
+    final before = (await repository.read('p'))!.toJson();
+    await tester.tap(find.byKey(const Key('backup-history-browse-location')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('backup-folder-up')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('use-backup-folder')));
+    await tester.pumpAndSettle();
+    expect(find.text('这里没有找到原备份'), findsOneWidget);
+    expect(find.byKey(const Key('backup-location-confirm')), findsNothing);
+    expect(find.text('备份位置已更新'), findsNothing);
+    expect((await repository.read('p'))!.toJson(), before);
+    expect(runner.calls, 0);
+  });
 
   testWidgets(
     'confirming folder saves only location; backup requires a separate explicit action',
@@ -492,7 +615,14 @@ void main() {
         'remote.velock_history_incomplete',
       );
 
-      await tester.tap(find.byKey(const Key('backup-primary-action')));
+      expect(find.text('保存位置已更改'), findsOneWidget);
+      expect(find.text('检查并备份'), findsOneWidget);
+      expect(find.text('云端备份不完整'), findsNothing);
+      final saved = (await repository.read('p'))!;
+      showBackupHistoryHelp(
+        tester.element(find.byType(SyncProfileDetail)),
+        saved,
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('backup-history-browse-location')));
       await tester.pumpAndSettle();
@@ -508,7 +638,7 @@ void main() {
   );
 
   testWidgets(
-    'missing original explains unsupported rebuild and never offers reset',
+    'missing original opens explicit rebuild flow without changing the profile',
     (tester) async {
       await mount(tester, directly: true);
       await tester.scrollUntilVisible(
@@ -525,11 +655,10 @@ void main() {
         find.byKey(const Key('backup-history-missing-original')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('先保留本机数据和旧备份'), findsOneWidget);
-      expect(find.textContaining('当前版本还不能'), findsOneWidget);
-      await tester.tap(find.text('知道了'));
-      await tester.pumpAndSettle();
-      expect(find.text('先保留本机数据和旧备份'), findsNothing);
+      expect(find.text('原备份丢失后，仍可重新备份'), findsOneWidget);
+      expect(find.text('选择新文件夹'), findsOneWidget);
+      expect(find.textContaining('只存在于已丢失云端的数据'), findsOneWidget);
+      expect((await repository.read('p'))!.toJson(), _profile.toJson());
       expect((await db.latestSyncRun('p'))!.state, 'failed');
       expect(runner.calls, 0);
     },
@@ -568,7 +697,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          locale == 'zh' ? '先保留本机数据和旧备份' : 'Keep local data and any old backup',
+          locale == 'zh' ? '原备份丢失后，仍可重新备份' : 'Create a backup when the original is lost',
         ),
         findsOneWidget,
       );

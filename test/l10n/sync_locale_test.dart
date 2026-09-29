@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,11 +23,7 @@ import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dar
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/app_format.dart';
 
-const _delegates = [
-  GlobalMaterialLocalizations.delegate,
-  GlobalWidgetsLocalizations.delegate,
-  GlobalCupertinoLocalizations.delegate,
-];
+const _delegates = [...GlobalMaterialLocalizations.delegates];
 const _locales = [Locale('zh', 'CN'), Locale('en')];
 
 class _LanguageHost extends ConsumerWidget {
@@ -355,7 +350,8 @@ void main() {
 class _InlineProgressHost extends ConsumerStatefulWidget {
   const _InlineProgressHost();
   @override
-  ConsumerState<_InlineProgressHost> createState() => _InlineProgressHostState();
+  ConsumerState<_InlineProgressHost> createState() =>
+      _InlineProgressHostState();
 }
 
 class _InlineProgressHostState extends ConsumerState<_InlineProgressHost> {

@@ -1,6 +1,8 @@
 /// Sync profile envelope persistence and lifecycle state transitions.
 library;
 
+import 'dart:convert';
+
 import 'package:sqlite3/sqlite3.dart';
 
 import 'package:velock_sync/infrastructure/database/sync_state_records.dart';
@@ -31,6 +33,73 @@ final class ProfileQueries {
         DateTime.now().toUtc().millisecondsSinceEpoch,
       ],
     );
+  }
+
+  /// Compare-and-swap only. A removed/stale profile cannot be resurrected by a
+  /// late upload completion, including a change from another process.
+  Future<bool> replaceSyncProfilePayloadIfCurrent({
+    BackupRebuildCompletion? rebuild,
+    required String profileId,
+    required String expectedPayload,
+    required String datasetId,
+    required String targetId,
+    required String vaultId,
+    required String state,
+    required String payload,
+  }) async {
+    db.execute('BEGIN IMMEDIATE');
+    try {
+      final rows = db.select(
+        'SELECT state, payload_json FROM sync_profiles WHERE profile_id = ?',
+        [profileId],
+      );
+      if (rows.length != 1 || rows.single['state'] != 'active') {
+        db.execute('ROLLBACK');
+        return false;
+      }
+      final previous = rows.single['payload_json']! as String;
+      final decoded = jsonDecode(previous) as Map<String, dynamic>;
+      decoded['state'] = rows.single['state'];
+      if (jsonEncode(_orderedJson(decoded)) !=
+          jsonEncode(_orderedJson(jsonDecode(expectedPayload)))) {
+        db.execute('ROLLBACK');
+        return false;
+      }
+      db.execute(
+        'UPDATE sync_profiles SET dataset_id = ?, target_id = ?, vault_id = ?, state = ?, payload_json = ?, updated_at = ? '
+        'WHERE profile_id = ? AND state = ? AND payload_json = ?',
+        [
+          datasetId,
+          targetId,
+          vaultId,
+          state,
+          payload,
+          DateTime.now().toUtc().millisecondsSinceEpoch,
+          profileId,
+          'active',
+          previous,
+        ],
+      );
+      final changed = db.updatedRows == 1;
+      if (changed && rebuild != null) {
+        db.execute(
+          'INSERT INTO sync_runs (run_id, profile_id, state, started_at, completed_at, rebuild_json) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(run_id) DO NOTHING',
+          [
+            rebuild.runId,
+            profileId,
+            'completed',
+            rebuild.startedAt.toUtc().millisecondsSinceEpoch,
+            rebuild.completedAt.toUtc().millisecondsSinceEpoch,
+            rebuild.encode(),
+          ],
+        );
+      }
+      db.execute('COMMIT');
+      return changed;
+    } catch (_) {
+      db.execute('ROLLBACK');
+      rethrow;
+    }
   }
 
   /// Atomically consumes a hash of a pairing challenge.
@@ -133,4 +202,13 @@ final class ProfileQueries {
     );
     return rows.map((row) => row['payload_json']! as String).toList();
   }
+}
+
+Object? _orderedJson(Object? value) {
+  if (value is Map<String, dynamic>) {
+    final keys = value.keys.toList()..sort();
+    return {for (final key in keys) key: _orderedJson(value[key])};
+  }
+  if (value is List) return value.map(_orderedJson).toList();
+  return value;
 }

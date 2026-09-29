@@ -6,8 +6,8 @@ import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:async';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -316,7 +316,15 @@ Future<SyncProfileDispatchResult?> runSyncWithProgress(
   BuildContext context,
   WidgetRef ref,
   String profileId,
-) => ref.read(syncProfileRunServiceProvider).runNow(profileId);
+) async {
+  try {
+    return await ref.read(syncProfileRunServiceProvider).runNow(profileId);
+  } finally {
+    // Setup and rebuild can run while the home tab remains mounted beneath
+    // another page. Refresh its cached summary after the durable run result.
+    if (context.mounted) ref.read(profilesRevisionProvider.notifier).bump();
+  }
+}
 
 Future<bool> confirmSyncProfileRemoval(
   BuildContext context,
@@ -398,9 +406,33 @@ Future<void> presentSyncFailureAlert({
   Key? okKey,
 }) async {
   final failure = SyncFailureClassifier.classify(error);
+  if (failure.errorCode == 'local.velock_snapshot_application_required') {
+    // Not a failure: the backup is downloaded and Velock applies it next.
+    // Offer the way there instead of a dead-end "OK".
+    final open = await showAdaptiveConfirmation(
+      context,
+      title: _optionalSyncText(
+        context,
+        '请到格间完成恢复',
+        'Finish restoring in Velock',
+      ),
+      message: _syncFailureAlertMessage(failure, context: context),
+      confirmLabel: _optionalSyncText(context, '打开格间', 'Open Velock'),
+      cancelLabel: _optionalSyncText(context, '稍后', 'Later'),
+    );
+    if (open && context.mounted) {
+      await launchUrl(
+        Uri.parse('velock://sync-settings'),
+        mode: LaunchMode.externalApplication,
+      );
+    }
+    return;
+  }
   await showAdaptiveAlert<void>(
     context: context,
-    title: _optionalSyncText(context, '同步失败', "Sync failed"),
+    title: failure.errorCode == 'local.velock_snapshot_application_required'
+        ? _optionalSyncText(context, '请到格间完成恢复', 'Finish restoring in Velock')
+        : _optionalSyncText(context, '同步失败', "Sync failed"),
     message: _syncFailureAlertMessage(failure, context: context),
     barrierDismissible: false,
     actions: [
@@ -445,8 +477,10 @@ Future<void> _offerOpenVelock(BuildContext context, int pending) async {
     cancelLabel: _optionalSyncText(context, '稍后', "Later"),
   );
   if (!shouldOpen || !context.mounted) return;
+  // velock://sync-settings opens Velock's cloud backup page, where the
+  // restore is confirmed; velock://open only woke whatever page was last open.
   final launched = await launchUrl(
-    Uri.parse('velock://open'),
+    Uri.parse('velock://sync-settings'),
     mode: LaunchMode.externalApplication,
   );
   if (!launched && context.mounted) {
@@ -566,6 +600,7 @@ Future<void> showRunDetails(
   SyncRunRecord run, {
   List<TransferJobRecord> history = const [],
 }) {
+  final rebuild = run.rebuild;
   final transferred = runWindowTransfers(run, history);
   // "上传对象 0 个" must never sit under a status that claims a transfer.
   final conclusion = syncRunConclusionLabel(
@@ -661,32 +696,63 @@ Future<void> showRunDetails(
             AppFormat.errorSummary(run.errorCode, context: context),
           ),
         ),
-      AppDetailSheetRow(
-        label: _optionalSyncText(context, '上传对象', "Uploaded objects"),
-        value: _optionalSyncText(
-          context,
-          '${uploaded.length} 个 · ${AppFormat.bytes(bytesOf(uploaded))}',
-          "${uploaded.length} objects · ${AppFormat.bytes(bytesOf(uploaded))}",
+      if (rebuild != null) ...[
+        AppDetailSheetRow(
+          label: _optionalSyncText(context, '保存位置', 'Backup location'),
+          value: rebuild.destination,
         ),
-      ),
-      AppDetailSheetRow(
-        label: _optionalSyncText(context, '恢复对象', "Restored objects"),
-        value: _optionalSyncText(
-          context,
-          '${downloaded.length} 个 · ${AppFormat.bytes(bytesOf(downloaded))}',
-          "${downloaded.length} objects · ${AppFormat.bytes(bytesOf(downloaded))}",
+        AppDetailSheetRow(
+          label: _optionalSyncText(
+            context,
+            '已校验的备份内容',
+            'Verified backup content',
+          ),
+          value: _optionalSyncText(
+            context,
+            '${rebuild.objectCount} 个加密对象 · ${AppFormat.bytes(rebuild.totalBytes)}',
+            '${rebuild.objectCount} encrypted objects · ${AppFormat.bytes(rebuild.totalBytes)}',
+          ),
         ),
-      ),
-      AppDetailSheetRow(
-        label: _optionalSyncText(context, '传输明细', "Transfer details"),
-        value: detailLines.isEmpty
-            ? _optionalSyncText(
-                context,
-                '本次没有传输任何对象',
-                "No objects were transferred in this run",
-              )
-            : detailLines.join('\n'),
-      ),
+        AppDetailSheetRow(
+          label: _optionalSyncText(context, '说明', 'About this result'),
+          value: _optionalSyncText(
+            context,
+            rebuild.recovered
+                ? '根据本机保存的位置切换结果及已验签的快照信息补回记录；时间为原完成时间。'
+                : '完整快照已上传并回读校验，保存位置已切换。',
+            rebuild.recovered
+                ? 'Recovered from the saved location change and signed snapshot evidence, using the original completion time.'
+                : 'The full snapshot was uploaded and verified by reading it back, then the saved location was changed.',
+          ),
+        ),
+      ] else ...[
+        AppDetailSheetRow(
+          label: _optionalSyncText(context, '上传对象', "Uploaded objects"),
+          value: _optionalSyncText(
+            context,
+            '${uploaded.length} 个 · ${AppFormat.bytes(bytesOf(uploaded))}',
+            "${uploaded.length} objects · ${AppFormat.bytes(bytesOf(uploaded))}",
+          ),
+        ),
+        AppDetailSheetRow(
+          label: _optionalSyncText(context, '恢复对象', "Restored objects"),
+          value: _optionalSyncText(
+            context,
+            '${downloaded.length} 个 · ${AppFormat.bytes(bytesOf(downloaded))}',
+            "${downloaded.length} objects · ${AppFormat.bytes(bytesOf(downloaded))}",
+          ),
+        ),
+        AppDetailSheetRow(
+          label: _optionalSyncText(context, '传输明细', "Transfer details"),
+          value: detailLines.isEmpty
+              ? _optionalSyncText(
+                  context,
+                  '本次没有传输任何对象',
+                  "No objects were transferred in this run",
+                )
+              : detailLines.join('\n'),
+        ),
+      ],
     ],
     footnote: technical.isEmpty
         ? null
@@ -1076,6 +1142,38 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
               "${_queue!.inboxReadyCount}",
             ),
           ),
+          if (_queue!.velockStatus case final status?
+              when status.vaultId == widget.profile.vaultId &&
+                  status.needsVelock)
+            Padding(
+              key: const Key('velock-unpackaged-hint'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.rowHorizontal,
+                vertical: AppSpacing.xs,
+              ),
+              child: Text(
+                status.pendingConflicts > 0
+                    ? _optionalSyncText(
+                        context,
+                        '格间里有 ${status.pendingConflicts} 项内容在两台设备上都被改过，需要你在格间选择保留哪一份：设置 → 云备份。',
+                        "${status.pendingConflicts} items were changed on two devices. Choose which version to keep in Velock: Settings → Cloud backup.",
+                      )
+                    : status.lastFailureAt != null
+                    ? _optionalSyncText(
+                        context,
+                        '格间上次没能把改动交给 Sync。请打开格间，改动交接后再立即备份。',
+                        "Velock could not hand its changes to Sync last time. Open Velock, then back up again.",
+                      )
+                    : _optionalSyncText(
+                        context,
+                        '格间还有 ${status.unpackagedChanges} 项改动没交给 Sync，所以这里暂时没有要上传的内容。打开格间后会自动交接。',
+                        "Velock still holds ${status.unpackagedChanges} changes it has not handed to Sync, so nothing is waiting here yet. Opening Velock hands them over.",
+                      ),
+                style: AppType.rowSubtitle.copyWith(
+                  color: context.appSecondaryLabel,
+                ),
+              ),
+            ),
           if (_queue!.lastOutboxReceiptAt != null)
             SyncedDataRow(
               icon: Icons.handshake_outlined,
@@ -1085,7 +1183,9 @@ class _SyncedDataSectionState extends ConsumerState<SyncedDataSection> {
                 context: context,
               ),
             ),
-          if (_queue!.isEmpty && snapshot.uploadedCount == 0)
+          if (_queue!.isEmpty &&
+              snapshot.uploadedCount == 0 &&
+              _queue!.velockStatus?.needsVelock != true)
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.rowHorizontal,
@@ -1669,50 +1769,48 @@ String velockReadinessMessage(
 }) => switch (availability) {
   VelockWizardAvailability.ready => _optionalSyncText(
     context,
-    '已验证独立 Velock App、发布签名、Exchange V1 和公开配对身份。'
-        '下一步会切换到 Velock，由你解锁并明确批准一次性挑战；此时仍不会创建 Profile。',
-    "The independent Velock app, release signature, Exchange V1, and public pairing identity have been verified. Next, switch to Velock, unlock it, and explicitly approve the one-time challenge. No profile is created at this stage.",
+    '下一步会打开格间。请解锁格间，并确认允许 Sync 为它备份；确认前不会保存任何设置。',
+    'Next, Velock opens. Unlock it and confirm that Sync may back it up. Nothing is saved before you confirm.',
   ),
   VelockWizardAvailability.appNotInstalled => _optionalSyncText(
     context,
-    '请先安装独立的 Velock App，完成初始化后返回重试。',
-    "Install the independent Velock app and complete its setup, then return and retry.",
+    '这台设备上还没有格间。请先安装并打开格间，再回来继续。',
+    'Velock is not on this device yet. Install and open it, then come back.',
   ),
   VelockWizardAvailability.authorizationRequired => _optionalSyncText(
     context,
-    'Velock 的 Exchange 拒绝了访问。请在 Velock 中明确允许 Velock Sync 后重试。',
-    "Velock Exchange denied access. Explicitly allow Velock Sync in Velock and retry.",
+    '请打开格间 → 设置 → 云备份，打开「允许 Sync 连接」，再回来继续。',
+    'Open Velock → Settings → Cloud backup, turn on “Allow Sync to connect”, then come back.',
   ),
   VelockWizardAvailability.accessRevoked => _optionalSyncText(
     context,
-    'Velock 已撤销此设备的同步授权。请在 Velock 中重新批准配对后继续。',
-    "Velock revoked sync access for this device. Approve pairing again in Velock to continue.",
+    '格间已取消对这台设备上 Sync 的授权。请重新连接格间，并在格间里再次允许。',
+    'Velock withdrew this Sync’s permission. Connect to Velock again and allow it there.',
   ),
   VelockWizardAvailability.unsupportedVersion => _optionalSyncText(
     context,
-    '当前 Velock App 不支持 Exchange V1，请升级 Velock 后重试。',
-    "This version of Velock does not support Exchange V1. Update Velock and retry.",
+    '当前的格间版本太旧，无法连接。请更新格间后再试。',
+    'This Velock version is too old to connect. Update Velock and try again.',
   ),
   VelockWizardAvailability.signatureMismatch => _optionalSyncText(
     context,
-    '已安装应用未通过发布签名校验。为保护数据，本应用不会继续连接。',
-    "The installed app failed release-signature verification. The connection will not continue, to protect your data.",
+    '无法确认这是正版格间，为保护你的数据，已停止连接。请从官方渠道安装格间。',
+    'This could not be verified as a genuine Velock, so Sync stopped to protect your data. Install Velock from the official source.',
   ),
   VelockWizardAvailability.configurationMissing => _optionalSyncText(
     context,
-    '受保护的 Exchange 数据通道可探测，但当前构建尚未提供签名授权/配对控制通道。'
-        '本应用不会猜测身份，也不会创建半成品 Profile。',
-    "The protected Exchange data channel is detectable, but this build does not provide the signed authorization/pairing control channel. The app will not guess identities or create an incomplete profile.",
+    '格间还没有准备好连接。请打开格间 → 设置 → 云备份，打开「允许 Sync 连接」，再回来继续。',
+    'Velock is not ready to connect yet. Open Velock → Settings → Cloud backup, turn on “Allow Sync to connect”, then come back.',
   ),
   VelockWizardAvailability.temporarilyUnavailable => _optionalSyncText(
     context,
-    'Velock 的受保护 Exchange 当前无法访问；未保存任何配置，可稍后重试。',
-    "Protected Velock Exchange is currently inaccessible. No configuration was saved. Try again later.",
+    '暂时连不上格间。请打开并解锁格间，再回来重试；没有保存任何设置。',
+    'Velock cannot be reached right now. Open and unlock it, then try again. Nothing was saved.',
   ),
   VelockWizardAvailability.unsupportedPlatform => _optionalSyncText(
     context,
-    '格间备份仅支持已配置的 Apple Exchange 构建。',
-    "Velock backup requires a configured Apple Exchange build.",
+    '格间备份目前只支持 iPhone 和 iPad。',
+    'Velock backup currently works on iPhone and iPad only.',
   ),
 };
 

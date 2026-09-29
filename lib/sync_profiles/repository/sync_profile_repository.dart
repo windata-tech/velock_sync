@@ -35,6 +35,26 @@ class SyncProfileRepository {
         payload: jsonEncode(profile.toJson()),
       );
 
+  Future<void> saveIfUnchanged({
+    BackupRebuildCompletion? rebuild,
+    required SyncProfileEnvelope expected,
+    required SyncProfileEnvelope updated,
+  }) async {
+    if (expected.profileId != updated.profileId ||
+        !await _database.replaceSyncProfilePayloadIfCurrent(
+          rebuild: rebuild,
+          profileId: expected.profileId,
+          expectedPayload: jsonEncode(expected.toJson()),
+          datasetId: updated.datasetId,
+          targetId: updated.connectionId,
+          vaultId: updated.vaultId,
+          state: updated.state.name,
+          payload: jsonEncode(updated.toJson()),
+        )) {
+      throw StateError('Backup changed before the update could be saved.');
+    }
+  }
+
   /// Explicit user-confirmed relocation only. Keeps all trust/cursors/history;
   /// never edits the shared connection or claims that the new folder is valid.
   Future<SyncProfileEnvelope> selectOriginalVelockFolder({
@@ -48,10 +68,13 @@ class SyncProfileRepository {
         await _database.hasRunningSyncRun(expected.profileId)) {
       throw StateError('Backup changed or is running. Reopen and try again.');
     }
-    final updated = VelockSyncProfile.fromEnvelope(
-      current,
-    ).copyWith(remoteRootSegments: segments).toEnvelope();
-    await save(updated);
+    final updated = VelockSyncProfile.fromEnvelope(current)
+        .copyWith(
+          remoteRootSegments: segments,
+          locationChangedAt: DateTime.now().toUtc(),
+        )
+        .toEnvelope();
+    await saveIfUnchanged(expected: current, updated: updated);
     return updated;
   });
 
@@ -135,6 +158,9 @@ class SyncProfileRepository {
         displayName: profile.displayName,
         connectionId: profile.connectionId,
         backgroundPolicy: profile.backgroundPolicy,
+        locationChangedAt: profile.kind == SyncDatasetKind.velockManaged
+            ? VelockSyncProfile.locationChangedAtFromEnvelope(profile)
+            : null,
         activity: await _database.readSyncProfileActivity(profile.profileId),
       );
     } on Object catch (error) {

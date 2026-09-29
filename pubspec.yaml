@@ -30,8 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_localizations:
-    sdk: flutter
+  # flutter_localizations is no longer needed: the design-system localization
+  # delegates (and the widgets delegate) now come from material_ui /
+  # cupertino_ui, which is where Flutter moved them.
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -51,19 +52,14 @@ dependencies:
   # https://pub.dev/packages/webdav_client_plus
   webdav_client_plus: ^1.0.2
 
-  # https://pub.dev/packages/flutter_platform_widgets
-  #
-  # PINNED EXACTLY, and discontinued upstream (pub.dev: "Due to Flutter's
-  # decision to split out Material and Cupertino widgets into their own
-  # packages, this project is now no longer supported"). 10.0.1 is the last
-  # release and works with the Flutter version this app builds on; there will
-  # be no compatibility fix if a future SDK breaks it, so an upgrade of either
-  # side must go together with the migration tracked in
-  # docs/design/adaptive-widgets-migration.md.
-  flutter_platform_widgets: 10.0.1
-
-  # https://pub.dev/packages/go_router
   go_router: ^17.0.0
+
+  # NOTE: flutter_platform_widgets was removed on 2026-09-27. It is discontinued
+  # upstream (Flutter moved Material/Cupertino out of the SDK into
+  # package:material_ui / package:cupertino_ui), so every screen now uses the
+  # app's own adaptive widgets in lib/widgets/adaptive_widgets.dart and
+  # lib/widgets/common_widgets.dart. Do not add it back; see
+  # docs/design/adaptive-widgets-migration.md.
 
   # https://pub.dev/packages/shared_preferences
   shared_preferences: ^2.5.3
@@ -99,6 +95,8 @@ dependencies:
   file_selector: ^1.0.4
   # Android WorkManager and iOS BGTaskScheduler background sync.
   workmanager: ^0.10.6
+  material_ui: ^1.4.0
+  cupertino_ui: ^1.1.1
 
 dev_dependencies:
   flutter_test:
@@ -127,6 +125,7 @@ dev_dependencies:
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
+  fake_async: any
 flutter:
 
   # The following line ensures that the Material Icons font is

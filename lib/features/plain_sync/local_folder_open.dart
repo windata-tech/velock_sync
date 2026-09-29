@@ -22,7 +22,8 @@ enum FolderOpenOutcome {
 typedef FolderLauncher = Future<bool> Function(Uri uri);
 
 final folderLauncherProvider = Provider<FolderLauncher>(
-  (ref) => (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
+  (ref) =>
+      (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
 );
 
 /// iOS resolves a security-scoped bookmark to a path only inside a native

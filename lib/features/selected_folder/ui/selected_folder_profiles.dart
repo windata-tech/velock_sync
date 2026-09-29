@@ -1,11 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'selected_folder_empty_state.dart';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -456,10 +455,7 @@ class SelectedFolderProfiles extends HookConsumerWidget {
       }
     }
 
-    return PlatformScaffold(
-      iosContentPadding:
-          Theme.of(context).platform == TargetPlatform.iOS ||
-          Theme.of(context).platform == TargetPlatform.macOS,
+    return AdaptivePageScaffold(
       appBar: WDAppBar(
         title: const Text('同步文件夹'),
         trailingActions: [
@@ -500,7 +496,7 @@ class SelectedFolderProfiles extends HookConsumerWidget {
         future: profiles,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: PlatformCircularProgressIndicator());
+            return const Center(child: AdaptiveSpinner());
           }
           if (snapshot.hasError) {
             return const Center(child: Text('无法读取同步配置。'));

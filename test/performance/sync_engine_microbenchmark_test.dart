@@ -178,7 +178,9 @@ void main() {
       for (var i = 1; i <= 3; i++) {
         if (i > 1) dataset.pending.add(batch);
         final replay = await measure('upload.same-batch-replay.$i', publish);
-        expectRequests(replay, stat: 4);
+        // Existing batch artifacts (not blobs) are read back to confirm their
+        // bytes, not only their size; nothing is uploaded again.
+        expectRequests(replay, stat: 4, read: 3);
         expect(replay.businessPutCount, 0);
         expect(replay.businessUploadBytes, 0);
         expect(dataset.pending, isEmpty);

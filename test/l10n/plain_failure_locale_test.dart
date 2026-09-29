@@ -6,8 +6,7 @@
 /// codes themselves are the contract from `plain_failure_cases.dart`.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/widgets/app_format.dart';
 

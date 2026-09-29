@@ -7,12 +7,14 @@ import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 /// not evidence that all business data is safely backed up or restored.
 enum BackupStage {
   notStarted,
+  locationNeedsCheck,
   transferring,
   needsAttention,
   needsVelock,
   paused,
   pending,
   waitingForRestore,
+  velockHoldsChanges,
   lastTransferCompleted,
 }
 
@@ -50,6 +52,8 @@ class BackupPresentation {
     int pendingOutgoing = 0,
     bool isolated = false,
     bool running = false,
+    DateTime? locationChangedAt,
+    bool velockHoldsChanges = false,
   }) {
     final run = activity?.latestRun;
     if (isolated) {
@@ -104,9 +108,37 @@ class BackupPresentation {
     if (state == SyncProfileState.paused) {
       return const BackupPresentation(BackupStage.paused, BackupAction.resume);
     }
+    if (run?.state == 'failed' &&
+        run?.errorCode == 'local.velock_snapshot_application_required') {
+      // The run stops here on purpose: the backup is downloaded and Velock
+      // has to apply it. That is the next step, not a failure, so no
+      // "last failure" time is shown for it.
+      return BackupPresentation(
+        BackupStage.waitingForRestore,
+        BackupAction.openVelock,
+        errorCode: run?.errorCode,
+      );
+    }
+    if (run?.state == 'failed' &&
+        run?.errorCode == 'local.velock_recovery_required') {
+      return BackupPresentation(
+        BackupStage.needsAttention,
+        BackupAction.openVelock,
+        errorCode: run?.errorCode,
+        failedAt: run?.completedAt ?? run?.startedAt,
+      );
+    }
+    if (locationChangedAt != null &&
+        (run == null || run.startedAt.isBefore(locationChangedAt))) {
+      return const BackupPresentation(
+        BackupStage.locationNeedsCheck,
+        BackupAction.transfer,
+      );
+    }
     if (run?.state == 'failed') {
       final code = run?.errorCode ?? '';
       final needsStorage =
+          code == 'remote.immutable_object_mismatch' ||
           code.contains('atomic_create_unsupported') ||
           code.contains('history_incomplete') ||
           code.contains('unauthor') ||
@@ -129,6 +161,15 @@ class BackupPresentation {
     if (pendingIncoming > 0) {
       return const BackupPresentation(
         BackupStage.waitingForRestore,
+        BackupAction.openVelock,
+      );
+    }
+    // Velock still holds unhanded changes, a failed hand-off or conflicts
+    // (Control/OutboxStatus.json). The last run finishing says nothing about
+    // them, so do not show "last backup completed" as if all were safe.
+    if (velockHoldsChanges) {
+      return const BackupPresentation(
+        BackupStage.velockHoldsChanges,
         BackupAction.openVelock,
       );
     }

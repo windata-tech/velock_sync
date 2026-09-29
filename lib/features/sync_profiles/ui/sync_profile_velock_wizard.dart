@@ -12,8 +12,8 @@ import 'package:velock_sync/sync_core/model/sync_failure.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -355,8 +355,8 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
         context,
         syncText(
           context,
-          '无法发起安全配对；未创建任何 Profile。',
-          "Could not start secure pairing. No profile was created.",
+          '没能连接格间，没有保存任何设置。请打开格间后再试。',
+          "Could not connect to Velock. Nothing was saved. Open Velock and try again.",
         ),
       );
     }
@@ -418,11 +418,11 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
     _pairingProblemDialogVisible = true;
     final action = await showAdaptiveAlert<_PairingRecoveryAction>(
       context: context,
-      title: syncText(context, '尚未收到 Velock 批准', "Awaiting Velock approval"),
+      title: syncText(context, '还没收到格间的允许', "Waiting for Velock to allow"),
       message: syncText(
         context,
-        '如果你刚开启“允许新的配对”，请重新打开 Velock 并刷新待审批请求。仍看不到时，取消后重新发起。',
-        "If you just enabled “Allow new pairings”, reopen Velock and refresh pending requests. If the request is still missing, cancel and start again.",
+        '请打开格间 → 设置 → 云备份，确认已打开「允许 Sync 连接」，再允许这次连接。仍然看不到时，取消后重新连接。',
+        "Open Velock → Settings → Cloud backup, make sure “Allow Sync to connect” is on, then allow this connection. If it is still missing, cancel and connect again.",
       ),
       icon: Icon(
         adaptiveIcon(
@@ -641,6 +641,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       final result = await ref
           .read(velockProfileFinalizerProvider)
           .finalize(
+            restoring: widget.restoring,
             session: session,
             approval: approval,
             connectionId: connection.id,
@@ -974,6 +975,44 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                       onPressed: () => context.push(
                         '/sync-profiles/${profiles.first.profileId}',
                       ),
+                    ),
+                  ],
+                ),
+              )
+            else if (wizard.finalization case final result?
+                when result.pairingAcknowledged)
+              // Setup is complete and the first backup is running; the old
+              // "one check remains" card showed here with a button that did
+              // nothing.
+              BackupCard(
+                key: const Key('wizard-first-backup-running'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      syncText(
+                        context,
+                        '连接已完成，正在进行首次备份',
+                        'Connected. Running the first backup',
+                      ),
+                      style: const TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      syncText(
+                        context,
+                        '请保持 Sync 打开，完成后会显示结果。',
+                        'Keep Sync open; the result appears when it finishes.',
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    BackupActionButton(
+                      label: syncText(context, '正在备份…', 'Backing up…'),
+                      busy: true,
+                      onPressed: null,
                     ),
                   ],
                 ),

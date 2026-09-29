@@ -62,4 +62,29 @@ void main() {
     expect(snapshot!.isEmpty, isTrue);
     expect(snapshot.hasPendingUpload, isFalse);
   });
+
+  test('reads the unpackaged-change hint Velock publishes', () async {
+    final root = await Directory.systemTemp.createTemp('velock-queue-test');
+    addTearDown(() => root.delete(recursive: true));
+    final file = File('${root.path}/Control/OutboxStatus.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync(
+        '{"version":1,"vaultId":"vault-1","unpackagedChanges":3,'
+        '"updatedAt":"2026-09-28T10:00:00.000Z","lastFailureAt":null}',
+      );
+
+    final status = VelockOutboxStatus.read(file)!;
+    expect(status.vaultId, 'vault-1');
+    expect(status.unpackagedChanges, 3);
+    expect(status.needsVelock, isTrue);
+
+    file.writeAsStringSync(
+      '{"version":1,"vaultId":"vault-1","unpackagedChanges":0,'
+      '"updatedAt":"2026-09-28T10:00:00.000Z","lastFailureAt":null}',
+    );
+    expect(VelockOutboxStatus.read(file)!.needsVelock, isFalse);
+
+    file.writeAsStringSync('not json');
+    expect(VelockOutboxStatus.read(file), isNull);
+  });
 }

@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/widgets/velock_brand_mark.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
@@ -203,6 +203,11 @@ class BackupStatusCard extends StatelessWidget {
         ? AppColors.success
         : context.appPrimary;
     final title = switch (stage) {
+      BackupStage.locationNeedsCheck => syncText(
+        context,
+        '保存位置已更改',
+        'Backup location changed',
+      ),
       BackupStage.notStarted => syncText(
         context,
         isVelock ? '还没有完成首次备份' : '还没有开始同步',
@@ -246,6 +251,11 @@ class BackupStatusCard extends StatelessWidget {
         '已下载，等待格间恢复',
         'Downloaded. Open Velock to restore',
       ),
+      BackupStage.velockHoldsChanges => syncText(
+        context,
+        '格间还有内容没交给 Sync',
+        'Velock still has changes to hand over',
+      ),
       // The stage is shared, but each domain names its own task.
       BackupStage.lastTransferCompleted => syncText(
         context,
@@ -254,6 +264,11 @@ class BackupStatusCard extends StatelessWidget {
       ),
     };
     final description = switch (stage) {
+      BackupStage.locationNeedsCheck => syncText(
+        context,
+        '新位置尚待检查。点下方按钮检查备份记录并继续备份；上次结果保留在传输记录中。',
+        'This location has not been checked yet. Check its backup history and continue backing up. The previous result remains in Transfer history.',
+      ),
       BackupStage.notStarted => syncText(
         context,
         '保存位置已选好。现在开始，让数据真正传到云端。',
@@ -325,6 +340,11 @@ class BackupStatusCard extends StatelessWidget {
         '云端数据已到达这台设备，还需要在格间中解锁并完成恢复。',
         'Cloud data has reached this device. Unlock Velock to finish restoring it.',
       ),
+      BackupStage.velockHoldsChanges => syncText(
+        context,
+        '格间里有新改动、上次交接失败，或有需要你选择版本的冲突。打开格间处理后，再回来备份。',
+        'Velock has new changes, a failed hand-over, or conflicts waiting for your choice. Open Velock, then come back to back up.',
+      ),
       BackupStage.lastTransferCompleted => syncText(
         context,
         isVelock ? '有新内容时，先打开格间，再回来备份。' : '随时再同步，检查两端有没有新内容。',
@@ -355,7 +375,9 @@ class BackupStatusCard extends StatelessWidget {
             'Review changes',
           ),
           BackupAction.transfer =>
-            stage == BackupStage.transferring
+            stage == BackupStage.locationNeedsCheck
+                ? syncText(context, '检查并备份', 'Check and back up')
+                : stage == BackupStage.transferring
                 ? syncText(context, '正在传输…', 'Transferring…')
                 : syncText(
                     context,
@@ -471,6 +493,14 @@ class BackupStatusCard extends StatelessWidget {
 }
 
 String backupFailureMessage(BuildContext context, String? code) {
+  if (code == 'local.velock_snapshot_application_required') {
+    return syncText(
+      context,
+      '完整备份已下载。请打开格间，解锁并确认恢复；恢复完成后回到 Sync 继续。',
+      'The full backup has been downloaded. Open and unlock Velock to confirm restoration, then return to Sync.',
+    );
+  }
+
   if (code == 'provider.webdav.collection_not_writable') {
     return uncreatableFolderMessage(context);
   }
@@ -503,9 +533,7 @@ class _CloudMark extends StatelessWidget {
     height: 56,
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: branded
-          ? context.appGroupedSurface
-          : color.withValues(alpha: .10),
+      color: branded ? context.appGroupedSurface : color.withValues(alpha: .10),
       borderRadius: BorderRadius.circular(18),
       border: branded
           ? Border.all(color: context.appSeparator.withValues(alpha: .25))

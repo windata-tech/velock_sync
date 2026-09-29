@@ -295,7 +295,9 @@ class SelectedFolderSyncProfileRepository {
         current.state != SelectedFolderProfileState.active ||
         jsonEncode(current.toJson()) != jsonEncode(expected.toJson()) ||
         await _database.hasRunningSyncRun(expected.profileId)) {
-      throw StateError('Sync task changed or is running. Reopen and try again.');
+      throw StateError(
+        'Sync task changed or is running. Reopen and try again.',
+      );
     }
     final updated = current.copyWith(remoteRootSegments: canonical);
     await save(updated);

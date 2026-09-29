@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -300,6 +301,39 @@ class VelockPairingRevocation {
       signature: Signature(signature, publicKey: descriptor.publicKey),
     );
   }
+}
+
+/// Device IDs Velock revoked, read from `Control/Revocations` on Apple.
+///
+/// Only markers that verify against the current pairing descriptor count. A
+/// marker signed by an earlier Velock identity (left in the App Group after a
+/// reinstall or an identity repair) says nothing about the current pairing, and
+/// a malformed one is ignored rather than failing every run. Only Velock and
+/// Sync can write this folder; the remote never reaches it.
+Future<Set<String>> readVerifiedVelockRevocations({
+  required Directory exchangeRoot,
+  required VelockPairingDescriptor descriptor,
+}) async {
+  final directory = Directory('${exchangeRoot.path}/Control/Revocations');
+  if (!await directory.exists()) return const {};
+  final revoked = <String>{};
+  await for (final entity in directory.list(followLinks: false)) {
+    if (entity is! File || !entity.path.endsWith('.json')) continue;
+    try {
+      if (await entity.length() > 16 * 1024) continue;
+      final revocation = VelockPairingRevocation.parse(
+        await entity.readAsBytes(),
+      );
+      final name = entity.uri.pathSegments.last;
+      if (name != '${revocation.deviceId}.json') continue;
+      if (await revocation.verify(descriptor: descriptor)) {
+        revoked.add(revocation.deviceId);
+      }
+    } on Object {
+      continue;
+    }
+  }
+  return revoked;
 }
 
 enum VelockPairingControlStatus { pending, approved, denied, expired, revoked }

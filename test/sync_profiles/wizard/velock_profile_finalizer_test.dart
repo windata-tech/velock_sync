@@ -134,6 +134,22 @@ void main() {
       expect(profile.backgroundPolicy.requiresCharging, isTrue);
     });
 
+    test('persists restore discovery before acknowledging pairing', () async {
+      final result = await service.finalize(
+        session: session,
+        approval: approval,
+        connectionId: 'connection-1',
+        displayName: 'Recovered vault',
+        backgroundPolicy: const SyncProfileBackgroundPolicy(),
+        userConfirmed: true,
+        restoring: true,
+      );
+      expect(events, ['trust', 'save', 'ack']);
+      expect(saved.single.dataset['snapshotDiscoveryPending'], isTrue);
+      expect(result.profile.snapshotDiscoveryPending, isTrue);
+      expect(result.profile.snapshotRestoreRequestId, isNull);
+    });
+
     test('persists a per-profile remote root scope', () async {
       const remoteRootSegments = ['中文 空格', '%', '#', '?'];
       final result = await service.finalize(

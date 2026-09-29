@@ -94,9 +94,7 @@ class MirrorBaselineEntry {
   bool matchesRemote(MirrorEntry entry) {
     if (entry.kind != kind) return false;
     if (kind == MirrorEntryKind.directory) return true;
-    if (remoteEtag != null &&
-        entry.etag != null &&
-        remoteEtag == entry.etag) {
+    if (remoteEtag != null && entry.etag != null && remoteEtag == entry.etag) {
       return true;
     }
     if (entry.size != remoteSize) return false;
@@ -476,7 +474,10 @@ class MirrorRunStats {
   bool get didFail => failureCode != null;
 
   int get changedCount =>
-      uploadedFileCount + downloadedFileCount + deletedLocalCount + deletedRemoteCount;
+      uploadedFileCount +
+      downloadedFileCount +
+      deletedLocalCount +
+      deletedRemoteCount;
 }
 
 /// Compares local, remote and baseline state into one executable plan.
@@ -503,9 +504,11 @@ class MirrorPlanner {
     Set<String> verifiedIdenticalPaths = const {},
     Set<String> deferredPaths = const {},
   }) {
-    final paths =
-        <String>{...local.keys, ...remote.keys, ...baseline.keys}.toList()
-          ..sort();
+    final paths = <String>{
+      ...local.keys,
+      ...remote.keys,
+      ...baseline.keys,
+    }.toList()..sort();
 
     // A path that is a file on one side and a directory on the other can never
     // converge: the children of the directory collide with the other kind, and
@@ -721,7 +724,9 @@ class MirrorPlanner {
     required Map<String, MirrorEntry> allRemote,
   }) {
     if (baseline == null) {
-      if (local != null && remote != null) return const _PathPlan(unchanged: true);
+      if (local != null && remote != null) {
+        return const _PathPlan(unchanged: true);
+      }
       if (local != null) {
         if (direction == MirrorDirection.downloadOnly) {
           return const _PathPlan(skippedLocalOnly: true);
@@ -755,7 +760,9 @@ class MirrorPlanner {
       return const _PathPlan();
     }
 
-    if (local != null && remote != null) return const _PathPlan(unchanged: true);
+    if (local != null && remote != null) {
+      return const _PathPlan(unchanged: true);
+    }
 
     if (local != null && remote == null) {
       // The remote directory is gone.
@@ -888,7 +895,9 @@ class MirrorPlanner {
     final remoteUnchanged = remote != null && baseline.matchesRemote(remote);
 
     if (local != null && remote != null) {
-      if (localUnchanged && remoteUnchanged) return const _PathPlan(unchanged: true);
+      if (localUnchanged && remoteUnchanged) {
+        return const _PathPlan(unchanged: true);
+      }
       if (!localUnchanged && remoteUnchanged) {
         return switch (direction) {
           // The local side is the only source of truth for an upload-only
@@ -924,9 +933,15 @@ class MirrorPlanner {
       return switch (direction) {
         MirrorDirection.uploadOnly => _upload(path, local, null),
         MirrorDirection.downloadOnly => _deleteLocal(path, local),
-        MirrorDirection.bidirectional => localUnchanged
-            ? _deleteLocal(path, local)
-            : _restoreRemote(path: path, local: local, now: now, baseline: baseline),
+        MirrorDirection.bidirectional =>
+          localUnchanged
+              ? _deleteLocal(path, local)
+              : _restoreRemote(
+                  path: path,
+                  local: local,
+                  now: now,
+                  baseline: baseline,
+                ),
       };
     }
 
@@ -936,14 +951,15 @@ class MirrorPlanner {
     return switch (direction) {
       MirrorDirection.downloadOnly => _download(path, null, remoteEntry),
       MirrorDirection.uploadOnly => _deleteRemote(path, remoteEntry),
-      MirrorDirection.bidirectional => remoteUnchanged
-          ? _deleteRemote(path, remoteEntry)
-          : _restoreLocal(
-              path: path,
-              remote: remoteEntry,
-              now: now,
-              baseline: baseline,
-            ),
+      MirrorDirection.bidirectional =>
+        remoteUnchanged
+            ? _deleteRemote(path, remoteEntry)
+            : _restoreLocal(
+                path: path,
+                remote: remoteEntry,
+                now: now,
+                baseline: baseline,
+              ),
     };
   }
 
@@ -1140,9 +1156,7 @@ class MirrorPlanner {
       // a plan that grew since then is held again instead of deleting paths the
       // user never saw.
       final unconfirmed = combined
-          .where(
-            (action) => !confirmedDeletions.contains(action.relativePath),
-          )
+          .where((action) => !confirmedDeletions.contains(action.relativePath))
           .toList(growable: false);
       if (unconfirmed.isEmpty) return null;
       return MirrorHeldDeletions(

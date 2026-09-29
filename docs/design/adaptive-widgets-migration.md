@@ -97,3 +97,74 @@ localizationsDelegates: GlobalMaterialLocalizations.delegates,
 2. 上线前：做阶段 1——**这一步把风险从「全站」缩到「几个控件」**，而且是入口层的改动，
    最容易在两台设备上看清楚。
 3. 上线后有空：阶段 2 → 删依赖；再谈阶段 3。
+
+---
+
+# 执行结果（2026-09-27，三阶段全部完成）
+
+## 阶段 1：入口三件套（已完成）
+
+- `lib/main.dart`：`PlatformProvider` + `PlatformTheme` + `PlatformApp.router`
+  → 单个 `MaterialApp.router`（iOS/Android 同一入口），主题仍用 `appearance/theme.dart` 的
+  Material 明暗主题，并在 `builder` 里套一层 `CupertinoTheme`（同一个明暗判断），
+  Toast 仍在最外层。
+- `lib/widgets/common_widgets.dart`：`WDAppBar` 由 `extends PlatformAppBar` 改为**我们自己的
+  `StatelessWidget implements ObstructingPreferredSizeWidget`**，内部只分两支：
+  `CupertinoNavigationBar`（leading/title/trailing + 底部 1px 分隔线）与 `AppBar`（Material）。
+  保持既有规则：44pt 返回键、返回键后不再补 8pt、标题可两行、trailing 用 `MainAxisSize.min`。
+- `lib/core/app_router.dart`：`WDShellPage` 改用新的 `AdaptiveTabScaffold`；
+  Material 分支保持 HEAD 的 **Material 3 `NavigationBar`**（这是子代理发现并修正的一次偏差：
+  我最初写成 Material 2 的 `BottomNavigationBar`，会让 Android 视觉语言和既有测试都变），
+  Apple 分支 `CupertinoTabBar`。
+- 新增 `AdaptivePageScaffold`（CupertinoPageScaffold / Scaffold 两支），12 处页面 scaffold
+  从 `PlatformScaffold` 迁移过来，`iosContentPadding` 参数自然消失（我们的 Cupertino 分支
+  本来就不额外加导航栏高度）。
+
+## 阶段 2：控件级替换 + 删除依赖（已完成）
+
+- `lib/widgets/adaptive_widgets.dart` 新增自家原语（每个都自己分两支，调用方不再写两套参数）：
+  `AdaptiveTextButton`、`AdaptiveElevatedButton`、`AdaptiveSwitch`、`AdaptiveSpinner`、
+  `AdaptiveTextFormField`（**一个 `label` 同时服务两端**，Apple 用 `prefix`、Material 用
+  floating label）、`AdaptiveFieldPrefix`（最小宽度 112pt 取代固定 112pt，英文标签不再溢出）；
+  `AdaptiveIconButton` 增加 `materialIcon`（两端图形不同时用，如铅笔/刷新/省略号）。
+- 替换点：`PlatformScaffold` 12、`PlatformTextButton` 10、`PlatformIconButton` 6、
+  `PlatformTextFormField` 5、`PlatformCircularProgressIndicator` 3、`PlatformElevatedButton` 2、
+  `PlatformSwitch` 1、`PlatformNavBar` 1，以及 `main.dart` 的三个入口组件。
+- 删除死代码：`new_webdav.dart` 的 `PrefixWrapper`（固定 112pt）。
+- `pubspec.yaml`：`flutter_platform_widgets` **已删除**（并留注释说明为什么不许再加回来）。
+- 测试侧：`PlatformProvider/PlatformApp` 的测试外壳全部替换为
+  `MaterialApp(theme: ThemeData(platform: …))`，**每个测试驱动的平台保持不变**（iOS 仍是
+  Cupertino 分支，Android 仍是 Material 分支）；没有任何断言被削弱。
+
+## 阶段 3：迁移到 material_ui / cupertino_ui（已完成）
+
+- `pubspec.yaml`：`material_ui: ^1.4.0`、`cupertino_ui: ^1.1.1`；`flutter_localizations`
+  不再需要（设计库的本地化 delegate 已随包走，`GlobalMaterialLocalizations.delegates`
+  同时包含 Cupertino 与 Widgets）。
+- `dart fix --apply --code=migrate_design_widgets`：96 个文件、144 处 import 改写。
+- 自动迁移后的收尾（都是机械问题，均已修完）：
+  1. `GlobalMaterialLocalizations` / `GlobalCupertinoLocalizations` 与 `flutter_localizations`
+     重名 → 统一改用新包的 `delegates`，剩余的 `flutter_localizations` import 全部删除（41 个文件）；
+  2. `delegates` 是 List 而 `delegate` 是单值 → 列表处用 `...GlobalMaterialLocalizations.delegates`，
+     直接赋值处不加 spread；
+  3. `const <LocalizationsDelegate>[...]` 不再成立（新包用 getter 暴露 delegate）→ 去掉 `const`；
+  4. `dart format` 之后 `mirror_models.dart` 出现 3 处 `if (...) return ...;` 缺少花括号 → 补上。
+- **结果：`lib/` 与 `test/` 中 0 个文件再 import `package:flutter/material.dart` 或
+  `package:flutter/cupertino.dart`**（88 个文件用 material_ui、55 个用 cupertino_ui）。
+
+## 验收
+
+| 项目 | 结果 |
+| --- | --- |
+| `flutter analyze lib test` | No issues found |
+| `flutter test` | **1111 项全部通过**（迁移前 1087；子代理新增 24 项） |
+| `flutter build ios --debug --simulator` | ✓ 构建、安装、启动 |
+| `flutter build apk --debug` | ✓ app-debug.apk |
+| 模拟器实测 | 文件同步 tab、同步位置详情、连接列表、新建 WebDAV 表单（见 `ui_audit/plain-sync-20260927/stage1_*.png`、`stage3_*.png`） |
+
+## 仍需注意
+
+- 迁移后我们自己的包装层（`adaptive_widgets.dart` / `common_widgets.dart`）是**唯一**接触设计库的地方；
+  业务页面只 import 我们的组件，将来设计库再变（例如 Material 4）只需要改这两三个文件。
+- `flutter build ios --release`（真机/上架）本轮没有跑，需要用户用自己的签名环境验证一次。
+- 设计库现在是**独立发版**的 pub 包（周更），可以单独升级；升级后请重跑 `flutter test` 与两端构建。

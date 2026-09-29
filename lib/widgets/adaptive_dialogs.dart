@@ -1,8 +1,8 @@
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../appearance/design_tokens.dart';
 
@@ -167,7 +167,14 @@ Future<void> showAdaptiveSheet(
   required WidgetBuilder builder,
 }) {
   if (isApplePlatform(context)) {
-    return showCupertinoModalPopup<void>(context: context, builder: builder);
+    return showCupertinoModalPopup<void>(
+      context: context,
+      // A popup is a separate route and cannot inherit the page's body style.
+      builder: (popupContext) => DefaultTextStyle(
+        style: CupertinoTheme.of(popupContext).textTheme.textStyle,
+        child: Builder(builder: builder),
+      ),
+    );
   }
   return showModalBottomSheet<void>(
     context: context,

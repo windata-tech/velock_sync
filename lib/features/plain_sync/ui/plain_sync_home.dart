@@ -1,4 +1,4 @@
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -12,7 +12,8 @@ import 'package:velock_sync/features/plain_sync/state/plain_sync_providers.dart'
 import 'package:velock_sync/features/plain_sync/ui/plain_location_run.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
-import 'package:velock_sync/widgets/common_widgets.dart' show showPlatformMessage;
+import 'package:velock_sync/widgets/common_widgets.dart'
+    show showPlatformMessage;
 
 /// The 文件同步 tab: plain folder locations first, legacy encrypted profiles
 /// kept visible but no longer offered for new locations.
@@ -107,7 +108,11 @@ class _PlainSyncHomeState extends ConsumerState<PlainSyncHome> {
       if (mounted) {
         showPlatformMessage(
           context,
-          syncText(context, '暂时无法更新状态，请稍后重试。', 'Could not update the state. Try again later.'),
+          syncText(
+            context,
+            '暂时无法更新状态，请稍后重试。',
+            'Could not update the state. Try again later.',
+          ),
         );
       }
     }
@@ -179,11 +184,7 @@ class _PlainSyncHomeState extends ConsumerState<PlainSyncHome> {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
           child: AdaptiveLoadingState(
-            label: syncText(
-              context,
-              '正在读取同步位置',
-              'Loading sync locations',
-            ),
+            label: syncText(context, '正在读取同步位置', 'Loading sync locations'),
           ),
         ),
       ];
@@ -215,7 +216,10 @@ class _PlainSyncHomeState extends ConsumerState<PlainSyncHome> {
               const SizedBox(height: AppSpacing.sm),
               Text(
                 syncText(context, '添加第一个同步位置', 'Add your first location'),
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
@@ -249,8 +253,10 @@ class _PlainSyncHomeState extends ConsumerState<PlainSyncHome> {
           // re-plans and asks again, listing the paths, instead of deleting
           // whatever the new plan happens to contain.
           onPrimaryAction: () => _run(view),
-          onTogglePause: () =>
-              _setPaused(view, view.profile.state != PlainFolderProfileState.paused),
+          onTogglePause: () => _setPaused(
+            view,
+            view.profile.state != PlainFolderProfileState.paused,
+          ),
         ),
       ],
     ];
@@ -319,11 +325,7 @@ class _LocationCard extends StatelessWidget {
               icon: CupertinoIcons.cloud,
               label: syncText(context, '远端', 'Remote'),
               value: view.connection == null
-                  ? syncText(
-                      context,
-                      '远端连接已删除',
-                      'Remote connection deleted',
-                    )
+                  ? syncText(context, '远端连接已删除', 'Remote connection deleted')
                   : '${view.connectionName}${view.remotePath}',
             ),
             const SizedBox(height: AppSpacing.sm),

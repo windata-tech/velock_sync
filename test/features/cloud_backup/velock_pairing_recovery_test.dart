@@ -6,9 +6,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:fake_async/fake_async.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
@@ -747,15 +745,12 @@ Future<void> _pumpWizard(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: harness.container,
-      child: PlatformProvider(
-        initialPlatform: TargetPlatform.iOS,
-        builder: (_) => MaterialApp(
-          locale: const Locale('zh'),
-          supportedLocales: const [Locale('zh')],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          theme: ThemeData(platform: TargetPlatform.iOS),
-          home: VelockDatasetWizard(restoring: restoring),
-        ),
+      child: MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: const [Locale('zh')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        home: VelockDatasetWizard(restoring: restoring),
       ),
     ),
   );
@@ -1086,6 +1081,7 @@ class _RecordingFinalizer implements VelockProfileFinalizer {
     required SyncProfileBackgroundPolicy backgroundPolicy,
     required bool userConfirmed,
     List<String> remoteRootSegments = const [],
+    bool restoring = false,
   }) async {
     lastSegments = remoteRootSegments;
     finalizeCount += 1;

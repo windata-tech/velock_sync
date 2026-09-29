@@ -1,3 +1,4 @@
+import 'package:velock_sync/features/cloud_backup/application/velock_snapshot_providers.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
@@ -5,11 +6,10 @@ import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
@@ -60,9 +60,12 @@ void main() {
     TargetPlatform platform = TargetPlatform.iOS,
     SyncProfileRunService? runService,
     ConnectionRepository? connections,
+    Future<bool> Function(String)? continuationReady,
   }) => ProviderScope(
     overrides: [
       syncStateDatabaseProvider.overrideWithValue(database),
+      if (continuationReady != null)
+        snapshotContinuationReadyProvider.overrideWithValue(continuationReady),
       if (connections != null)
         connectionRepositoryProvider.overrideWithValue(connections),
       syncProfileRepositoryProvider.overrideWithValue(repository),
@@ -73,11 +76,7 @@ void main() {
     child: MaterialApp(
       locale: Locale(locale),
       supportedLocales: const [Locale('zh'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      localizationsDelegates: const [...GlobalMaterialLocalizations.delegates],
       theme: ThemeData(
         platform: platform,
         fontFamily: 'BackupQA',
@@ -111,6 +110,115 @@ void main() {
       home: home,
     ),
   );
+
+  testWidgets(
+    'a run outside the retained home refreshes its completed summary',
+    (tester) async {
+      final pending = Completer<SyncProfileDispatchResult>();
+      await repository.save(_profile());
+      await tester.pumpWidget(
+        app(
+          Scaffold(
+            body: Column(
+              children: [
+                const Expanded(child: SyncProfilesHome()),
+                Consumer(
+                  builder: (context, ref, _) => TextButton(
+                    onPressed: () =>
+                        runSyncWithProgress(context, ref, 'velock'),
+                    child: const Text('run from setup'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          runService: _PendingRunService(pending.future),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final home = tester.element(find.byType(SyncProfilesHome));
+      expect(find.text('还没有完成首次备份'), findsOneWidget);
+      await tester.tap(find.text('run from setup'));
+      await tester.pump();
+      await database.startSyncRun(
+        runId: 'setup-run',
+        profileId: 'velock',
+        startedAt: DateTime.utc(2026, 9, 27),
+      );
+      await database.finishSyncRun(
+        runId: 'setup-run',
+        state: 'completed',
+        completedAt: DateTime.utc(2026, 9, 27, 0, 1),
+      );
+      pending.complete(
+        const SyncProfileDispatchResult(
+          profileId: 'velock',
+          status: SyncProfileDispatchStatus.completed,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        identical(home, tester.element(find.byType(SyncProfilesHome))),
+        isTrue,
+      );
+      expect(find.text('还没有完成首次备份'), findsNothing);
+      expect(find.text('上次备份已完成'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('return from owner continues once only after a local receipt', (
+    tester,
+  ) async {
+    await repository.save(_profile());
+    var ready = false;
+    final pending = Completer<SyncProfileDispatchResult>();
+    final service = _PendingRunService(pending.future);
+    await tester.pumpWidget(
+      app(
+        const SyncProfilesHome(),
+        runService: service,
+        continuationReady: (_) async => ready,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(service.calls, 0);
+    tester.binding.handleAppLifecycleStateChanged(
+      AppLifecycleState.paused,
+    );
+    ready = true;
+    tester.binding.handleAppLifecycleStateChanged(
+      AppLifecycleState.resumed,
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(service.calls, 1);
+    tester.binding.handleAppLifecycleStateChanged(
+      AppLifecycleState.inactive,
+    );
+    tester.binding.handleAppLifecycleStateChanged(
+      AppLifecycleState.resumed,
+    );
+    await tester.pump();
+    expect(service.calls, 1);
+    ready = false;
+    pending.complete(
+      const SyncProfileDispatchResult(
+        profileId: 'velock',
+        status: SyncProfileDispatchStatus.completed,
+      ),
+    );
+    await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(
+      AppLifecycleState.inactive,
+    );
+    tester.binding.handleAppLifecycleStateChanged(
+      AppLifecycleState.resumed,
+    );
+    await tester.pumpAndSettle();
+    expect(service.calls, 1);
+    expect(tester.takeException(), isNull);
+  });
 
   Future<void> capture(WidgetTester tester, String name) async {
     final directory = Platform.environment['BACKUP_UI_SCREENSHOT_DIR'];
@@ -651,9 +759,13 @@ class _PendingRunService implements SyncProfileRunService {
   _PendingRunService(this.result);
 
   final Future<SyncProfileDispatchResult> result;
+  int calls = 0;
 
   @override
-  Future<SyncProfileDispatchResult> runNow(String profileId) => result;
+  Future<SyncProfileDispatchResult> runNow(String profileId) {
+    calls++;
+    return result;
+  }
 }
 
 class _ResumeGateRepository extends SyncProfileRepository {

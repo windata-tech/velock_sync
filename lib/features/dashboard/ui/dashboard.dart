@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/features/dashboard/state/dashboard_provider.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 class Dashboard extends HookConsumerWidget {
@@ -12,10 +12,7 @@ class Dashboard extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final syncTasks = ref.watch(syncTasksProvider);
 
-    return PlatformScaffold(
-      iosContentPadding:
-          Theme.of(context).platform == TargetPlatform.iOS ||
-          Theme.of(context).platform == TargetPlatform.macOS,
+    return AdaptivePageScaffold(
       appBar: WDAppBar(title: Text('Dashboard')),
       body: syncTasks.when(
         data: (value) => value.isEmpty

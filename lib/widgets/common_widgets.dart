@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
@@ -9,12 +9,14 @@ import 'package:velock_sync/l10n/sync_locale.dart';
 
 /// Shows transient operation feedback without assuming a Material widget tree.
 ///
-/// [PlatformApp] builds a Cupertino tree on Apple platforms, where a
-/// [ScaffoldMessenger] is intentionally absent. Material pages retain the
-/// standard SnackBar while Cupertino pages use the platform toast channel.
+/// MaterialApp installs a [ScaffoldMessenger] even when its pages only contain
+/// Cupertino scaffolds. A messenger alone cannot present a SnackBar: require a
+/// Material scaffold on Apple pages as well, otherwise use the platform toast
+/// channel. Material pages can call from above their own descendant Scaffold.
 void showPlatformMessage(BuildContext context, String message) {
   final messenger = ScaffoldMessenger.maybeOf(context);
-  if (messenger != null) {
+  if (messenger != null &&
+      (!isApplePlatform(context) || Scaffold.maybeOf(context) != null)) {
     messenger.showSnackBar(SnackBar(content: Text(message)));
     return;
   }
@@ -64,68 +66,113 @@ class AppBackButton extends StatelessWidget {
         excludeSemantics: true,
         child: SizedBox.square(
           dimension: touchTargetSize,
-          child: PlatformIconButton(
-            padding: EdgeInsets.zero,
-            icon: icon,
-            onPressed: onPressed,
-            material: (context, platform) => MaterialIconButtonData(
-              constraints: const BoxConstraints.tightFor(
-                width: touchTargetSize,
-                height: touchTargetSize,
-              ),
-              iconSize: iconSize,
-            ),
-            cupertino: (context, platform) => CupertinoIconButtonData(
-              minimumSize: const Size.square(touchTargetSize),
-              foregroundColor: iconColor,
-            ),
-          ),
+          child: isApplePlatform(context)
+              ? CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size.square(touchTargetSize),
+                  onPressed: onPressed,
+                  child: icon,
+                )
+              : IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: touchTargetSize,
+                    height: touchTargetSize,
+                  ),
+                  iconSize: iconSize,
+                  icon: icon,
+                  onPressed: onPressed,
+                ),
         ),
       ),
     );
   }
 }
 
-class WDAppBar extends PlatformAppBar {
-  WDAppBar({
+/// The app's own platform-adaptive navigation bar.
+///
+/// Replaces `flutter_platform_widgets`' `PlatformAppBar`, which is discontinued
+/// upstream (Flutter is moving Material/Cupertino out of the SDK). The two
+/// branches keep exactly the layout rules established for Sync headers: the
+/// leading slot holds a 44pt [AppBackButton] whose ink sits at the page edge
+/// (no extra 8pt after it), the title may wrap to two lines, and the trailing
+/// actions are laid out with `MainAxisSize.min`.
+class WDAppBar extends StatelessWidget
+    implements ObstructingPreferredSizeWidget {
+  const WDAppBar({
     super.key,
-    Widget? title,
-    super.trailingActions,
-    super.leading,
-    bool showTitle = true,
-  }) : super(
-         automaticallyImplyLeading: false,
-         title: showTitle ? title : null,
-         material: (context, _) => MaterialAppBarData(
-           leading: _leadingFor(context, leading),
-           leadingWidth: _leadingFor(context, leading) is AppBackButton
-               ? AppBackButton.touchTargetSize
-               : null,
-           automaticallyImplyLeading: false,
-           centerTitle: false,
-           elevation: 0,
-           scrolledUnderElevation: 0,
-           surfaceTintColor: Colors.transparent,
-           backgroundColor: context.appNavigationBarBackground,
-         ),
-         cupertino: (context, _) => CupertinoNavigationBarData(
-           leading: _leadingFor(context, leading),
-           padding: _leadingFor(context, leading) is AppBackButton
-               ? const EdgeInsetsDirectional.only(
-                   start: AppBackButton.headerInset,
-                   end: AppSpacing.page,
-                 )
-               : null,
-           automaticallyImplyLeading: false,
-           backgroundColor: context.appNavigationBarBackground,
-           border: Border(
-             bottom: BorderSide(
-               color: context.appSeparator.withValues(alpha: 0.6),
-               width: 0.5,
-             ),
-           ),
-         ),
-       );
+    this.title,
+    this.trailingActions,
+    this.leading,
+    this.showTitle = true,
+  });
+
+  final Widget? title;
+  final List<Widget>? trailingActions;
+  final Widget? leading;
+  final bool showTitle;
+
+  static const double _barHeight = 44;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(_barHeight);
+
+  /// The bar paints an opaque background, so content behind it is hidden.
+  @override
+  bool shouldFullyObstruct(BuildContext context) => true;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedLeading = _leadingFor(context, leading);
+    final resolvedTitle = showTitle ? title : null;
+    final resolvedTrailing = trailingActions == null || trailingActions!.isEmpty
+        ? null
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: trailingActions!,
+          );
+
+    if (isApplePlatform(context)) {
+      return CupertinoNavigationBar(
+        automaticallyImplyLeading: false,
+        leading: resolvedLeading,
+        middle: resolvedTitle,
+        trailing: resolvedTrailing,
+        backgroundColor: context.appNavigationBarBackground,
+        // The back button is already a 44pt touch target whose ink sits at the
+        // page edge; adding the usual trailing gap after it overflowed the
+        // leading slot (debug stripes) for some fonts and text scales.
+        padding: resolvedLeading is AppBackButton
+            ? const EdgeInsetsDirectional.only(
+                start: AppBackButton.headerInset,
+                end: AppSpacing.page,
+              )
+            : null,
+        border: Border(
+          bottom: BorderSide(
+            color: context.appSeparator.withValues(alpha: 0.6),
+            width: 0.5,
+          ),
+        ),
+      );
+    }
+
+    return AppBar(
+      leading: resolvedLeading,
+      leadingWidth: resolvedLeading is AppBackButton
+          ? AppBackButton.touchTargetSize
+          : null,
+      automaticallyImplyLeading: false,
+      centerTitle: false,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      backgroundColor: context.appNavigationBarBackground,
+      title: resolvedTitle,
+      actions: trailingActions,
+    );
+  }
 
   static Widget? _leadingFor(BuildContext context, Widget? leading) {
     if (leading != null) {

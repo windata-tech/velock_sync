@@ -44,7 +44,14 @@ class MirrorVerificationBudget {
   final int maxFiles;
 }
 
-enum MirrorRunPhase { scanning, comparing, uploading, downloading, deleting, finishing }
+enum MirrorRunPhase {
+  scanning,
+  comparing,
+  uploading,
+  downloading,
+  deleting,
+  finishing,
+}
 
 class MirrorProgress {
   const MirrorProgress({
@@ -164,8 +171,10 @@ class PlainFolderSyncService {
   Future<void> checkRemoteWritable(
     String profileId, {
     RemoteOperationCancellation? cancellation,
-  }) async =>
-      _checkRemoteWritable(await _requireProfile(profileId), cancellation: cancellation);
+  }) async => _checkRemoteWritable(
+    await _requireProfile(profileId),
+    cancellation: cancellation,
+  );
 
   /// Proves the selected remote folder exists and accepts a write, before a
   /// profile is created or after it was changed.
@@ -229,8 +238,7 @@ class PlainFolderSyncService {
             errorCode: 'plain_folder.remote_folder_unwritable',
             category: SyncErrorCategory.permissionRequired,
             retryable: false,
-            suggestedAction:
-                '远端文件夹不存在或这个账号不能写入。请在详情页重新选择一个真实存在、且可写入的远端文件夹。',
+            suggestedAction: '远端文件夹不存在或这个账号不能写入。请在详情页重新选择一个真实存在、且可写入的远端文件夹。',
           ),
         );
       }
@@ -704,7 +712,10 @@ class PlainFolderSyncService {
         identical.add(path);
       }
     }
-    return _VerificationResult(identicalPaths: identical, deferredPaths: deferred);
+    return _VerificationResult(
+      identicalPaths: identical,
+      deferredPaths: deferred,
+    );
   }
 
   Future<String?> _localDigest(
@@ -712,7 +723,9 @@ class PlainFolderSyncService {
     String relativePath,
   ) async {
     try {
-      final digest = await sha256.bind(storage.file(relativePath).openRead()).first;
+      final digest = await sha256
+          .bind(storage.file(relativePath).openRead())
+          .first;
       return digest.toString();
     } on Object {
       return null;
@@ -744,16 +757,21 @@ class PlainFolderSyncService {
     required RemoteOperationCancellation? cancellation,
   }) async {
     final now = _now().toUtc();
-    final directories = plan.actions
-        .where(
-          (action) =>
-              action.type == MirrorActionType.createRemoteDirectory ||
-              action.type == MirrorActionType.createLocalDirectory,
-        )
-        .toList()
-      ..sort((a, b) => _depth(a.relativePath).compareTo(_depth(b.relativePath)));
+    final directories =
+        plan.actions
+            .where(
+              (action) =>
+                  action.type == MirrorActionType.createRemoteDirectory ||
+                  action.type == MirrorActionType.createLocalDirectory,
+            )
+            .toList()
+          ..sort(
+            (a, b) => _depth(a.relativePath).compareTo(_depth(b.relativePath)),
+          );
     final deletions = plan.actions.where((action) => action.isDeletion).toList()
-      ..sort((a, b) => _depth(b.relativePath).compareTo(_depth(a.relativePath)));
+      ..sort(
+        (a, b) => _depth(b.relativePath).compareTo(_depth(a.relativePath)),
+      );
     final uploads = plan.actions
         .where((action) => action.type == MirrorActionType.uploadFile)
         .toList();
@@ -790,10 +808,7 @@ class PlainFolderSyncService {
     }
 
     onProgress?.call(
-      MirrorProgress(
-        phase: MirrorRunPhase.deleting,
-        total: deletions.length,
-      ),
+      MirrorProgress(phase: MirrorRunPhase.deleting, total: deletions.length),
     );
     for (var index = 0; index < deletions.length; index++) {
       final action = deletions[index];
@@ -809,7 +824,8 @@ class PlainFolderSyncService {
       switch (action.type) {
         case MirrorActionType.deleteRemoteEntry:
           await _remoteWrite(
-            () => remote.delete(action.relativePath, cancellation: cancellation),
+            () =>
+                remote.delete(action.relativePath, cancellation: cancellation),
           );
           counters.deletedRemoteCount++;
         case MirrorActionType.deleteLocalEntry:
@@ -854,7 +870,10 @@ class PlainFolderSyncService {
     }
 
     onProgress?.call(
-      MirrorProgress(phase: MirrorRunPhase.downloading, total: downloads.length),
+      MirrorProgress(
+        phase: MirrorRunPhase.downloading,
+        total: downloads.length,
+      ),
     );
     for (var index = 0; index < downloads.length; index++) {
       final action = downloads[index];
@@ -986,8 +1005,7 @@ class PlainFolderSyncService {
             errorCode: 'plain_folder.remote_folder_unwritable',
             category: SyncErrorCategory.permissionRequired,
             retryable: false,
-            suggestedAction:
-                '远端文件夹不存在或这个账号不能写入。请在详情页重新选择一个真实存在、且可写入的远端文件夹。',
+            suggestedAction: '远端文件夹不存在或这个账号不能写入。请在详情页重新选择一个真实存在、且可写入的远端文件夹。',
           ),
         );
       }
@@ -1203,7 +1221,9 @@ class PlainFolderSyncService {
           ),
         );
       case FolderAccessKind.appleSecurityScopedBookmark:
-        final session = await _appleFolders.acquireOrReportLostAccess(profile.localRootReference);
+        final session = await _appleFolders.acquireOrReportLostAccess(
+          profile.localRootReference,
+        );
         return SelectedFolderStorageSession(
           LocalSelectedFolderStorage(Directory(session.path)),
           onRelease: () => _appleFolders.release(session.token),
@@ -1321,8 +1341,10 @@ class MirrorRemoteSummary {
 }
 
 class SelectedFolderStorageSession {
-  SelectedFolderStorageSession(this.storage, {Future<void> Function()? onRelease})
-    : _onRelease = onRelease;
+  SelectedFolderStorageSession(
+    this.storage, {
+    Future<void> Function()? onRelease,
+  }) : _onRelease = onRelease;
 
   final SelectedFolderStorage storage;
   final Future<void> Function()? _onRelease;

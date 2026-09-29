@@ -152,7 +152,9 @@ final class MirrorQueries {
     db.execute('DELETE FROM mirror_conflicts WHERE profile_id = ?', [
       profileId,
     ]);
-    db.execute('DELETE FROM mirror_run_stats WHERE profile_id = ?', [profileId]);
+    db.execute('DELETE FROM mirror_run_stats WHERE profile_id = ?', [
+      profileId,
+    ]);
   }
 
   Future<void> recordMirrorConflicts(
@@ -190,7 +192,9 @@ final class MirrorQueries {
     final records = <MirrorConflictRecord>[];
     for (final row in rows) {
       final kind = MirrorConflictRecord.parseKind(row['kind']);
-      final resolution = MirrorConflictRecord.parseResolution(row['resolution']);
+      final resolution = MirrorConflictRecord.parseResolution(
+        row['resolution'],
+      );
       if (kind == null || resolution == null) continue;
       records.add(
         MirrorConflictRecord(

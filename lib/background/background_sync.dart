@@ -1,3 +1,4 @@
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_verification_record.dart';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -322,8 +323,10 @@ Future<bool> runEnabledBackgroundProfiles({
     if (!globalSettings.backgroundEnabled) return true;
     await SyncStateDatabase.initialize();
     final database = SyncStateDatabase.instance;
-    // This engine gets a fresh process as well: a run left behind by a killed
-    // process must not block the profiles this task is about to consider.
+    // A run left behind by a killed process must not block the profiles this
+    // pass is about to consider. The foreground coordinator also calls this on
+    // every resume, so the sweep only touches runs and locks of processes that
+    // are gone; a run this process started is still alive and keeps its lock.
     await database.failInterruptedSyncRuns();
     final supportDirectory = await getApplicationSupportDirectory();
     final connections = ConnectionRepository(
@@ -348,6 +351,8 @@ Future<bool> runEnabledBackgroundProfiles({
       profiles: profiles,
       connections: connections,
       adapterFactory: PlatformVelockDatasetAdapterFactory(
+        snapshotVerificationRecord:
+            FileVelockSnapshotVerificationRecord.inSupportDirectory(),
         androidExchange: MethodChannelAndroidExchangeChannel(),
         appleRootLocator: AppleExchangeRootLocator(),
       ),

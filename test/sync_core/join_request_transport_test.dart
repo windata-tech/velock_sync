@@ -6,7 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/sync_core/engine/join_request_transport.dart';
 import 'package:velock_sync/sync_core/testing/in_memory_object_store.dart';
 
-Uint8List _request(String deviceId, {String? vaultId}) {
+Uint8List _request(
+  String deviceId, {
+  String? vaultId,
+  String requestedAt = '2026-09-11T00:00:00.000Z',
+}) {
   return Uint8List.fromList(
     utf8.encode(
       jsonEncode({
@@ -15,7 +19,7 @@ Uint8List _request(String deviceId, {String? vaultId}) {
         'deviceId': deviceId,
         'deviceDisplayName': '新 iPhone',
         'signingPublicKey': 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-        'requestedAt': '2026-09-11T00:00:00.000Z',
+        'requestedAt': requestedAt,
         'signatureAlgorithm': 'Ed25519',
         'signature':
             'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -56,11 +60,11 @@ void main() {
       Stream.value(peerBytes),
       contentLength: peerBytes.length,
     );
-    // The remote also holds the request this device just uploaded, so both
-    // artifacts are copied back into the local control folder.
+    // The request this device just uploaded is already the local copy, so
+    // only the peer's request is copied into the local control folder.
     expect(
       await transport.downloadRemote(vaultId: 'vault-1', remote: remote),
-      2,
+      1,
     );
     final local = File('${transport.localRequests.path}/$peerId.json');
     expect(local.existsSync(), isTrue);
@@ -100,6 +104,56 @@ void main() {
     expect(
       await transport.downloadRemote(vaultId: 'vault-1', remote: remote),
       0,
+    );
+  });
+
+  test('a stale copy never replaces a newer request on either side', () async {
+    // Every peer re-uploads the requests it has downloaded. With a plain
+    // overwrite, an old copy (the device's previous key) could win the race
+    // and a peer would then approve a key the device no longer uses.
+    final root = await Directory.systemTemp.createTemp(
+      'velock-join-transport-',
+    );
+    addTearDown(() async {
+      if (root.existsSync()) await root.delete(recursive: true);
+    });
+    final transport = JoinRequestTransport(root);
+    final remote = InMemoryObjectStore();
+    final key = 'velock-sync/v1/vault-1/join-requests/$deviceId.json';
+    final newer = _request(deviceId, requestedAt: '2026-09-20T00:00:00.000Z');
+    await remote.put(key, Stream.value(newer), contentLength: newer.length);
+    await transport.localRequests.create(recursive: true);
+    final localFile = File('${transport.localRequests.path}/$deviceId.json');
+    await localFile.writeAsBytes(_request(deviceId));
+
+    expect(await transport.uploadLocal(vaultId: 'vault-1', remote: remote), 0);
+    expect(
+      await remote.read(key).expand((chunk) => chunk).toList(),
+      newer,
+      reason: 'the older local copy is not uploaded',
+    );
+
+    expect(
+      await transport.downloadRemote(vaultId: 'vault-1', remote: remote),
+      1,
+    );
+    expect(await localFile.readAsBytes(), newer);
+
+    await localFile.writeAsBytes(
+      _request(deviceId, requestedAt: '2026-09-01T00:00:00.000Z'),
+    );
+    expect(
+      await transport.downloadRemote(vaultId: 'vault-1', remote: remote),
+      1,
+      reason: 'the newer remote request replaces the older local copy',
+    );
+    await localFile.writeAsBytes(
+      _request(deviceId, requestedAt: '2026-09-30T00:00:00.000Z'),
+    );
+    expect(
+      await transport.downloadRemote(vaultId: 'vault-1', remote: remote),
+      0,
+      reason: 'a newer local request is kept',
     );
   });
 }

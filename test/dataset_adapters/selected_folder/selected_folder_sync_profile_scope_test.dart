@@ -28,8 +28,8 @@ void main() {
 
     expect(decoded.remoteRootSegments, isEmpty);
     expect(
-      (decoded.toJson()['dataset']! as Map<String, Object?>)[
-          'remoteRootSegments'],
+      (decoded.toJson()['dataset']!
+          as Map<String, Object?>)['remoteRootSegments'],
       isEmpty,
     );
   });
@@ -104,9 +104,10 @@ void main() {
   });
 
   test('copyWith preserves the chosen folder while changing settings', () {
-    final updated = _profile(
-      segments: const ['111'],
-    ).copyWith(backgroundEnabled: true, state: SelectedFolderProfileState.paused);
+    final updated = _profile(segments: const ['111']).copyWith(
+      backgroundEnabled: true,
+      state: SelectedFolderProfileState.paused,
+    );
 
     expect(updated.remoteRootSegments, ['111']);
     expect(updated.backgroundEnabled, isTrue);
@@ -144,10 +145,11 @@ void main() {
     );
 
     expect(updated.remoteRootSegments, ['USB_HDD_8T', '111', '文件同步']);
-    expect(
-      (await repository.read('profile-1'))!.remoteRootSegments,
-      ['USB_HDD_8T', '111', '文件同步'],
-    );
+    expect((await repository.read('profile-1'))!.remoteRootSegments, [
+      'USB_HDD_8T',
+      '111',
+      '文件同步',
+    ]);
     expect(updated.rootKeyRef, stored.rootKeyRef);
     expect(updated.rootPath, stored.rootPath);
   });
@@ -196,28 +198,31 @@ void main() {
     expect((await repository.read('profile-1'))!.remoteRootSegments, isEmpty);
   });
 
-  test('relocation is blocked while another page holds the location lock', () async {
-    final database = await SyncStateDatabase.inMemory();
-    addTearDown(database.close);
-    final repository = SelectedFolderSyncProfileRepository(database);
-    await repository.save(_profile());
-    final pageCopy = (await repository.read('profile-1'))!;
-    // A fresh heartbeat: a genuinely held location lock must not be stolen.
-    await database.tryAcquireProfileLock(
-      profileId: 'velock-location:profile-1',
-      owner: 'other-page',
-      now: DateTime.now().toUtc(),
-      staleAfter: const Duration(minutes: 5),
-    );
+  test(
+    'relocation is blocked while another page holds the location lock',
+    () async {
+      final database = await SyncStateDatabase.inMemory();
+      addTearDown(database.close);
+      final repository = SelectedFolderSyncProfileRepository(database);
+      await repository.save(_profile());
+      final pageCopy = (await repository.read('profile-1'))!;
+      // A fresh heartbeat: a genuinely held location lock must not be stolen.
+      await database.tryAcquireProfileLock(
+        profileId: 'velock-location:profile-1',
+        owner: 'other-page',
+        now: DateTime.now().toUtc(),
+        staleAfter: const Duration(minutes: 5),
+      );
 
-    expect(
-      () => repository.selectSyncFolder(
-        expected: pageCopy,
-        segments: const ['111'],
-      ),
-      throwsA(isA<SyncRunBusyException>()),
-    );
-  });
+      expect(
+        () => repository.selectSyncFolder(
+          expected: pageCopy,
+          segments: const ['111'],
+        ),
+        throwsA(isA<SyncRunBusyException>()),
+      );
+    },
+  );
 
   test('a stored scope survives an unrelated envelope key order', () async {
     final encoded = jsonEncode(_profile(segments: const ['111']).toJson());
@@ -226,9 +231,8 @@ void main() {
       decoded.entries.toList().reversed,
     );
 
-    expect(
-      SelectedFolderSyncProfile.fromJson(reordered).remoteRootSegments,
-      ['111'],
-    );
+    expect(SelectedFolderSyncProfile.fromJson(reordered).remoteRootSegments, [
+      '111',
+    ]);
   });
 }

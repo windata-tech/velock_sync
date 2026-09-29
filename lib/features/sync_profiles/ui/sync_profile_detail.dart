@@ -2,6 +2,10 @@
 /// per-profile settings tabs.
 library;
 
+import 'package:velock_sync/features/cloud_backup/application/velock_snapshot_providers.dart';
+
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
+
 import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
 
 import 'package:velock_sync/l10n/sync_locale.dart';
@@ -13,8 +17,8 @@ import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/sync_profiles/model/sync_run_outcome.dart';
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -78,6 +82,17 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail>
         .read(syncProfileRepositoryProvider)
         .read(widget.profileId);
     _kind = profile?.kind;
+    if (profile?.kind == SyncDatasetKind.velockManaged &&
+        profile!.dataset['currentSnapshotId'] != null) {
+      try {
+        await (await ref.read(
+          velockBackupRebuildServiceProvider.future,
+        )).recoverCompletedHistory(widget.profileId);
+      } catch (_) {
+        // Missing or invalid old evidence cannot become a success record.
+        // Existing history remains available, including when Velock is locked.
+      }
+    }
     final values = await Future.wait<Object?>([
       database.latestSyncRun(widget.profileId),
       database.listRecentSyncRuns(profileId: widget.profileId),
@@ -320,6 +335,9 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
   bool get _isVelock => widget.profile.kind == SyncDatasetKind.velockManaged;
   BackupPresentation get _presentation => BackupPresentation.from(
     state: widget.profile.state,
+    locationChangedAt: _isVelock
+        ? VelockSyncProfile.locationChangedAtFromEnvelope(widget.profile)
+        : null,
     running: _running,
     availability: widget.velockAvailability,
     pendingIncoming: widget.synced.pendingIncomingCount,
@@ -395,7 +413,11 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
       case BackupAction.transfer:
         await _runNow();
       case BackupAction.openVelock:
-        await openVelockForBackup(context, ref);
+        await openVelockForBackup(
+          context,
+          ref,
+          profileId: widget.profile.profileId,
+        );
       case BackupAction.resume:
         await _toggleState();
       case BackupAction.resolve:
@@ -528,9 +550,7 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
             footer: Text(
               syncText(
                 context,
-                _isVelock
-                    ? '暂停不会删除本机或云端的数据。'
-                    : '暂停不会删除本机或远端的数据。',
+                _isVelock ? '暂停不会删除本机或云端的数据。' : '暂停不会删除本机或远端的数据。',
                 'Pausing does not delete local or remote data.',
               ),
             ),
@@ -832,6 +852,7 @@ class _ProfileSettingsTabState extends ConsumerState<_ProfileSettingsTab> {
   late SyncProfileEnvelope profile = widget.profile;
   bool _saving = false;
   void onChanged() => widget.onChanged();
+
   /// Relocates this backup inside its existing connection.
   Future<void> _changeLocation() async {
     if (_saving) return;
@@ -932,7 +953,11 @@ class _ProfileSettingsTabState extends ConsumerState<_ProfileSettingsTab> {
               ),
               subtitle: Text(
                 _remoteRootSegmentsOf(profile).isEmpty
-                    ? syncText(context, '当前使用连接根目录', 'Currently the connection root')
+                    ? syncText(
+                        context,
+                        '当前使用连接根目录',
+                        'Currently the connection root',
+                      )
                     : '/${_remoteRootSegmentsOf(profile).join('/')}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

@@ -9,10 +9,8 @@ import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -98,15 +96,12 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: scope ?? container,
-        child: PlatformProvider(
-          initialPlatform: platform,
-          builder: (_) => MaterialApp.router(
-            locale: const Locale('zh'),
-            supportedLocales: const [Locale('zh'), Locale('en')],
-            localizationsDelegates: GlobalMaterialLocalizations.delegates,
-            theme: ThemeData(platform: platform),
-            routerConfig: router,
-          ),
+        child: MaterialApp.router(
+          locale: const Locale('zh'),
+          supportedLocales: const [Locale('zh'), Locale('en')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: ThemeData(platform: platform),
+          routerConfig: router,
         ),
       ),
     );
@@ -262,10 +257,7 @@ void main() {
 
     // ... and hands that folder to the browser instead of the connection root.
     expect(
-      router
-          .routerDelegate
-          .currentConfiguration
-          .matches
+      router.routerDelegate.currentConfiguration.matches
           .map((match) => match.matchedLocation)
           .last,
       '/connections/connection/cloud',
@@ -352,6 +344,10 @@ void main() {
     await mount(tester, location: '/velock/restore');
     final continueButton = find.byKey(const Key('restore-continue'));
     expect(tester.widget<BackupActionButton>(continueButton).onPressed, isNull);
+    await tester.ensureVisible(
+      find.byKey(const Key('restore-account-confirmed')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
         of: find.byKey(const Key('restore-account-confirmed')),
@@ -360,6 +356,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.ensureVisible(continueButton);
+    await tester.pumpAndSettle();
     await tester.tap(continueButton);
     await tester.pumpAndSettle();
     expect(

@@ -7,9 +7,8 @@
 /// the colour that identifies the item survives.
 library;
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/features/connection/ui/connection.dart';
@@ -17,20 +16,14 @@ import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/velock_brand_mark.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
-Widget _host(Widget child) => PlatformProvider(
-  initialPlatform: TargetPlatform.iOS,
-  builder: (_) => MaterialApp(
-    // isApplePlatform() reads Theme.of(context).platform, so the iOS branch
-    // (Cupertino controls) is what these assertions exercise.
-    theme: ThemeData(platform: TargetPlatform.iOS),
-    home: Scaffold(
-      body: Center(
-        child: Builder(
-          builder: (context) => Theme(
-            data: Theme.of(context),
-            child: child,
-          ),
-        ),
+Widget _host(Widget child) => MaterialApp(
+  // isApplePlatform() reads Theme.of(context).platform, so the iOS branch
+  // (Cupertino controls) is what these assertions exercise.
+  theme: ThemeData(platform: TargetPlatform.iOS),
+  home: Scaffold(
+    body: Center(
+      child: Builder(
+        builder: (context) => Theme(data: Theme.of(context), child: child),
       ),
     ),
   ),
@@ -69,7 +62,11 @@ void main() {
           width: 120,
           height: 120,
           child: RemoteFileItem(
-            file: WebdavFile(path: '/share/USB_HDD_8T', isDir: true, name: 'USB_HDD_8T'),
+            file: WebdavFile(
+              path: '/share/USB_HDD_8T',
+              isDir: true,
+              name: 'USB_HDD_8T',
+            ),
             inactive: true,
           ),
         ),
@@ -97,7 +94,11 @@ void main() {
           width: 120,
           height: 120,
           child: RemoteFileItem(
-            file: WebdavFile(path: '/share/Photos', isDir: true, name: 'Photos'),
+            file: WebdavFile(
+              path: '/share/Photos',
+              isDir: true,
+              name: 'Photos',
+            ),
           ),
         ),
       ),

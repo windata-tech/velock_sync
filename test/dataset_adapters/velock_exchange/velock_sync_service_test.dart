@@ -1,3 +1,6 @@
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_dataset_adapter.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_store.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_recovery_transport.dart';
 import 'package:velock_sync/sync_core/engine/sync_upload_engine.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -38,6 +41,37 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
     await LocalDataManager.instance.init();
   });
+
+  test(
+    'missing recovery file records failed run before publishing any backup objects',
+    () async {
+      final fixture = await _Fixture.create();
+      addTearDown(fixture.dispose);
+      final remote = InMemoryObjectStore();
+      final dataset = VelockExchangeDatasetAdapter(
+        datasetId: fixture.profile.datasetId,
+        vaultId: fixture.profile.vaultId,
+        producerDeviceId: fixture.profile.pairedProducerId,
+        displayName: 'Test',
+        exchange: VelockExchangeStore(fixture.stagingRoot),
+      );
+      final service = fixture.service(
+        adapterFactory: _FakeAdapterFactory(dataset),
+        remoteFactory: ({required protocol, required password}) => remote,
+        availableSpace: const _FixedAvailableSpaceProbe(1024 * 1024 * 1024),
+      );
+      await expectLater(
+        service.run(fixture.profile.profileId),
+        throwsA(isA<VelockRecoveryFileRequired>()),
+      );
+      final run = await fixture.database.latestSyncRun(
+        fixture.profile.profileId,
+      );
+      expect(run!.state, 'failed');
+      expect(run.errorCode, 'local.velock_recovery_required');
+      expect((await remote.list()).items, isEmpty);
+    },
+  );
 
   test(
     'destination cannot change while adapter preflight is in progress',

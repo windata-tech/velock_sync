@@ -7,7 +7,8 @@ import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_acc
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 
 final plainFolderProfilesProvider = Provider<PlainFolderSyncProfileRepository>(
-  (ref) => PlainFolderSyncProfileRepository(ref.watch(syncStateDatabaseProvider)),
+  (ref) =>
+      PlainFolderSyncProfileRepository(ref.watch(syncStateDatabaseProvider)),
 );
 
 /// Native folder picker, injectable so widget tests never touch a platform

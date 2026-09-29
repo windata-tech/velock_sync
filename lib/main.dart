@@ -2,11 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -37,9 +35,10 @@ void main() async {
   await LocalDataManager.instance.init();
   await SyncStateDatabase.initialize();
   // A run row is marked `running` before its transfer starts and closed when it
-  // ends. This process cannot own a run a previous one left behind, so close
-  // them here — otherwise a kill during a sync leaves the location claiming to
-  // be syncing for ever and refuses edits and deletion.
+  // ends. Close the rows a killed process left behind, otherwise the location
+  // claims to be syncing for ever and refuses edits and deletion. A background
+  // isolate of this same process may already be running a sync; the sweep
+  // leaves runs whose lock this process still owns alone.
   try {
     await SyncStateDatabase.instance.failInterruptedSyncRuns();
   } on Object catch (error, stackTrace) {
@@ -151,31 +150,37 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(vSThemeModeProvider);
-    return PlatformProvider(
-      settings: PlatformSettingsData(matchMaterialCaseForPlatformText: true),
-      builder: (context) => PlatformTheme(
-        materialLightTheme: materialLightTheme,
-        materialDarkTheme: materialDarkTheme,
-        cupertinoLightTheme: cupertinoLightTheme,
-        cupertinoDarkTheme: cupertinoDarkTheme,
-        themeMode: themeMode,
-        builder: (context) => PlatformApp.router(
-          builder: FToastBuilder(),
-          // Unset preferences keep Chinese; an explicit system choice uses
-          // Flutter locale resolution and updates with the device language.
-          locale: ref.watch(syncLanguageProvider).locale,
-          supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          title: 'Velock Sync',
-          onGenerateTitle: (BuildContext context) => 'Velock Sync',
-          debugShowCheckedModeBanner: false,
-          routerConfig: goRouter,
-        ),
-      ),
+    // One MaterialApp for both platforms: pages already pick their own
+    // design-language widgets through `isApplePlatform(context)`, and the
+    // Cupertino theme is installed below so Cupertino widgets resolve the same
+    // colours they did under a CupertinoApp. This replaces the discontinued
+    // flutter_platform_widgets app shell (PlatformProvider/PlatformTheme/
+    // PlatformApp).
+    return MaterialApp.router(
+      builder: (context, child) {
+        final themed = CupertinoTheme(
+          data: Theme.of(context).brightness == Brightness.dark
+              ? cupertinoDarkTheme
+              : cupertinoLightTheme,
+          child: child ?? const SizedBox.shrink(),
+        );
+        // Toasts are drawn above the whole app on both platforms.
+        return FToastBuilder()(context, themed);
+      },
+      // Unset preferences keep Chinese; an explicit system choice uses Flutter
+      // locale resolution and updates with the device language.
+      locale: ref.watch(syncLanguageProvider).locale,
+      supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+      localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+        ...GlobalMaterialLocalizations.delegates,
+      ],
+      title: 'Velock Sync',
+      onGenerateTitle: (BuildContext context) => 'Velock Sync',
+      debugShowCheckedModeBanner: false,
+      theme: materialLightTheme,
+      darkTheme: materialDarkTheme,
+      themeMode: themeMode,
+      routerConfig: goRouter,
     );
   }
 }

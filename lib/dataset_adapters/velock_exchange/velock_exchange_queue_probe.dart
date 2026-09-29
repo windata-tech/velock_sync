@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:velock_sync/dataset_adapters/velock_exchange/apple_exchange_root.dart';
@@ -14,6 +15,7 @@ class VelockExchangeQueueSnapshot {
     required this.inboxReadyCount,
     required this.receiptCount,
     this.lastOutboxReceiptAt,
+    this.velockStatus,
   });
 
   final int outboxReadyCount;
@@ -21,6 +23,9 @@ class VelockExchangeQueueSnapshot {
   final int inboxReadyCount;
   final int receiptCount;
   final DateTime? lastOutboxReceiptAt;
+
+  /// What Velock reported about changes it has not handed over yet.
+  final VelockOutboxStatus? velockStatus;
 
   bool get hasPendingUpload => outboxReadyCount > 0 || outboxClaimedCount > 0;
 
@@ -57,6 +62,9 @@ class VelockExchangeQueueProbe {
       ),
       receiptCount: _countFiles(receipts),
       lastOutboxReceiptAt: _latestModified(receipts),
+      velockStatus: VelockOutboxStatus.read(
+        File('${exchange.path}/Control/OutboxStatus.json'),
+      ),
     );
   }
 
@@ -82,5 +90,64 @@ class VelockExchangeQueueProbe {
       if (latest == null || modified.isAfter(latest)) latest = modified;
     }
     return latest;
+  }
+}
+
+/// Velock's own count of changes not yet packaged for Sync.
+///
+/// Sync only sees packages in Outbox. Without this hint a run reported "no
+/// transfer needed" while Velock still held unpackaged changes (not opened
+/// since the edit, suspended during packaging, or packaging failing).
+class VelockOutboxStatus {
+  const VelockOutboxStatus({
+    required this.vaultId,
+    required this.unpackagedChanges,
+    required this.updatedAt,
+    this.lastFailureAt,
+    this.pendingConflicts = 0,
+  });
+
+  final String vaultId;
+  final int unpackagedChanges;
+
+  /// Conflicts waiting in Velock for the user to pick a version.
+  final int pendingConflicts;
+  final DateTime updatedAt;
+  final DateTime? lastFailureAt;
+
+  /// Whether this hint asks the user to open Velock.
+  bool get needsVelock =>
+      unpackagedChanges > 0 || lastFailureAt != null || pendingConflicts > 0;
+
+  static VelockOutboxStatus? read(File file) {
+    try {
+      if (!file.existsSync() || file.lengthSync() > 4096) return null;
+      final decoded = jsonDecode(file.readAsStringSync());
+      if (decoded is! Map<String, dynamic> || decoded['version'] != 1) {
+        return null;
+      }
+      final vaultId = decoded['vaultId'];
+      final count = decoded['unpackagedChanges'];
+      final updatedAt = DateTime.tryParse('${decoded['updatedAt']}');
+      final failure = decoded['lastFailureAt'];
+      final conflicts = decoded['pendingConflicts'];
+      if (vaultId is! String ||
+          count is! int ||
+          count < 0 ||
+          updatedAt == null) {
+        return null;
+      }
+      return VelockOutboxStatus(
+        vaultId: vaultId,
+        unpackagedChanges: count,
+        updatedAt: updatedAt.toUtc(),
+        lastFailureAt: failure is String
+            ? DateTime.tryParse(failure)?.toUtc()
+            : null,
+        pendingConflicts: conflicts is int && conflicts > 0 ? conflicts : 0,
+      );
+    } on Object {
+      return null;
+    }
   }
 }

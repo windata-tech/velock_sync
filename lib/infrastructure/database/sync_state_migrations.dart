@@ -8,7 +8,7 @@ library;
 
 import 'package:sqlite3/sqlite3.dart';
 
-const int kSyncStateSchemaVersion = 12;
+const int kSyncStateSchemaVersion = 13;
 
 void migrateSyncStateSchema(Database db, int targetVersion) {
   final version = db.select('PRAGMA user_version').single.values.single as int;
@@ -143,6 +143,14 @@ void migrateSyncStateSchema(Database db, int targetVersion) {
         [12, DateTime.now().toUtc().millisecondsSinceEpoch],
       );
       db.execute('PRAGMA user_version = 12');
+    }
+    if (version < 13) {
+      db.execute('ALTER TABLE sync_runs ADD COLUMN rebuild_json TEXT');
+      db.execute(
+        'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+        [13, DateTime.now().toUtc().millisecondsSinceEpoch],
+      );
+      db.execute('PRAGMA user_version = 13');
     }
     db.execute('COMMIT');
   } on Object catch (error, stackTrace) {

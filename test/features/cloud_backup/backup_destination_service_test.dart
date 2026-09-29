@@ -7,6 +7,49 @@ import 'package:velock_sync/sync_core/engine/logical_keys.dart';
 import 'package:velock_sync/sync_core/testing/in_memory_object_store.dart';
 
 void main() {
+  test('missing WebDAV history is rejected read-only', () async {
+    final remote = _RecordingStore(answerNotFoundForMissingCollections: true);
+    final service = BackupDestinationService(open: (_) async => remote);
+    await expectLater(
+      service.check(
+        connectionId: 'cloud',
+        vaultId: 'vault',
+        trustedProducerIds: ['producer'],
+        restoring: true,
+      ),
+      throwsA(
+        isA<BackupDestinationException>().having(
+          (e) => e.code,
+          'code',
+          'backup_not_found',
+        ),
+      ),
+    );
+    expect(remote.writes, isEmpty);
+    expect(remote.deletes, isEmpty);
+  });
+
+  test(
+    'missing first trusted producer does not hide another producer backup',
+    () async {
+      final remote = _RecordingStore(answerNotFoundForMissingCollections: true);
+      await remote.put(
+        LogicalKeys.commit('vault', 'second', 1, 'batch'),
+        Stream.value([1]),
+        contentLength: 1,
+      );
+      remote.writes.clear();
+      await BackupDestinationService(open: (_) async => remote).check(
+        connectionId: 'cloud',
+        vaultId: 'vault',
+        trustedProducerIds: ['first', 'second'],
+        restoring: true,
+      );
+      expect(remote.writes, isEmpty);
+      expect(remote.deletes, isEmpty);
+    },
+  );
+
   late _RecordingStore remote;
   late BackupDestinationService service;
   setUp(() {
@@ -246,6 +289,7 @@ void main() {
 }
 
 class _RecordingStore extends InMemoryObjectStore {
+  _RecordingStore({super.answerNotFoundForMissingCollections});
   final writes = <String>[];
   final deletes = <String>[];
   bool corrupt = false;

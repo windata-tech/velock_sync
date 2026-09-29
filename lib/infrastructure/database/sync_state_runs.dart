@@ -163,13 +163,14 @@ final class RunQueries {
 
   Future<SyncRunRecord?> latestSyncRun(String profileId) async {
     final rows = db.select(
-      'SELECT run_id, state, started_at, completed_at, error_code, error_category, retryable, retry_after_ms, suggested_action, provider_status_code '
+      'SELECT run_id, state, started_at, completed_at, error_code, error_category, retryable, retry_after_ms, suggested_action, provider_status_code, rebuild_json '
       'FROM sync_runs WHERE profile_id = ? ORDER BY started_at DESC LIMIT 1',
       [profileId],
     );
     if (rows.isEmpty) return null;
     final row = rows.single;
     return SyncRunRecord(
+      rebuild: BackupRebuildCompletion.decode(row['rebuild_json'] as String?),
       runId: row['run_id']! as String,
       profileId: profileId,
       state: row['state']! as String,
@@ -202,10 +203,16 @@ final class RunQueries {
   /// user swiping the app away, an out-of-memory kill) nothing closes it, and
   /// an orphaned row poisons the profile for ever: the card claims it is still
   /// syncing, and editing or deleting the location is refused while
-  /// `hasRunningSyncRun` stays true. Called once at startup, before any surface
-  /// reads the database, because at that moment this process cannot own a run
-  /// that a previous process left behind.
+  /// `hasRunningSyncRun` stays true.
+  ///
+  /// Only rows and locks left by *another* process are touched. Every run
+  /// holds its profile's location lock (or its engine lock) while its row is
+  /// `running`, so a row whose profile still has a lock owned by this process
+  /// ([liveOwnerPrefix]) belongs to a live run: a foreground resume, a network
+  /// recovery, or a background isolate in the same process must not fail it
+  /// or free its lock.
   Future<int> failInterruptedSyncRuns({
+    required String liveOwnerPrefix,
     String errorCode = 'sync.interrupted',
     DateTime? completedAt,
   }) async {
@@ -213,23 +220,36 @@ final class RunQueries {
       throw ArgumentError.value(errorCode, 'errorCode', 'must not be empty');
     }
     final now = (completedAt ?? DateTime.now()).toUtc();
-    final updated = db.select(
-      'UPDATE sync_runs SET state = ?, completed_at = ?, error_code = ?, '
-      'error_category = ? WHERE state = ? RETURNING run_id',
-      [
-        'failed',
-        now.millisecondsSinceEpoch,
-        errorCode,
-        'interrupted',
-        'running',
-      ],
-    );
-    if (updated.isNotEmpty) {
-      // The matching leases belong to the dead process as well; leaving them
-      // would only add a five minute wait before the next run may start.
-      db.execute('DELETE FROM profile_locks');
+    final ownedHere = '${_escapeLike(liveOwnerPrefix)}%';
+    db.execute('BEGIN IMMEDIATE');
+    try {
+      // Leases held by a dead process would only add a five minute wait
+      // before the next run may start.
+      db.execute(
+        r"DELETE FROM profile_locks WHERE owner NOT LIKE ? ESCAPE '\'",
+        [ownedHere],
+      );
+      final updated = db.select(
+        'UPDATE sync_runs SET state = ?, completed_at = ?, error_code = ?, '
+        'error_category = ? WHERE state = ? AND NOT EXISTS ('
+        'SELECT 1 FROM profile_locks l WHERE '
+        "(l.profile_id = sync_runs.profile_id OR l.profile_id = 'velock-location:' || sync_runs.profile_id) "
+        r"AND l.owner LIKE ? ESCAPE '\') RETURNING run_id",
+        [
+          'failed',
+          now.millisecondsSinceEpoch,
+          errorCode,
+          'interrupted',
+          'running',
+          ownedHere,
+        ],
+      );
+      db.execute('COMMIT');
+      return updated.length;
+    } on Object {
+      db.execute('ROLLBACK');
+      rethrow;
     }
-    return updated.length;
   }
 
   /// Closes runs that were interrupted by process termination before their
@@ -267,7 +287,7 @@ final class RunQueries {
       throw ArgumentError.value(profileId, 'profileId');
     }
     final rows = db.select(
-      'SELECT run_id, profile_id, state, started_at, completed_at, error_code, error_category, retryable, retry_after_ms, suggested_action, provider_status_code '
+      'SELECT run_id, profile_id, state, started_at, completed_at, error_code, error_category, retryable, retry_after_ms, suggested_action, provider_status_code, rebuild_json '
       'FROM sync_runs${profileId == null ? '' : ' WHERE profile_id = ?'} '
       'ORDER BY started_at DESC, run_id ASC LIMIT ?',
       profileId == null ? [limit] : [profileId, limit],
@@ -275,6 +295,9 @@ final class RunQueries {
     return rows
         .map(
           (row) => SyncRunRecord(
+            rebuild: BackupRebuildCompletion.decode(
+              row['rebuild_json'] as String?,
+            ),
             runId: row['run_id']! as String,
             profileId: row['profile_id']! as String,
             state: row['state']! as String,
@@ -294,3 +317,6 @@ final class RunQueries {
         .toList(growable: false);
   }
 }
+
+String _escapeLike(String value) =>
+    value.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_');

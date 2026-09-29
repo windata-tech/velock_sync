@@ -1,7 +1,7 @@
-import 'dart:io';
+import 'package:flutter/services.dart';
+import 'package:velock_sync/features/sync_profiles/ui/sync_profile_home.dart';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
@@ -18,21 +18,85 @@ import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 void main() {
   const fallback = '请打开格间，解锁后进入设置中的云备份，查看恢复卡与已授权设备';
 
-  test('static contract: settings URI is fixed velock://sync-settings with no '
-      'query or requestId; generic pairing URI stays velock://open', () {
-    final source = File(
-      'lib/features/cloud_backup/ui/backup_actions.dart',
-    ).readAsStringSync();
-    expect(source, contains("Uri.parse('velock://sync-settings')"));
-    expect(source, isNot(contains('velock://sync-settings?')));
-    final uri = Uri.parse('velock://sync-settings');
-    expect(uri.scheme, 'velock');
-    expect(uri.host, 'sync-settings');
-    expect(uri.path, isEmpty);
-    expect(uri.hasQuery, isFalse);
-    expect(uri.queryParameters, isEmpty);
-    expect(source, contains("Uri.parse('velock://open')"));
-  });
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'both production launchers target Cloud backup without a pairing request',
+    () async {
+      const channel = MethodChannel('plugins.flutter.io/url_launcher');
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            return true;
+          });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      expect(await container.read(velockAppLauncherProvider)(), isTrue);
+      expect(
+        await container.read(velockBackupSettingsLauncherProvider)(),
+        isTrue,
+      );
+      expect(calls, hasLength(2));
+      for (final call in calls) {
+        expect(call.method, 'launch');
+        expect(call.arguments['url'], 'velock://sync-settings');
+        expect(call.arguments['useSafariVC'], isFalse);
+        expect(call.arguments['useWebView'], isFalse);
+      }
+    },
+  );
+
+  for (final detail in [false, true]) {
+    testWidgets(
+      '${detail ? 'detail' : 'home'} Open Velock enters backup settings when connection is disabled',
+      (tester) async {
+        final database = await SyncStateDatabase.inMemory();
+        addTearDown(database.close);
+        final repository = SyncProfileRepository(database);
+        await repository.save(_profile());
+        var settingsCalls = 0;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              syncStateDatabaseProvider.overrideWithValue(database),
+              syncProfileRepositoryProvider.overrideWithValue(repository),
+              velockWizardReadinessServiceProvider.overrideWithValue(
+                const _Disabled(),
+              ),
+              velockBackupSettingsLauncherProvider.overrideWithValue(() async {
+                settingsCalls++;
+                return true;
+              }),
+            ],
+            child: MaterialApp(
+              locale: const Locale('zh'),
+              supportedLocales: const [Locale('zh'), Locale('en')],
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
+              theme: ThemeData(platform: TargetPlatform.iOS),
+              home: detail
+                  ? const SyncProfileDetail(profileId: 'velock')
+                  : const SyncProfilesHome(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('需要连接格间'), findsOneWidget);
+        await tester.tap(find.text('打开格间'));
+        await tester.pumpAndSettle();
+        expect(settingsCalls, 1);
+        expect(
+          (await repository.read('velock'))!.state,
+          SyncProfileState.active,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'backup settings launcher is injectable; success shows no fallback',
@@ -49,11 +113,7 @@ void main() {
           child: const MaterialApp(
             locale: Locale('zh'),
             supportedLocales: [Locale('zh'), Locale('en')],
-            localizationsDelegates: [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
+            localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
             home: _LauncherProbe(),
           ),
         ),
@@ -82,11 +142,7 @@ void main() {
           child: const MaterialApp(
             locale: Locale('zh'),
             supportedLocales: [Locale('zh'), Locale('en')],
-            localizationsDelegates: [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
+            localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
             home: _LauncherProbe(),
           ),
         ),
@@ -118,11 +174,7 @@ void main() {
           child: const MaterialApp(
             locale: Locale('zh'),
             supportedLocales: [Locale('zh'), Locale('en')],
-            localizationsDelegates: [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
+            localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
             home: _LauncherProbe(),
           ),
         ),
@@ -172,9 +224,7 @@ void main() {
             locale: const Locale('zh'),
             supportedLocales: const [Locale('zh'), Locale('en')],
             localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
+              ...GlobalMaterialLocalizations.delegates,
             ],
             theme: ThemeData(platform: TargetPlatform.iOS),
             home: const SyncProfileDetail(profileId: 'velock'),
@@ -233,4 +283,13 @@ class _Ready implements VelockWizardReadinessService {
   @override
   Future<VelockWizardReadiness> inspect({String? syncAppInstanceId}) async =>
       const VelockWizardReadiness(VelockWizardAvailability.ready);
+}
+
+class _Disabled implements VelockWizardReadinessService {
+  const _Disabled();
+  @override
+  Future<VelockWizardReadiness> inspect({String? syncAppInstanceId}) async =>
+      const VelockWizardReadiness(
+        VelockWizardAvailability.configurationMissing,
+      );
 }

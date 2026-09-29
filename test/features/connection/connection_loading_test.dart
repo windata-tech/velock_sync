@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
@@ -136,15 +138,13 @@ Widget _app({
         connectionModel: _connection,
       ).overrideWith(() => browser),
     ],
-    child: PlatformProvider(
-      initialPlatform: platform,
-      builder: (_) => MaterialApp(
-        locale: const Locale('zh'),
-        supportedLocales: const [Locale('zh'), Locale('en')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        theme: ThemeData(platform: platform),
-        home: const Connection('test'),
-      ),
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      locale: const Locale('zh'),
+      supportedLocales: const [Locale('zh'), Locale('en')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      theme: ThemeData(platform: platform),
+      home: const Connection('test'),
     ),
   );
 }
@@ -164,8 +164,82 @@ Future<void> _pumpConnection(
 }
 
 void main() {
+  setUpAll(() async {
+    final font = Platform.environment['BACKUP_UI_FONT'];
+    if (font == null) return;
+    final bytes = File(font).readAsBytes();
+    for (final family in ['Roboto', '.SF Pro Text', 'CupertinoSystemText']) {
+      await (FontLoader(
+        family,
+      )..addFont(bytes.then(ByteData.sublistView))).load();
+    }
+    for (final entry in {
+      'MaterialIcons': 'fonts/MaterialIcons-Regular.otf',
+      'packages/cupertino_icons/CupertinoIcons':
+          'packages/cupertino_icons/assets/CupertinoIcons.ttf',
+    }.entries) {
+      await (FontLoader(
+        entry.key,
+      )..addFont(rootBundle.load(entry.value))).load();
+    }
+  });
   for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
     group('$platform remote browser loading', () {
+      testWidgets('directory path uses compact undecorated body text', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(const Size(440, 956));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        const path = '/USB_HDD_8T/6';
+        final browser = _ControlledBrowser(
+          initialState: FileBrowserState(
+            path: path,
+            rootPath: path,
+            files: [
+              WebdavFile(
+                path: '$path/velock-sync',
+                isDir: true,
+                name: 'velock-sync',
+              ),
+            ],
+          ),
+        );
+        final captureKey = GlobalKey();
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: captureKey,
+            child: _app(platform: platform, browser: browser),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.byKey(_currentPathKey),
+        );
+        expect(paragraph.text.style!.fontSize, inInclusiveRange(14, 18));
+        expect(
+          paragraph.text.style!.decoration ?? TextDecoration.none,
+          TextDecoration.none,
+        );
+        expect(paragraph.size.height, lessThan(30));
+        expect(tester.takeException(), isNull);
+        final directory = Platform.environment['BACKUP_UI_SCREENSHOT_DIR'];
+        if (directory != null) {
+          await tester.runAsync(() async {
+            final boundary =
+                captureKey.currentContext!.findRenderObject()!
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final bytes = (await image.toByteData(
+              format: ui.ImageByteFormat.png,
+            ))!;
+            await Directory(directory).create(recursive: true);
+            await File(
+              '$directory/path-${platform.name}.png',
+            ).writeAsBytes(bytes.buffer.asUint8List());
+            image.dispose();
+          });
+        }
+      });
       for (final largeText in [false, true]) {
         testWidgets(
           'connection info is optional and closable largeText=$largeText',

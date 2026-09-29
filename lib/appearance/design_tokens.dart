@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Small, platform-neutral design primitives used by the adaptive UI layer.
 ///
@@ -129,6 +129,7 @@ abstract final class AppOpacity {
   static const groupedBorder = 0.07;
   static const groupedDivider = 0.08;
   static const navigationRule = 0.12;
+
   /// Opacity for a control that cannot be used right now. Disabled artwork
   /// keeps its own colour and is faded, instead of being repainted with a grey
   /// "disabled" colour (which loses the icon's identity).

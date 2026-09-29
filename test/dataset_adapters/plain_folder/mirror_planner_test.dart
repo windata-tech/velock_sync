@@ -639,9 +639,7 @@ void main() {
     final remoteUnchanged = {
       'a.txt': _file('a.txt', size: 5, modifiedAt: _t0, etag: 'e1'),
     };
-    final localUnchanged = {
-      'a.txt': _file('a.txt', size: 5, modifiedAt: _t0),
-    };
+    final localUnchanged = {'a.txt': _file('a.txt', size: 5, modifiedAt: _t0)};
 
     test('a local deletion deletes the remote file in bidirectional/uploadOnly '
         'and is restored in downloadOnly', () {
@@ -823,72 +821,75 @@ void main() {
   // -------------------------------------------------------------------------
 
   group('MirrorPlanner directories', () {
-    test('creates a local-only directory remotely and keeps it in downloadOnly',
-        () {
-      final local = {'photos': _dir('photos')};
+    test(
+      'creates a local-only directory remotely and keeps it in downloadOnly',
+      () {
+        final local = {'photos': _dir('photos')};
 
-      for (final direction in [
-        SyncDirection.bidirectional,
-        SyncDirection.uploadOnly,
-      ]) {
-        final plan = _plan(local: local, direction: direction);
-        final action = _onlyAction(plan);
-        expect(action.type, MirrorActionType.createRemoteDirectory);
-        expect(action.relativePath, 'photos');
-        expect(action.outcome, MirrorPathOutcome.remoteDirectoryCreated);
-        expect(action.local, same(local['photos']));
-        expect(action.remote, isNull);
-        expect(action.isDirectoryOperation, isTrue);
-        expect(action.isDeletion, isFalse);
-        expect(plan.stats.createDirectoryCount, 1);
-        expect(plan.removedBaselinePaths, isEmpty);
-        _expectStatsMatchActions(plan);
-      }
+        for (final direction in [
+          SyncDirection.bidirectional,
+          SyncDirection.uploadOnly,
+        ]) {
+          final plan = _plan(local: local, direction: direction);
+          final action = _onlyAction(plan);
+          expect(action.type, MirrorActionType.createRemoteDirectory);
+          expect(action.relativePath, 'photos');
+          expect(action.outcome, MirrorPathOutcome.remoteDirectoryCreated);
+          expect(action.local, same(local['photos']));
+          expect(action.remote, isNull);
+          expect(action.isDirectoryOperation, isTrue);
+          expect(action.isDeletion, isFalse);
+          expect(plan.stats.createDirectoryCount, 1);
+          expect(plan.removedBaselinePaths, isEmpty);
+          _expectStatsMatchActions(plan);
+        }
 
-      final skipped = _plan(
-        local: local,
-        direction: SyncDirection.downloadOnly,
-      );
-      expect(skipped.actions, isEmpty);
-      expect(skipped.stats.createDirectoryCount, 0);
-      // A directory kept in place for direction reasons is reported exactly
-      // like a skipped file.
-      expect(skipped.stats.skippedLocalOnlyCount, 1);
-      expect(skipped.stats.unchangedCount, 0);
-    });
+        final skipped = _plan(
+          local: local,
+          direction: SyncDirection.downloadOnly,
+        );
+        expect(skipped.actions, isEmpty);
+        expect(skipped.stats.createDirectoryCount, 0);
+        // A directory kept in place for direction reasons is reported exactly
+        // like a skipped file.
+        expect(skipped.stats.skippedLocalOnlyCount, 1);
+        expect(skipped.stats.unchangedCount, 0);
+      },
+    );
 
-    test('creates a remote-only directory locally and keeps it in uploadOnly',
-        () {
-      final remote = {'docs': _dir('docs')};
+    test(
+      'creates a remote-only directory locally and keeps it in uploadOnly',
+      () {
+        final remote = {'docs': _dir('docs')};
 
-      for (final direction in [
-        SyncDirection.bidirectional,
-        SyncDirection.downloadOnly,
-      ]) {
-        final plan = _plan(remote: remote, direction: direction);
-        final action = _onlyAction(plan);
-        expect(action.type, MirrorActionType.createLocalDirectory);
-        expect(action.relativePath, 'docs');
-        expect(action.outcome, MirrorPathOutcome.localDirectoryCreated);
-        expect(action.remote, same(remote['docs']));
-        expect(action.local, isNull);
-        expect(action.isDirectoryOperation, isTrue);
-        expect(plan.stats.createDirectoryCount, 1);
-        _expectStatsMatchActions(plan);
-      }
+        for (final direction in [
+          SyncDirection.bidirectional,
+          SyncDirection.downloadOnly,
+        ]) {
+          final plan = _plan(remote: remote, direction: direction);
+          final action = _onlyAction(plan);
+          expect(action.type, MirrorActionType.createLocalDirectory);
+          expect(action.relativePath, 'docs');
+          expect(action.outcome, MirrorPathOutcome.localDirectoryCreated);
+          expect(action.remote, same(remote['docs']));
+          expect(action.local, isNull);
+          expect(action.isDirectoryOperation, isTrue);
+          expect(plan.stats.createDirectoryCount, 1);
+          _expectStatsMatchActions(plan);
+        }
 
-      final skipped = _plan(
-        remote: remote,
-        direction: SyncDirection.uploadOnly,
-      );
-      expect(skipped.actions, isEmpty);
-      expect(skipped.stats.createDirectoryCount, 0);
-      expect(skipped.stats.skippedRemoteOnlyCount, 1);
-      expect(skipped.stats.unchangedCount, 0);
-    });
+        final skipped = _plan(
+          remote: remote,
+          direction: SyncDirection.uploadOnly,
+        );
+        expect(skipped.actions, isEmpty);
+        expect(skipped.stats.createDirectoryCount, 0);
+        expect(skipped.stats.skippedRemoteOnlyCount, 1);
+        expect(skipped.stats.unchangedCount, 0);
+      },
+    );
 
-    test('never deletes a directory whose children survive on the other side',
-        () {
+    test('never deletes a directory whose children survive on the other side', () {
       final baseline = {
         'photos': _baseDir('photos'),
         'photos/a.txt': _baseFile('photos/a.txt', size: 5, modifiedAt: _t0),
@@ -913,8 +914,7 @@ void main() {
       expect(plan.stats.unchangedCount, 2);
     });
 
-    test('plans the deletion of a directory that is empty on the other side',
-        () {
+    test('plans the deletion of a directory that is empty on the other side', () {
       final baseline = {
         'old': _baseDir('old'),
         'old/inner': _baseDir('old/inner'),
@@ -1212,10 +1212,7 @@ void main() {
       // Default protection: 1000 entries / 20% / minimum 5 baseline rows.
       final names = _numbered(3);
 
-      final plan = _plan(
-        remote: _files(names),
-        baseline: _baselines(names),
-      );
+      final plan = _plan(remote: _files(names), baseline: _baselines(names));
       expect(plan.heldDeletions, isNull);
       expect(plan.actions, hasLength(3));
       expect(plan.stats.deleteRemoteCount, 3);
@@ -1267,10 +1264,7 @@ void main() {
       // every baseline row survives for the next attempt.
       expect(unconfirmed.heldDeletions?.actions, hasLength(3));
       expect(unconfirmed.heldDeletions!.paths, {'d1.txt', 'd2.txt', 'd3.txt'});
-      expect(
-        unconfirmed.actions.where((action) => action.isDeletion),
-        isEmpty,
-      );
+      expect(unconfirmed.actions.where((action) => action.isDeletion), isEmpty);
       expect(unconfirmed.stats.deleteRemoteCount, 0);
       expect(unconfirmed.stats.deleteLocalCount, 0);
       expect(unconfirmed.removedBaselinePaths, isEmpty);
@@ -1287,53 +1281,56 @@ void main() {
       _expectStatsMatchActions(confirmed);
     });
 
-    test('a plan that grew since the confirmation re-holds the unseen paths', () {
-      const planner = MirrorPlanner(
-        deletionProtection: MirrorDeletionProtection(
-          maxDeletedEntries: 2,
-          maxDeletedFraction: 1.0,
-          fractionCheckMinimumEntries: 100,
-        ),
-      );
-      final names = _numbered(5);
-      final baseline = _baselines(names);
+    test(
+      'a plan that grew since the confirmation re-holds the unseen paths',
+      () {
+        const planner = MirrorPlanner(
+          deletionProtection: MirrorDeletionProtection(
+            maxDeletedEntries: 2,
+            maxDeletedFraction: 1.0,
+            fractionCheckMinimumEntries: 100,
+          ),
+        );
+        final names = _numbered(5);
+        final baseline = _baselines(names);
 
-      // The user was shown three deletions and confirmed those three paths.
-      final shown = _plan(
-        local: _files(names.sublist(3)),
-        remote: _files(names),
-        baseline: baseline,
-        planner: planner,
-      );
-      final confirmedPaths = shown.heldDeletions!.paths;
-      expect(confirmedPaths, {'d1.txt', 'd2.txt', 'd3.txt'});
+        // The user was shown three deletions and confirmed those three paths.
+        final shown = _plan(
+          local: _files(names.sublist(3)),
+          remote: _files(names),
+          baseline: baseline,
+          planner: planner,
+        );
+        final confirmedPaths = shown.heldDeletions!.paths;
+        expect(confirmedPaths, {'d1.txt', 'd2.txt', 'd3.txt'});
 
-      // Between the summary and the confirmed run another local file vanished,
-      // so the fresh plan holds four deletions. Only the confirmed three may
-      // run; the fourth is held again instead of being deleted unseen.
-      final confirmed = _plan(
-        local: _files(['d5.txt']),
-        remote: _files(names),
-        baseline: baseline,
-        planner: planner,
-        confirmedDeletions: confirmedPaths,
-      );
+        // Between the summary and the confirmed run another local file vanished,
+        // so the fresh plan holds four deletions. Only the confirmed three may
+        // run; the fourth is held again instead of being deleted unseen.
+        final confirmed = _plan(
+          local: _files(['d5.txt']),
+          remote: _files(names),
+          baseline: baseline,
+          planner: planner,
+          confirmedDeletions: confirmedPaths,
+        );
 
-      expect(_pathsOf(confirmed, MirrorActionType.deleteRemoteEntry), [
-        'd1.txt',
-        'd2.txt',
-        'd3.txt',
-      ]);
-      expect(confirmed.stats.deleteRemoteCount, 3);
-      expect(confirmed.heldDeletions, isNotNull);
-      expect(confirmed.heldDeletions!.paths, {'d4.txt'});
-      expect(
-        confirmed.removedBaselinePaths,
-        ['d1.txt', 'd2.txt', 'd3.txt'],
-        reason: 'the re-held path keeps its baseline row',
-      );
-      _expectStatsMatchActions(confirmed);
-    });
+        expect(_pathsOf(confirmed, MirrorActionType.deleteRemoteEntry), [
+          'd1.txt',
+          'd2.txt',
+          'd3.txt',
+        ]);
+        expect(confirmed.stats.deleteRemoteCount, 3);
+        expect(confirmed.heldDeletions, isNotNull);
+        expect(confirmed.heldDeletions!.paths, {'d4.txt'});
+        expect(confirmed.removedBaselinePaths, [
+          'd1.txt',
+          'd2.txt',
+          'd3.txt',
+        ], reason: 'the re-held path keeps its baseline row');
+        _expectStatsMatchActions(confirmed);
+      },
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -1507,24 +1504,15 @@ void main() {
 
     test('handles names without an extension and dotfiles safely', () {
       // No extension: the suffix is appended to the whole name.
-      expect(
-        conflictCopyPathFor('README', _now),
-        'README (本机冲突 $_stamp)',
-      );
+      expect(conflictCopyPathFor('README', _now), 'README (本机冲突 $_stamp)');
       expect(
         conflictCopyPathFor('dir/README', _now),
         'dir/README (本机冲突 $_stamp)',
       );
       // Dotfiles: the leading dot is not an extension, so the result stays a
       // visible file instead of becoming `(本机冲突 …).bashrc`.
-      expect(
-        conflictCopyPathFor('.bashrc', _now),
-        '.bashrc (本机冲突 $_stamp)',
-      );
-      expect(
-        conflictCopyPathFor('dir/.env', _now),
-        'dir/.env (本机冲突 $_stamp)',
-      );
+      expect(conflictCopyPathFor('.bashrc', _now), '.bashrc (本机冲突 $_stamp)');
+      expect(conflictCopyPathFor('dir/.env', _now), 'dir/.env (本机冲突 $_stamp)');
       // Nothing is ever dropped from the original name: the stem survives, and
       // for names without an extension the copy still starts with them.
       for (final path in ['README', '.bashrc', 'dir/.env']) {
@@ -1556,7 +1544,9 @@ void main() {
 
   group('MirrorPlanner listing scope', () {
     test('a deletion whose parent directory was never listed is held', () {
-      final local = {'photos/a.jpg': _file('photos/a.jpg', size: 5, modifiedAt: _t0)};
+      final local = {
+        'photos/a.jpg': _file('photos/a.jpg', size: 5, modifiedAt: _t0),
+      };
       final baseline = {
         'photos/a.jpg': _baseFile('photos/a.jpg', size: 5, modifiedAt: _t0),
       };
@@ -1584,46 +1574,54 @@ void main() {
       expect(plan.inSyncPaths, isEmpty);
     });
 
-    test('a directory nobody read is offered for confirmation, not deleted', () {
-      final local = {'photos': _dir('photos')};
-      final baseline = {'photos': _baseDir('photos')};
+    test(
+      'a directory nobody read is offered for confirmation, not deleted',
+      () {
+        final local = {'photos': _dir('photos')};
+        final baseline = {'photos': _baseDir('photos')};
 
-      // The remote never listed `photos` itself, so a recursive local delete
-      // would take a subtree nobody looked at with it.
-      final unconfirmed = _plan(
-        local: local,
-        baseline: baseline,
-        listingScope: MirrorListingScope(
-          localDirectories: mirrorScannedDirectories(local.values),
-          remoteDirectories: const {''},
-        ),
-      );
+        // The remote never listed `photos` itself, so a recursive local delete
+        // would take a subtree nobody looked at with it.
+        final unconfirmed = _plan(
+          local: local,
+          baseline: baseline,
+          listingScope: MirrorListingScope(
+            localDirectories: mirrorScannedDirectories(local.values),
+            remoteDirectories: const {''},
+          ),
+        );
 
-      expect(unconfirmed.actions.where((action) => action.isDeletion), isEmpty);
-      expect(unconfirmed.heldDeletions!.paths, {'photos'});
-      expect(unconfirmed.heldPaths, isEmpty);
-      expect(unconfirmed.removedBaselinePaths, isEmpty);
+        expect(
+          unconfirmed.actions.where((action) => action.isDeletion),
+          isEmpty,
+        );
+        expect(unconfirmed.heldDeletions!.paths, {'photos'});
+        expect(unconfirmed.heldPaths, isEmpty);
+        expect(unconfirmed.removedBaselinePaths, isEmpty);
 
-      // Only the exact confirmed path runs it.
-      final confirmed = _plan(
-        local: local,
-        baseline: baseline,
-        listingScope: MirrorListingScope(
-          localDirectories: mirrorScannedDirectories(local.values),
-          remoteDirectories: const {''},
-        ),
-        confirmedDeletions: const {'photos'},
-      );
+        // Only the exact confirmed path runs it.
+        final confirmed = _plan(
+          local: local,
+          baseline: baseline,
+          listingScope: MirrorListingScope(
+            localDirectories: mirrorScannedDirectories(local.values),
+            remoteDirectories: const {''},
+          ),
+          confirmedDeletions: const {'photos'},
+        );
 
-      expect(_pathsOf(confirmed, MirrorActionType.deleteLocalEntry), [
-        'photos',
-      ]);
-      expect(confirmed.heldDeletions, isNull);
-      expect(confirmed.removedBaselinePaths, ['photos']);
-    });
+        expect(_pathsOf(confirmed, MirrorActionType.deleteLocalEntry), [
+          'photos',
+        ]);
+        expect(confirmed.heldDeletions, isNull);
+        expect(confirmed.removedBaselinePaths, ['photos']);
+      },
+    );
 
     test('a fully listed location keeps deleting what really disappeared', () {
-      final local = {'photos/a.jpg': _file('photos/a.jpg', size: 5, modifiedAt: _t0)};
+      final local = {
+        'photos/a.jpg': _file('photos/a.jpg', size: 5, modifiedAt: _t0),
+      };
       final baseline = {
         'photos/a.jpg': _baseFile('photos/a.jpg', size: 5, modifiedAt: _t0),
       };
@@ -1681,29 +1679,35 @@ void main() {
         expect(plan.stats.heldCount, 2);
         expect(plan.conflicts, hasLength(1));
         expect(plan.conflicts.single.relativePath, 'clash');
-        expect(plan.conflicts.single.resolution, MirrorConflictResolution.keepBoth);
+        expect(
+          plan.conflicts.single.resolution,
+          MirrorConflictResolution.keepBoth,
+        );
         expect(plan.removedBaselinePaths, isEmpty);
       }
     });
 
-    test('a remote directory against a local file holds the remote children', () {
-      final local = {'clash': _file('clash', size: 4, modifiedAt: _t0)};
-      final remote = {
-        'clash': _dir('clash'),
-        'clash/child.txt': _file('clash/child.txt', size: 5, modifiedAt: _t1),
-      };
+    test(
+      'a remote directory against a local file holds the remote children',
+      () {
+        final local = {'clash': _file('clash', size: 4, modifiedAt: _t0)};
+        final remote = {
+          'clash': _dir('clash'),
+          'clash/child.txt': _file('clash/child.txt', size: 5, modifiedAt: _t1),
+        };
 
-      final plan = _plan(local: local, remote: remote);
+        final plan = _plan(local: local, remote: remote);
 
-      // Downloading the child would have to write `clash/child.txt` while the
-      // local `clash` is a file, so the whole subtree stays untouched.
-      expect(plan.actions, isEmpty);
-      expect(plan.stats.downloadCount, 0);
-      expect(plan.inSyncPaths, isEmpty);
-      expect(plan.conflicts.single.relativePath, 'clash');
-      expect(plan.heldPaths, ['clash', 'clash/child.txt']);
-      expect(plan.stats.heldCount, 2);
-    });
+        // Downloading the child would have to write `clash/child.txt` while the
+        // local `clash` is a file, so the whole subtree stays untouched.
+        expect(plan.actions, isEmpty);
+        expect(plan.stats.downloadCount, 0);
+        expect(plan.inSyncPaths, isEmpty);
+        expect(plan.conflicts.single.relativePath, 'clash');
+        expect(plan.heldPaths, ['clash', 'clash/child.txt']);
+        expect(plan.stats.heldCount, 2);
+      },
+    );
 
     test('a kind clash inside a synced tree holds only its own subtree', () {
       final local = {

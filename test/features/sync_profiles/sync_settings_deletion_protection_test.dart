@@ -1,8 +1,7 @@
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace.dart';
@@ -43,11 +42,7 @@ void main() {
         child: const MaterialApp(
           locale: Locale('zh', 'CN'),
           supportedLocales: [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
+          localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
           home: SyncSettings(),
         ),
       ),
@@ -67,6 +62,209 @@ void main() {
     expect(find.textContaining('实际清理额外保留 7 天缓冲'), findsOneWidget);
     expect(find.textContaining('1 台设备'), findsOneWidget);
     expect(find.textContaining('已删除 3 个对象'), findsOneWidget);
+    // The staging card is gone: nothing writes those batches any more.
+    expect(find.text('暂存空间'), findsNothing);
+    expect(find.byKey(const Key('cleanup-staging')), findsNothing);
+  });
+
+  testWidgets('does not claim protection before a trusted checkpoint', (
+    tester,
+  ) async {
+    // Device evidence 2026-09-27: every pass skipped at `checkpoint-missing`,
+    // yet the card said 已开启 · 最近清理 刚刚 · 0 台设备. Each of those was
+    // wrong: the policy could not act, the timestamp was the skipped check, and
+    // the counts were never measured.
+    final service = _FakeSyncSettingsService(
+      garbageCollection: GarbageCollectionDiagnostics(
+        runId: 'gc-1',
+        profileId: 'profile-1',
+        vaultId: 'vault-1',
+        state: 'skipped',
+        startedAt: DateTime.utc(2026, 9, 27, 2, 16, 21),
+        completedAt: DateTime.utc(2026, 9, 27, 2, 16, 21),
+        checkpointId: null,
+        retentionCutoff: null,
+        activeDeviceCount: 0,
+        unackedDeviceCount: 0,
+        candidateCount: 0,
+        eligibleCandidateCount: 0,
+        deletedObjectCount: 0,
+        retentionManifestComplete: null,
+        planId: null,
+        skipReason: 'checkpoint-missing',
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [syncSettingsServiceProvider.overrideWithValue(service)],
+        child: const MaterialApp(
+          locale: Locale('zh', 'CN'),
+          supportedLocales: [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
+          home: SyncSettings(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('最近清理'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('已开启'), findsNothing);
+    expect(find.text('尚未生效'), findsOneWidget);
+    expect(find.text('尚未执行'), findsOneWidget);
+    expect(find.text('尚未统计'), findsNWidgets(2));
+    expect(find.textContaining('0 台设备'), findsNothing);
+    expect(find.textContaining('尚未获得可信检查点，本次安全清理已跳过'), findsOneWidget);
+    expect(find.textContaining('上次检查：'), findsOneWidget);
+  });
+
+  testWidgets('says cleanup never ran when no pass has been recorded', (
+    tester,
+  ) async {
+    final service = _FakeSyncSettingsService(garbageCollection: null);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [syncSettingsServiceProvider.overrideWithValue(service)],
+        child: const MaterialApp(
+          locale: Locale('zh', 'CN'),
+          supportedLocales: [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
+          home: SyncSettings(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('最近清理'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('尚未生效'), findsOneWidget);
+    expect(find.text('尚未执行'), findsOneWidget);
+    expect(find.text('尚未统计'), findsNWidgets(2));
+    expect(
+      find.textContaining('完成一次包含有效检查点的同步后才会开始安全清理'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('does not claim a cleanup when a completed pass deleted nothing', (
+    tester,
+  ) async {
+    // Device evidence 2026-09-27 10:37 (first pass after the recovery fix):
+    // state=completed, 1 candidate, 0 eligible, 0 deleted — the retention
+    // window had not passed, so nothing was reclaimed. A completed pass is a
+    // check, not a cleanup.
+    final service = _FakeSyncSettingsService(
+      garbageCollection: GarbageCollectionDiagnostics(
+        runId: 'gc-1',
+        profileId: 'profile-1',
+        vaultId: 'vault-1',
+        state: 'completed',
+        startedAt: DateTime.utc(2026, 9, 27, 2, 37, 34),
+        completedAt: DateTime.utc(2026, 9, 27, 2, 37, 35),
+        checkpointId: 'v1-54c5db05cb5c7ea2ee875505e1cee346',
+        retentionCutoff: DateTime.utc(2026, 8, 21),
+        activeDeviceCount: 1,
+        unackedDeviceCount: 0,
+        candidateCount: 1,
+        eligibleCandidateCount: 0,
+        deletedObjectCount: 0,
+        retentionManifestComplete: true,
+        planId: null,
+        skipReason: null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [syncSettingsServiceProvider.overrideWithValue(service)],
+        child: const MaterialApp(
+          locale: Locale('zh', 'CN'),
+          supportedLocales: [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
+          home: SyncSettings(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('最近清理'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('已开启'), findsOneWidget);
+    expect(find.text('尚未执行'), findsOneWidget);
+    expect(find.text('0 台设备'), findsOneWidget);
+    expect(find.text('1 台'), findsOneWidget);
+    expect(
+      find.textContaining('本次检查 1 个候选，0 个满足清理条件，已删除 0 个对象'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('says an eligible plan was only counted while deletion is paused', (
+    tester,
+  ) async {
+    // GC must not delete Velock commit markers while the remote history guard
+    // requires every sequence, so a fully eligible plan is recorded as
+    // `deletion-paused`. The card must not suggest anything was removed.
+    final service = _FakeSyncSettingsService(
+      garbageCollection: GarbageCollectionDiagnostics(
+        runId: 'gc-1',
+        profileId: 'profile-1',
+        vaultId: 'vault-1',
+        state: 'skipped',
+        startedAt: DateTime.now().toUtc(),
+        completedAt: DateTime.now().toUtc(),
+        checkpointId: 'checkpoint-1',
+        retentionCutoff: DateTime.utc(2026, 8, 21),
+        activeDeviceCount: 1,
+        unackedDeviceCount: 0,
+        candidateCount: 2,
+        eligibleCandidateCount: 2,
+        deletedObjectCount: 0,
+        retentionManifestComplete: true,
+        planId: null,
+        skipReason: 'deletion-paused',
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [syncSettingsServiceProvider.overrideWithValue(service)],
+        child: const MaterialApp(
+          locale: Locale('zh', 'CN'),
+          supportedLocales: [Locale('zh', 'CN'), Locale('en')],
+          localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
+          home: SyncSettings(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('最近清理'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('尚未执行'), findsOneWidget);
+    expect(
+      find.textContaining('2 个对象已满足清理条件；这一版只统计，不删除云端备份。'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('已删除'), findsNothing);
   });
 
   test(

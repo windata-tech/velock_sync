@@ -9,6 +9,7 @@ import 'package:dio/dio.dart';
 import 'package:velock_sync/providers/provider_cancellation.dart';
 import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
+import 'package:velock_sync/providers/upload_idle_watchdog.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
@@ -25,6 +26,7 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     required this.username,
     required this.password,
     ProviderRateLimitRetry? rateLimitRetry,
+    this.uploadIdleTimeout = const Duration(minutes: 2),
     this.capabilities = const RemoteCapabilities(
       supportsConditionalCreate: true,
       supportsConditionalUpdate: false,
@@ -45,8 +47,23 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
   final String? username;
   final String? password;
 
+  /// How long an upload body may stop moving before the request is aborted.
+  /// Uploads have no total time limit (see [UploadIdleWatchdog]).
+  final Duration uploadIdleTimeout;
+
   // Shared by concurrent writes, scoped to this endpoint/authentication instance.
   Future<void>? _atomicCreateReady;
+
+  // Only successful writes prove their parents usable. Scoped to this exact
+  // endpoint/auth instance; failures/deletes invalidate the optimization.
+  final Set<String> _writableParents = {};
+
+  Iterable<String> _parentPaths(String key) sync* {
+    final parts = key.split('/');
+    for (var length = 1; length < parts.length; length++) {
+      yield parts.take(length).join('/');
+    }
+  }
 
   @override
   final RemoteCapabilities capabilities;
@@ -192,6 +209,32 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     bool ifAbsent = false,
     RemoteOperationCancellation? cancellation,
   }) async {
+    try {
+      final result = await _put(
+        logicalKey,
+        content,
+        contentLength: contentLength,
+        ifAbsent: ifAbsent,
+        cancellation: cancellation,
+      );
+      // Bound memory on long-lived browsing/mirror clients. Eviction only
+      // causes extra MKCOLs; it never changes publication or integrity checks.
+      if (_writableParents.length > 4096) _writableParents.clear();
+      _writableParents.addAll(_parentPaths(logicalKey));
+      return result;
+    } catch (_) {
+      _writableParents.clear();
+      rethrow; // Never replay a possibly consumed upload stream.
+    }
+  }
+
+  Future<RemoteObjectMetadata> _put(
+    String logicalKey,
+    Stream<List<int>> content, {
+    required int contentLength,
+    bool ifAbsent = false,
+    RemoteOperationCancellation? cancellation,
+  }) async {
     cancellation?.throwIfCancelled();
     final objectUri = _objectUri(logicalKey);
     if (contentLength < 0) {
@@ -212,21 +255,16 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     };
     late final Response<void> response;
     try {
-      response = await _request(
-        () => _dio.putUri<void>(
-          objectUri,
-          data: content,
-          cancelToken: dioCancelTokenFor(cancellation),
-          options: _options(
-            headers: headers,
-            validateStatus: (status) =>
-                status == 200 ||
-                status == 201 ||
-                status == 204 ||
-                status == 412 ||
-                status == 429,
-          ),
-        ),
+      response = await _putBody(
+        objectUri,
+        content,
+        headers: headers,
+        validateStatus: (status) =>
+            status == 200 ||
+            status == 201 ||
+            status == 204 ||
+            status == 412 ||
+            status == 429,
         cancellation: cancellation,
       );
     } on ProviderRequestException catch (error) {
@@ -288,22 +326,17 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     );
     try {
       cancellation?.throwIfCancelled();
-      await _request(
-        () => _dio.putUri<void>(
-          _objectUri('$temporary/payload'),
-          data: content,
-          cancelToken: dioCancelTokenFor(cancellation),
-          options: _options(
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'Content-Length': '$contentLength',
-            },
-            // A caller stream is not replayable: do not retry a consumed upload
-            // on 429. Retrying the whole operation creates a new private source.
-            validateStatus: (status) =>
-                status == 201 || status == 200 || status == 204,
-          ),
-        ),
+      await _putBody(
+        _objectUri('$temporary/payload'),
+        content,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': '$contentLength',
+        },
+        // A caller stream is not replayable: do not retry a consumed upload
+        // on 429. Retrying the whole operation creates a new private source.
+        validateStatus: (status) =>
+            status == 201 || status == 200 || status == 204,
         cancellation: cancellation,
       );
       cancellation?.throwIfCancelled();
@@ -557,6 +590,7 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
       cancellation?.throwIfCancelled();
       parentParts.add(part);
       final parentPath = parentParts.join('/');
+      if (_writableParents.contains(parentPath)) continue;
       try {
         final response = await _request(
           () => _dio.requestUri<void>(
@@ -595,6 +629,9 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     RemoteOperationCancellation? cancellation,
   }) async {
     cancellation?.throwIfCancelled();
+    _writableParents.removeWhere(
+      (parent) => parent == logicalKey || parent.startsWith('$logicalKey/'),
+    );
     await _request(
       () => _dio.deleteUri<void>(
         _objectUri(logicalKey),
@@ -618,12 +655,54 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     // DELETE is idempotent: a concurrently removed immutable object is gone.
   }
 
+  /// Sends one upload body without a total time limit. The client's
+  /// `sendTimeout` covers the whole body, so it is disabled here and
+  /// [UploadIdleWatchdog] aborts only a body that stops moving.
+  Future<Response<void>> _putBody(
+    Uri uri,
+    Stream<List<int>> content, {
+    required Map<String, String> headers,
+    required ValidateStatus validateStatus,
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    final token = dioCancelTokenFor(cancellation) ?? CancelToken();
+    final watchdog = UploadIdleWatchdog(
+      idleTimeout: uploadIdleTimeout,
+      cancelToken: token,
+    );
+    try {
+      return await _request(
+        () => _dio.putUri<void>(
+          uri,
+          data: watchdog.watch(content),
+          cancelToken: token,
+          options: _options(
+            headers: headers,
+            validateStatus: validateStatus,
+            sendTimeout: Duration.zero,
+          ),
+        ),
+        cancellation: cancellation,
+      );
+    } on RemoteOperationCancelledException {
+      if (!watchdog.timedOut) rethrow;
+      // Report a stall as the timeout it is, not as a user cancellation.
+      throw DioException.sendTimeout(
+        timeout: uploadIdleTimeout,
+        requestOptions: RequestOptions(path: uri.path),
+      );
+    } finally {
+      watchdog.dispose();
+    }
+  }
+
   Options _options({
     String? method,
     ResponseType? responseType,
     Map<String, String>? headers,
     ValidateStatus? validateStatus,
     bool? followRedirects,
+    Duration? sendTimeout,
   }) {
     final requestHeaders = <String, String>{...headers ?? {}};
     if (username != null &&
@@ -639,6 +718,7 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
       headers: requestHeaders,
       validateStatus: validateStatus,
       followRedirects: followRedirects,
+      sendTimeout: sendTimeout,
     );
   }
 

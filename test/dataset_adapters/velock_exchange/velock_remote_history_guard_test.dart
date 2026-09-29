@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_remote_history_guard.dart';
+import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/engine/logical_keys.dart';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
@@ -43,7 +44,7 @@ final _incomplete = isA<SyncFailureException>()
     .having(
       (e) => e.syncFailure.suggestedAction,
       'action',
-      '远端缺少历史备份，同步未完成。请连接原来的完整备份目录；不要删除旧备份或重置同步数据。',
+      '远端备份不完整，备份尚未完成。请选择原来的完整备份，或用本机当前内容建立新备份。',
     )
     .having(
       (e) => e.toString(),
@@ -52,6 +53,44 @@ final _incomplete = isA<SyncFailureException>()
     );
 
 void main() {
+  test(
+    'missing commit collection is incomplete history, not a folder hint',
+    () async {
+      final remote = _ListingRemote(
+        (_) => throw RemoteObjectNotFoundException(
+          LogicalKeys.deviceCommitsPrefix('vault', 'producer'),
+        ),
+      );
+      await expectLater(_verify(remote), throwsA(_incomplete));
+      expect(remote.calls, 1);
+    },
+  );
+
+  test(
+    'commit collection disappearing during pagination still fails closed',
+    () async {
+      final remote = _ListingRemote(
+        (i) => i == 0
+            ? _page([_commit(1)], 'next')
+            : throw RemoteObjectNotFoundException(
+                LogicalKeys.deviceCommitsPrefix('vault', 'producer'),
+              ),
+      );
+      await expectLater(_verify(remote, 1), throwsA(_incomplete));
+      expect(remote.calls, 2);
+    },
+  );
+
+  for (final status in [401, 403, 500]) {
+    test('provider $status is not reclassified as missing history', () async {
+      final error = ProviderRequestException.fromStatus(status);
+      await expectLater(
+        _verify(_ListingRemote((_) => throw error)),
+        throwsA(same(error)),
+      );
+    });
+  }
+
   for (final entry in <String, List<int>>{
     'empty': [],
     'only sequence 6, missing 1': [6],

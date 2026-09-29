@@ -1,7 +1,4 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -13,6 +10,7 @@ import 'package:velock_sync/features/connection/ui/connections.dart';
 import 'package:velock_sync/features/connection/ui/new_connection.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
 class _TestConnections extends state.Connections {
   _TestConnections(this.connections);
@@ -27,14 +25,13 @@ Widget _app({
   required TargetPlatform platform,
   String language = 'en',
 }) => ProviderScope(
-  child: PlatformProvider(
-    initialPlatform: platform,
-    builder: (_) => PlatformApp(
-      locale: Locale(language),
-      supportedLocales: const [Locale('en'), Locale('zh')],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      home: child,
-    ),
+  child: MaterialApp(
+    // The design language the app picks follows ThemeData.platform.
+    theme: ThemeData(platform: platform),
+    locale: Locale(language),
+    supportedLocales: const [Locale('en'), Locale('zh')],
+    localizationsDelegates: GlobalMaterialLocalizations.delegates,
+    home: child,
   ),
 );
 
@@ -75,14 +72,12 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: PlatformProvider(
-            initialPlatform: platform,
-            builder: (_) => PlatformApp.router(
-              locale: const Locale('en'),
-              supportedLocales: const [Locale('en'), Locale('zh')],
-              localizationsDelegates: GlobalMaterialLocalizations.delegates,
-              routerConfig: router,
-            ),
+          child: MaterialApp.router(
+            theme: ThemeData(platform: platform),
+            locale: const Locale('en'),
+            supportedLocales: const [Locale('en'), Locale('zh')],
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            routerConfig: router,
           ),
         ),
       );
@@ -114,31 +109,31 @@ void main() {
       ]) {
         expect(find.text(label), findsOneWidget);
       }
-      await tester.tap(find.byType(PlatformSwitch));
+      await tester.tap(find.byType(AdaptiveSwitch));
       await tester.pumpAndSettle();
       expect(find.text('Use Insecure HTTP?'), findsOneWidget);
       expect(find.text('Use HTTP Anyway'), findsOneWidget);
       await tester.tap(find.text('Keep HTTPS'));
       await tester.pumpAndSettle();
       expect(
-        tester.widget<PlatformSwitch>(find.byType(PlatformSwitch)).value,
+        tester.widget<AdaptiveSwitch>(find.byType(AdaptiveSwitch)).value,
         isTrue,
       );
-      await tester.tap(find.byType(PlatformSwitch));
+      await tester.tap(find.byType(AdaptiveSwitch));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Use HTTP Anyway'));
       await tester.pumpAndSettle();
       expect(
-        tester.widget<PlatformSwitch>(find.byType(PlatformSwitch)).value,
+        tester.widget<AdaptiveSwitch>(find.byType(AdaptiveSwitch)).value,
         isFalse,
       );
       expect(
         tester
-            .widget<PlatformTextFormField>(
+            .widget<AdaptiveTextFormField>(
               find.byKey(const ValueKey('webdav_address')),
             )
             .controller
-            ?.text,
+            .text,
         'http://',
       );
     });
@@ -228,9 +223,9 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: PlatformProvider(
-            initialPlatform: TargetPlatform.iOS,
-            builder: (_) => PlatformApp(home: const Connections()),
+          child: MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.iOS),
+            home: const Connections(),
           ),
         ),
       );

@@ -1,8 +1,8 @@
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/features/cloud_backup/ui/velock_recovery_guide.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/wd_routes.dart';
@@ -347,51 +347,38 @@ class WDShellPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PlatformScaffold(
-      body: navigationShell,
-      widgetKey: isApplePlatform(context)
-          ? ValueKey(navigationShell.currentIndex)
-          : null,
-      bottomNavBar: PlatformNavBar(
-        backgroundColor: context.appGroupedSurface,
-        items: [
-          BottomNavigationBarItem(
-            // The real Velock mark from the Velock app, flat and tinted with
-            // the bar's own selected/unselected colours.
-            icon: VelockBrandMark(
-              size: 24,
-              flat: true,
-              color: navigationShell.currentIndex == 0
-                  ? context.appPrimary
-                  : context.appSecondaryLabel,
-            ),
-            label: syncText(context, '格间', "Velock"),
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.folder),
-            label: syncText(context, '文件同步', "Files"),
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.gear_alt),
-            label: syncText(context, '设置', "Settings"),
-          ),
-        ],
-        currentIndex: navigationShell.currentIndex,
-        itemChanged: (index) => navigationShell.goBranch(index),
-        material: (_, _) => MaterialNavBarData(
-          type: BottomNavigationBarType.fixed,
-          showSelectedLabels: true,
-          showUnselectedLabels: true,
-          selectedItemColor: context.appPrimary,
-          unselectedItemColor: context.appSecondaryLabel,
-          elevation: 2,
-        ),
-        cupertino: (_, _) => CupertinoTabBarData(
-          activeColor: context.appPrimary,
-          inactiveColor: context.appSecondaryLabel,
-          iconSize: 24,
-        ),
+    return AdaptiveTabScaffold(
+      body: KeyedSubtree(
+        // Rebuilding the shell per tab keeps each tab's own scroll position and
+        // page state from leaking into the others on Apple platforms, where the
+        // tab bar animates between branches.
+        key: ValueKey(navigationShell.currentIndex),
+        child: navigationShell,
       ),
+      items: [
+        BottomNavigationBarItem(
+          // The real Velock mark from the Velock app, flat and tinted with
+          // the bar's own selected/unselected colours.
+          icon: VelockBrandMark(
+            size: 24,
+            flat: true,
+            color: navigationShell.currentIndex == 0
+                ? context.appPrimary
+                : context.appSecondaryLabel,
+          ),
+          label: syncText(context, '格间', "Velock"),
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(CupertinoIcons.folder),
+          label: syncText(context, '文件同步', "Files"),
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(CupertinoIcons.gear_alt),
+          label: syncText(context, '设置', "Settings"),
+        ),
+      ],
+      currentIndex: navigationShell.currentIndex,
+      onChanged: (index) => navigationShell.goBranch(index),
     );
   }
 }
@@ -403,6 +390,7 @@ String? _setupReturnTo(GoRouterState state) {
         AppRoutes.velockDatasetWizard.path,
         '${AppRoutes.velockDatasetWizard.path}?intent=restore',
         AppRoutes.selectedFolderProfiles.path,
+        AppRoutes.velockRecovery.path,
       }.contains(target)
       ? target
       : null;

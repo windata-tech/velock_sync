@@ -1,3 +1,5 @@
+import 'velock_snapshot_recovery.dart';
+import 'velock_recovery_transport.dart';
 import 'velock_location_guard.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -174,7 +176,7 @@ class VelockSyncService implements VelockSyncRunner {
     if (envelope == null) {
       throw StateError('Velock sync profile not found.');
     }
-    final profile = VelockSyncProfile.fromEnvelope(envelope);
+    var profile = VelockSyncProfile.fromEnvelope(envelope);
     if (profile.state != SyncProfileState.active) {
       throw StateError('Velock sync profile is not active.');
     }
@@ -209,6 +211,42 @@ class VelockSyncService implements VelockSyncRunner {
       connection.protocol,
       profile.remoteRootSegments,
     );
+    if (profile.snapshotDiscoveryPending) {
+      await VelockSnapshotRecoveryService(
+        database: _database,
+        profiles: _profiles,
+        adapterFactory: _adapterFactory,
+        openRemote: (_, _) async => remote,
+        launchVelock: (_) async => false,
+      ).prepareUnderLocationLease(
+        expected: profile.toEnvelope(),
+        locationLabel:
+            '${connection.name} /${profile.remoteRootSegments.join('/')}',
+      );
+      profile = VelockSyncProfile.fromEnvelope(
+        (await _profiles.read(profileId))!,
+      );
+      dataset = await _adapterFactory.create(profile);
+    }
+    if (profile.snapshotRestoreRequestId != null) {
+      if (dataset is! VelockExchangeDatasetAdapter) {
+        throw const VelockSnapshotApplicationRequired();
+      }
+      profile = await VelockSnapshotRecoveryService.reconcile(
+        database: _database,
+        profiles: _profiles,
+        profile: profile,
+        adapter: dataset,
+      );
+    }
+
+    if (dataset is VelockExchangeDatasetAdapter) {
+      await VelockRecoveryTransport.upload(
+        root: dataset.exchangeRoot,
+        vaultId: profile.vaultId,
+        remote: remote,
+      );
+    }
     await _publishRootReadme(remote: remote, profile: profile);
     // Best-effort exchange of signed join requests: peers surface new devices
     // for user approval, and this device publishes its own request. A failure
@@ -242,6 +280,10 @@ class VelockSyncService implements VelockSyncRunner {
                   profile: profile,
                   exchangeRoot: exchangeRoot,
                   velockSigningPublicKey: descriptor.producerSigningPublicKey,
+                  revokedDeviceIds: await readVerifiedVelockRevocations(
+                    exchangeRoot: exchangeRoot,
+                    descriptor: descriptor,
+                  ),
                 );
           }
         }
@@ -272,7 +314,9 @@ class VelockSyncService implements VelockSyncRunner {
       preflight: () => _diskPreflight.ensureAvailable(_stagingRoot),
       // Pairing is the only local source of a Velock producer allow-list.
       trustedProducerDeviceIds: remoteProducerIds,
-      enableGarbageCollection: true,
+      // The independent full-snapshot retention protocol is not a V1
+      // checkpoint. Keep immutable history while a snapshot anchors this root.
+      enableGarbageCollection: profile.currentSnapshotId == null,
     );
   }
 

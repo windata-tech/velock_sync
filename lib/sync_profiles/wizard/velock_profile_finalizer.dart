@@ -47,6 +47,7 @@ abstract interface class VelockProfileFinalizer {
     required SyncProfileBackgroundPolicy backgroundPolicy,
     required bool userConfirmed,
     List<String> remoteRootSegments = const [],
+    bool restoring = false,
   });
 
   Future<bool> retryAcknowledgement(VelockPairingSession session);
@@ -91,6 +92,7 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
     required SyncProfileBackgroundPolicy backgroundPolicy,
     required bool userConfirmed,
     List<String> remoteRootSegments = const [],
+    bool restoring = false,
   }) async {
     if (!userConfirmed) {
       throw const VelockProfileFinalizationException('confirmation_required');
@@ -164,6 +166,7 @@ class VelockProfileFinalizationService implements VelockProfileFinalizer {
       exchangeBindingId: approval.exchangeBindingId,
       trustedProducerIds: approval.trustedProducerIds ?? [approval.producerId],
       remoteRootSegments: normalizedRemoteRootSegments,
+      snapshotDiscoveryPending: restoring,
       backgroundPolicy: backgroundPolicy,
       state: SyncProfileState.active,
       createdAt: _now().toUtc(),

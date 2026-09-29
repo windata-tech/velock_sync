@@ -14,11 +14,7 @@ void main() {
       root,
       now: () => DateTime.utc(2026, 7, 15),
     );
-    final package = Directory('${root.path}/Outbox/Ready/batch-1');
-    await package.create(recursive: true);
-    await File('${package.path}/envelope.json').writeAsString(
-      jsonEncode({'vaultId': 'vault-1', 'sourceDeviceId': 'device-1'}),
-    );
+    await _readyPackage(root, 'batch-1', sequence: 1);
 
     final claim = await store.claimNextOutbox(
       leaseId: 'lease-1',
@@ -43,16 +39,14 @@ void main() {
       final root = await Directory.systemTemp.createTemp('velock-exchange-');
       addTearDown(() => root.delete(recursive: true));
       final store = VelockExchangeStore(root);
-      for (final entry in [
-        ('batch-other', 'other-vault', 'other-device'),
-        ('batch-mine', 'vault-1', 'device-1'),
-      ]) {
-        final package = Directory('${root.path}/Outbox/Ready/${entry.$1}');
-        await package.create(recursive: true);
-        await File('${package.path}/envelope.json').writeAsString(
-          jsonEncode({'vaultId': entry.$2, 'sourceDeviceId': entry.$3}),
-        );
-      }
+      await _readyPackage(
+        root,
+        'batch-other',
+        sequence: 1,
+        vaultId: 'other-vault',
+        sourceDeviceId: 'other-device',
+      );
+      await _readyPackage(root, 'batch-mine', sequence: 1);
 
       final claim = await store.claimNextOutbox(
         leaseId: 'lease-1',
@@ -67,6 +61,79 @@ void main() {
       );
     },
   );
+
+  test('never claims a package whose READY marker is missing', () async {
+    // Velock writes READY last; a package without it is still being written.
+    final root = await Directory.systemTemp.createTemp('velock-exchange-');
+    addTearDown(() => root.delete(recursive: true));
+    final store = VelockExchangeStore(root);
+    await _readyPackage(root, 'batch-1', sequence: 1, ready: false);
+
+    expect(
+      await store.claimNextOutbox(
+        leaseId: 'lease-1',
+        vaultId: 'vault-1',
+        sourceDeviceId: 'device-1',
+      ),
+      isNull,
+    );
+    expect(
+      await Directory('${root.path}/Outbox/Ready/batch-1').exists(),
+      isTrue,
+    );
+  });
+
+  test('claims by envelope sequence, not by the random batch id', () async {
+    // Batch IDs are UUIDs. Claiming in name order uploaded later sequences
+    // first, and the history guard then reported an incomplete backup.
+    final root = await Directory.systemTemp.createTemp('velock-exchange-');
+    addTearDown(() => root.delete(recursive: true));
+    final store = VelockExchangeStore(root);
+    await _readyPackage(root, 'aaa-third', sequence: 3);
+    await _readyPackage(root, 'zzz-first', sequence: 1);
+    await _readyPackage(root, 'mmm-second', sequence: 2);
+
+    final order = <String>[];
+    for (var i = 0; i < 3; i++) {
+      final claim = await store.claimNextOutbox(
+        leaseId: 'lease-$i',
+        vaultId: 'vault-1',
+        sourceDeviceId: 'device-1',
+      );
+      order.add(claim!.batchId);
+      await store.removeClaimedOutbox(claim.batchId);
+    }
+
+    expect(order, ['zzz-first', 'mmm-second', 'aaa-third']);
+  });
+
+  test('waits while a lower sequence is still claimed', () async {
+    final root = await Directory.systemTemp.createTemp('velock-exchange-');
+    addTearDown(() => root.delete(recursive: true));
+    final store = VelockExchangeStore(root);
+    await _readyPackage(root, 'batch-1', sequence: 1);
+    await _readyPackage(root, 'batch-2', sequence: 2);
+    final first = await store.claimNextOutbox(
+      leaseId: 'lease-1',
+      vaultId: 'vault-1',
+      sourceDeviceId: 'device-1',
+    );
+    expect(first!.batchId, 'batch-1');
+
+    // The run that held batch-1 died; its lease has not expired yet.
+    expect(
+      await store.claimNextOutbox(
+        leaseId: 'lease-2',
+        vaultId: 'vault-1',
+        sourceDeviceId: 'device-1',
+      ),
+      isNull,
+    );
+    expect(
+      await Directory('${root.path}/Outbox/Ready/batch-2').exists(),
+      isTrue,
+    );
+  });
 
   test(
     'publishes an inbox package only after every artifact is staged',
@@ -131,4 +198,28 @@ void main() {
       );
     },
   );
+}
+
+Future<void> _readyPackage(
+  Directory root,
+  String batchId, {
+  required int sequence,
+  String vaultId = 'vault-1',
+  String sourceDeviceId = 'device-1',
+  bool ready = true,
+}) async {
+  final package = Directory('${root.path}/Outbox/Ready/$batchId');
+  await package.create(recursive: true);
+  await File('${package.path}/envelope.json').writeAsString(
+    jsonEncode({
+      'vaultId': vaultId,
+      'sourceDeviceId': sourceDeviceId,
+      'sequence': sequence,
+    }),
+  );
+  if (ready) {
+    await File('${package.path}/READY').writeAsString(
+      jsonEncode({'batchId': batchId}),
+    );
+  }
 }

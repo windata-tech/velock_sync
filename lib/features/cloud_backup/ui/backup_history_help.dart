@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -10,11 +10,11 @@ import 'package:velock_sync/features/connection/remote_object_store_factory.dart
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
-import 'package:velock_sync/widgets/adaptive_dialogs.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
 import 'backup_widgets.dart';
 import 'velock_backup_location.dart';
+import 'velock_backup_rebuild.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace_shared.dart';
 
 Future<void> showBackupHistoryHelp(
@@ -69,6 +69,7 @@ class _BackupHistoryHelpState extends ConsumerState<BackupHistoryHelp> {
         ref,
         profile: profile,
         connection: connection,
+        requireExistingBackup: true,
       );
       if (!mounted) return;
       final updated = result.profile;
@@ -159,12 +160,12 @@ class _BackupHistoryHelpState extends ConsumerState<BackupHistoryHelp> {
                             ? (backupRequested
                                   ? '位置已保存。备份结果请返回备份页查看。'
                                   : '本次只保存目录，尚未开始备份。')
-                            : '上次备份提示缺少旧记录。请核对原目录；确认目录不会启动同步。',
+                            : '请选以前备份成功时使用的文件夹；已有文件夹不一定包含原备份。保存前会检查是否有当前账号的备份记录，完整性仍需备份时验证。',
                         locationSaved
                             ? (backupRequested
                                   ? 'Location saved. Go back to view the backup result.'
                                   : 'Only the folder was saved. Backup has not started.')
-                            : 'The last backup reported missing history. Check the original folder; confirming it will not start sync.',
+                            : 'Choose the folder used for a previous successful backup. An existing folder may not contain it. We will look for this account’s backup records before saving; completeness is checked when backup runs.',
                       ),
                     ),
                   ],
@@ -258,26 +259,22 @@ class _BackupHistoryHelpState extends ConsumerState<BackupHistoryHelp> {
                       'Can’t find the original backup?',
                     ),
                     secondary: true,
-                    onPressed: busy
+                    onPressed: busy || connection.asData?.value == null
                         ? null
-                        : () => showAdaptiveAlert<void>(
-                            context: context,
-                            title: syncText(
-                              context,
-                              '先保留本机数据和旧备份',
-                              'Keep local data and any old backup',
-                            ),
-                            message: syncText(
-                              context,
-                              '当前版本还不能把本机全部数据重新整理成一份完整备份，自动补到新文件夹。\n\n如果找不到完整旧备份，这份备份暂时无法继续；反复重试或重新授权也不能解决。\n\n请保留格间中的本机数据和可能存在的旧备份，不要卸载格间、重置同步或删除旧目录。',
-                              'This version cannot yet rebuild a complete backup from all local data into a new folder.\n\nWithout the original complete backup, this backup cannot continue. Repeated retries or authorization will not fix it.\n\nKeep local data in Velock and any old backups. Do not uninstall Velock, reset sync, or delete old folders.',
-                            ),
-                            actions: [
-                              AdaptiveAlertAction<void>(
-                                label: syncText(context, '知道了', 'OK'),
-                                isDefault: true,
-                              ),
-                            ],
+                        : () => Navigator.of(context).push<void>(
+                            isApplePlatform(context)
+                                ? CupertinoPageRoute(
+                                    builder: (_) => VelockBackupRebuildPage(
+                                      profile: profile,
+                                      connection: connection.asData!.value!,
+                                    ),
+                                  )
+                                : MaterialPageRoute(
+                                    builder: (_) => VelockBackupRebuildPage(
+                                      profile: profile,
+                                      connection: connection.asData!.value!,
+                                    ),
+                                  ),
                           ),
                   ),
                 ),

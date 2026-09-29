@@ -1,10 +1,9 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -63,8 +62,7 @@ class Connection extends HookConsumerWidget {
     return connection.when(
       data: (connectionModel) {
         if (connectionModel == null) {
-          return PlatformScaffold(
-            iosContentPadding: false,
+          return AdaptivePageScaffold(
             appBar: WDAppBar(
               leading: AppBackButton(
                 onPressed: () => Navigator.of(context).maybePop(),
@@ -151,8 +149,7 @@ class Connection extends HookConsumerWidget {
           onPopInvokedWithResult: (didPop, result) {
             if (!didPop && notifier.canGoBack) notifier.goBack();
           },
-          child: PlatformScaffold(
-            iosContentPadding: false,
+          child: AdaptivePageScaffold(
             appBar: WDAppBar(
               leading: AppBackButton(
                 onPressed: goBack,
@@ -178,35 +175,17 @@ class Connection extends HookConsumerWidget {
               ),
               trailingActions: [
                 _ConnectionInfoButton(protocol: connectionModel.protocol),
-                PlatformIconButton(
-                  padding: EdgeInsets.zero,
-                  cupertino: (context, platform) {
-                    return CupertinoIconButtonData(
-                      icon: const Icon(CupertinoIcons.pencil),
-                    );
-                  },
-                  material: (context, platform) {
-                    return MaterialIconButtonData(
-                      icon: const Icon(Icons.edit_outlined, size: 24),
-                    );
-                  },
+                AdaptiveIconButton(
+                  icon: const Icon(CupertinoIcons.pencil),
+                  materialIcon: const Icon(Icons.edit_outlined, size: 24),
                   onPressed: () => context.pushNamed(
                     AppRoutes.newWebDav.name,
                     queryParameters: {'replace': connectionModel.id},
                   ),
                 ),
-                PlatformIconButton(
-                  padding: EdgeInsets.zero,
-                  cupertino: (context, platform) {
-                    return CupertinoIconButtonData(
-                      icon: Icon(CupertinoIcons.refresh),
-                    );
-                  },
-                  material: (context, platform) {
-                    return MaterialIconButtonData(
-                      icon: Icon(Icons.refresh, size: 24),
-                    );
-                  },
+                AdaptiveIconButton(
+                  icon: const Icon(CupertinoIcons.refresh),
+                  materialIcon: const Icon(Icons.refresh, size: 24),
                   onPressed: isLoading ? null : refreshBrowser,
                 ),
               ],
@@ -360,8 +339,7 @@ class Connection extends HookConsumerWidget {
           ),
         );
       },
-      error: (error, stackTrace) => PlatformScaffold(
-        iosContentPadding: false,
+      error: (error, stackTrace) => AdaptivePageScaffold(
         appBar: WDAppBar(
           leading: AppBackButton(
             onPressed: () => Navigator.of(context).maybePop(),
@@ -379,27 +357,19 @@ class Connection extends HookConsumerWidget {
           onRetry: () => ref.invalidate(connectionDetailProvider(id)),
         ),
       ),
-      loading: () => PlatformScaffold(
+      loading: () => AdaptivePageScaffold(
         appBar: WDAppBar(
           showTitle: false,
-          title: PlatformCircularProgressIndicator(),
+          title: AdaptiveSpinner(),
           trailingActions: [
-            PlatformIconButton(
-              padding: EdgeInsets.zero,
-              cupertino: (context, platform) {
-                return CupertinoIconButtonData(
-                  icon: Icon(CupertinoIcons.ellipsis_circle),
-                );
-              },
-              material: (context, platform) {
-                return MaterialIconButtonData(
-                  icon: Icon(Icons.more_vert, size: 24),
-                );
-              },
+            AdaptiveIconButton(
+              icon: const Icon(CupertinoIcons.ellipsis_circle),
+              materialIcon: const Icon(Icons.more_vert, size: 24),
               onPressed: null,
             ),
           ],
         ),
+        body: const SizedBox.shrink(),
       ),
     );
   }
@@ -417,8 +387,7 @@ class _OAuthConnectionDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final protocol = connection.protocol as OAuthProtocolModel;
-    return PlatformScaffold(
-      iosContentPadding: false,
+    return AdaptivePageScaffold(
       appBar: WDAppBar(
         leading: AppBackButton(
           onPressed: () => Navigator.of(context).maybePop(),
@@ -426,11 +395,17 @@ class _OAuthConnectionDetails extends StatelessWidget {
         title: Text(connection.name),
         trailingActions: [
           _ConnectionInfoButton(protocol: protocol),
-          PlatformIconButton(
-            icon: const Icon(Icons.refresh),
+          AdaptiveIconButton(
+            icon: Icon(
+              adaptiveIcon(
+                context,
+                material: Icons.refresh,
+                cupertino: CupertinoIcons.refresh,
+              ),
+            ),
             onPressed: onTestConnection,
           ),
-          PlatformTextButton(
+          AdaptiveTextButton(
             onPressed: () => context.pushNamed(
               AppRoutes.newOAuth.name,
               pathParameters: {'provider': protocol.providerType.name},
@@ -502,9 +477,8 @@ class _ConnectionInfoButton extends StatelessWidget {
     final label = syncText(context, '连接说明', 'Connection info');
     return Tooltip(
       message: label,
-      child: PlatformIconButton(
+      child: AdaptiveIconButton(
         key: const Key('connection-info'),
-        padding: EdgeInsets.zero,
         icon: Icon(
           adaptiveIcon(
             context,

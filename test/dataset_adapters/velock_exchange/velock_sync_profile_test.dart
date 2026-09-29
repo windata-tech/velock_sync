@@ -7,6 +7,19 @@ import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 
 void main() {
+  test('location change marker survives serialization and state copies', () {
+    final changed = DateTime.utc(2026, 9, 27);
+    final original = _profile().copyWith(locationChangedAt: changed);
+    final restored = VelockSyncProfile.fromEnvelope(
+      SyncProfileEnvelope.fromJson(
+        jsonDecode(jsonEncode(original.toEnvelope().toJson()))
+            as Map<String, dynamic>,
+      ),
+    );
+    expect(restored.locationChangedAt, changed);
+    expect(restored.copyWith().locationChangedAt, changed);
+    expect(_profile().locationChangedAt, isNull);
+  });
   test('legacy profiles without a scope keep the connection root', () {
     final envelope = _envelope();
     final profile = VelockSyncProfile.fromEnvelope(envelope);

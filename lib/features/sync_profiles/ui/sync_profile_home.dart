@@ -1,10 +1,12 @@
 /// The two product domains have separate destinations; they never share a list.
 library;
 
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_queue_probe.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
+import 'package:velock_sync/features/cloud_backup/application/velock_snapshot_providers.dart';
 
 import 'dart:async';
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -40,6 +42,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
   final Set<String> _running = {};
   Timer? _runRefresh;
   int _loadGeneration = 0;
+  bool _checkingSnapshotContinuation = false;
   bool get _isVelock => widget.kind == SyncDatasetKind.velockManaged;
 
   @override
@@ -47,6 +50,9 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _profiles = _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_continueAppliedSnapshots());
+    });
   }
 
   @override
@@ -59,7 +65,82 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) _refresh();
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refresh();
+      unawaited(_continueAppliedSnapshots());
+    }
+  }
+
+  Future<void> _continueAppliedSnapshots() async {
+    if (!_isVelock || _checkingSnapshotContinuation) return;
+    _checkingSnapshotContinuation = true;
+    try {
+      final profiles = await ref
+          .read(syncProfileRepositoryProvider)
+          .listSummaries();
+      for (final profile in profiles) {
+        if (!mounted) return;
+        if (profile.kind != SyncDatasetKind.velockManaged ||
+            profile.isIsolated ||
+            _running.contains(profile.profileId)) {
+          continue;
+        }
+        bool ready;
+        try {
+          ready = await ref.read(snapshotContinuationReadyProvider)(
+            profile.profileId,
+          );
+        } on Object {
+          // Keep the existing action visible; an unavailable local exchange
+          // is never treated as a completed restore.
+          continue;
+        }
+        if (!mounted) return;
+        if (!ready) continue;
+        setState(() => _running.add(profile.profileId));
+        try {
+          final result = await runSyncWithProgress(
+            context,
+            ref,
+            profile.profileId,
+          );
+          if (mounted) await presentFirstSyncResult(context, result);
+        } on Object catch (error) {
+          if (mounted) {
+            await presentSyncFailureAlert(context: context, error: error);
+          }
+        } finally {
+          if (mounted) {
+            setState(() => _running.remove(profile.profileId));
+            _refresh();
+          }
+        }
+      }
+    } finally {
+      _checkingSnapshotContinuation = false;
+    }
+  }
+
+  VelockOutboxStatus? _velockStatus;
+
+  /// Velock's hand-over hint is read beside the page load, never inside it:
+  /// the card must not wait on the shared folder.
+  Future<void> _loadVelockStatus(int generation) async {
+    VelockOutboxStatus? status;
+    try {
+      status = (await ref.read(velockExchangeQueueProbeProvider).read())
+          ?.velockStatus;
+    } on Object {
+      return;
+    }
+    if (!mounted || generation != _loadGeneration) return;
+    if (status?.needsVelock == _velockStatus?.needsVelock &&
+        status?.pendingConflicts == _velockStatus?.pendingConflicts &&
+        status?.unpackagedChanges == _velockStatus?.unpackagedChanges) {
+      return;
+    }
+    _velockStatus = status;
+    _refresh();
   }
 
   Future<_HomeData> _load() async {
@@ -69,6 +150,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
         .where((p) => p.kind == widget.kind && !p.isIsolated)
         .toList();
     VelockWizardAvailability? availability;
+    VelockOutboxStatus? velockStatus;
     final snapshots = <String, SyncedDataSnapshot>{};
     if (_isVelock && profiles.isNotEmpty) {
       final ready = await ref
@@ -81,6 +163,8 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
             ),
           );
       availability = ready.availability;
+      velockStatus = _velockStatus;
+      unawaited(_loadVelockStatus(generation));
       for (final p in profiles) {
         snapshots[p.profileId] = await ref
             .read(syncStateDatabaseProvider)
@@ -100,6 +184,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
       snapshots,
       availability,
       all.where((p) => p.isIsolated).toList(),
+      velockStatus,
     );
   }
 
@@ -131,7 +216,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
     if (_running.contains(profile.profileId)) return;
     switch (state.action) {
       case BackupAction.openVelock:
-        await openVelockForBackup(context, ref);
+        await openVelockForBackup(context, ref, profileId: profile.profileId);
         return;
       case BackupAction.checkStorage:
         final saved = await ref
@@ -166,9 +251,7 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
               context,
               syncText(
                 context,
-                _isVelock
-                    ? '暂时无法继续备份，请稍后重试。'
-                    : '暂时无法继续同步，请稍后重试。',
+                _isVelock ? '暂时无法继续备份，请稍后重试。' : '暂时无法继续同步，请稍后重试。',
                 _isVelock
                     ? 'Could not resume the backup. Please try again.'
                     : 'Could not resume the sync. Please try again.',
@@ -279,8 +362,11 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
                   onAction: () =>
                       _action(profile, _presentation(profile, data)),
                   secondaryLabel: syncText(context, '详情', 'Details'),
-                  secondaryKey: Key('velock-backup-details-${profile.profileId}'),
-                  onSecondary: () => _open('/sync-profiles/${profile.profileId}'),
+                  secondaryKey: Key(
+                    'velock-backup-details-${profile.profileId}',
+                  ),
+                  onSecondary: () =>
+                      _open('/sync-profiles/${profile.profileId}'),
                 ),
               AdaptiveListSection(
                 children: [
@@ -428,12 +514,16 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
   BackupPresentation _presentation(SyncProfileSummary p, _HomeData data) =>
       BackupPresentation.from(
         state: p.state,
+        locationChangedAt: p.locationChangedAt,
         activity: p.activity,
         availability: data.availability,
         pendingIncoming: data.snapshots[p.profileId]?.pendingIncomingCount ?? 0,
         pendingOutgoing: data.snapshots[p.profileId]?.pendingOutgoingCount ?? 0,
         isolated: p.isIsolated,
         running: _running.contains(p.profileId),
+        velockHoldsChanges:
+            data.velockStatus?.vaultId == p.vaultId &&
+            data.velockStatus?.needsVelock == true,
       );
 }
 
@@ -442,12 +532,14 @@ class _HomeData {
     this.profiles,
     this.snapshots,
     this.availability,
-    this.isolated,
-  );
+    this.isolated, [
+    this.velockStatus,
+  ]);
   final List<SyncProfileSummary> profiles;
   final Map<String, SyncedDataSnapshot> snapshots;
   final VelockWizardAvailability? availability;
   final List<SyncProfileSummary> isolated;
+  final VelockOutboxStatus? velockStatus;
 }
 
 class _ProfileTile extends ConsumerWidget {

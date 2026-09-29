@@ -1,18 +1,16 @@
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 
 import '../appearance/design_tokens.dart';
 import 'adaptive_dialogs.dart';
 import 'app_components.dart';
 import 'common_widgets.dart';
 
-export 'adaptive_dialogs.dart'
-    show showAdaptiveConfirmation;
+export 'adaptive_dialogs.dart' show showAdaptiveConfirmation;
 
 IconData adaptiveIcon(
   BuildContext context, {
@@ -267,12 +265,7 @@ class AdaptiveScaffold extends StatelessWidget {
   final bool showTitle;
 
   @override
-  Widget build(BuildContext context) => PlatformScaffold(
-    backgroundColor: context.appPageBackground,
-    // CupertinoPageScaffold already lays the body out below its navigation
-    // bar. Adding the navigation-bar height again here creates the large
-    // empty band visible on every pushed page.
-    iosContentPadding: false,
+  Widget build(BuildContext context) => AdaptivePageScaffold(
     appBar: WDAppBar(
       title: Text(title),
       showTitle: showTitle,
@@ -280,9 +273,124 @@ class AdaptiveScaffold extends StatelessWidget {
       leading: leading,
     ),
     body: body,
-    material: (_, _) =>
-        MaterialScaffoldData(floatingActionButton: floatingActionButton),
+    floatingActionButton: floatingActionButton,
   );
+}
+
+/// A page shell that picks the platform's own scaffold and navigation bar.
+///
+/// Replaces `flutter_platform_widgets`' `PlatformScaffold` (discontinued
+/// upstream). `CupertinoPageScaffold` already lays the body out below its
+/// navigation bar — adding the bar height again produced the large empty band
+/// that used to show on every pushed page, so no extra inset is applied.
+class AdaptivePageScaffold extends StatelessWidget {
+  const AdaptivePageScaffold({
+    super.key,
+    required this.appBar,
+    required this.body,
+    this.backgroundColor,
+    this.floatingActionButton,
+    this.resizeToAvoidBottomInset,
+  });
+
+  final WDAppBar appBar;
+  final Widget body;
+  final Color? backgroundColor;
+  final Widget? floatingActionButton;
+  final bool? resizeToAvoidBottomInset;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = backgroundColor ?? context.appPageBackground;
+    if (isApplePlatform(context)) {
+      return CupertinoPageScaffold(
+        backgroundColor: background,
+        navigationBar: appBar,
+        // Unlike CupertinoApp, MaterialApp supplies a diagnostic text style.
+        // CupertinoPageScaffold does not replace it for its body.
+        child: DefaultTextStyle(
+          style: CupertinoTheme.of(context).textTheme.textStyle,
+          child: body,
+        ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: background,
+      appBar: appBar,
+      body: body,
+      floatingActionButton: floatingActionButton,
+      resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+    );
+  }
+}
+
+/// The bottom tab shell for the three product entries.
+///
+/// The bar itself is the platform's own widget; the page content is the router
+/// shell, so no nested navigator is introduced (that would break the shell
+/// routes).
+class AdaptiveTabScaffold extends StatelessWidget {
+  const AdaptiveTabScaffold({
+    super.key,
+    required this.body,
+    required this.items,
+    required this.currentIndex,
+    required this.onChanged,
+  });
+
+  final Widget body;
+  final List<BottomNavigationBarItem> items;
+  final int currentIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isApplePlatform(context)) {
+      return CupertinoPageScaffold(
+        backgroundColor: context.appPageBackground,
+        child: Column(
+          children: [
+            Expanded(
+              child: DefaultTextStyle(
+                style: CupertinoTheme.of(context).textTheme.textStyle,
+                child: body,
+              ),
+            ),
+            CupertinoTabBar(
+              items: items,
+              currentIndex: currentIndex,
+              onTap: onChanged,
+              backgroundColor: context.appGroupedSurface,
+              activeColor: context.appPrimary,
+              inactiveColor: context.appSecondaryLabel,
+              iconSize: 24,
+            ),
+          ],
+        ),
+      );
+    }
+    // Material 3's own NavigationBar, which is what this shell rendered before
+    // the migration (it kept the same destinations, index and callback).
+    return Scaffold(
+      backgroundColor: context.appPageBackground,
+      body: body,
+      bottomNavigationBar: NavigationBar(
+        destinations: [
+          for (final item in items)
+            NavigationDestination(
+              icon: item.icon,
+              selectedIcon: item.activeIcon,
+              label: item.label ?? '',
+              tooltip: item.tooltip,
+            ),
+        ],
+        selectedIndex: currentIndex,
+        onDestinationSelected: onChanged,
+        backgroundColor: context.appGroupedSurface,
+        elevation: 2,
+      ),
+    );
+  }
 }
 
 class AdaptiveListSection extends StatelessWidget {
@@ -590,12 +698,19 @@ class AdaptiveIconButton extends StatelessWidget {
     super.key,
     required this.icon,
     required this.onPressed,
+    this.materialIcon,
     this.tooltip,
+    this.semanticLabel,
   });
 
+  /// The Apple glyph. [materialIcon] is the Material one when the two design
+  /// languages use different drawings (a pencil vs a filled pencil); it falls
+  /// back to [icon] when they do not.
   final Widget icon;
+  final Widget? materialIcon;
   final VoidCallback? onPressed;
   final String? tooltip;
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -613,14 +728,17 @@ class AdaptiveIconButton extends StatelessWidget {
             ? Opacity(opacity: AppOpacity.disabled, child: icon)
             : icon,
       );
-      return tooltip == null
+      final labelled = semanticLabel == null
           ? button
-          : Semantics(label: tooltip, child: button);
+          : Semantics(label: semanticLabel, child: button);
+      return tooltip == null
+          ? labelled
+          : Tooltip(message: tooltip!, child: labelled);
     }
     return IconButton(
-      tooltip: tooltip,
+      tooltip: tooltip ?? semanticLabel,
       onPressed: onPressed,
-      icon: icon,
+      icon: materialIcon ?? icon,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(
         width: AppSizes.listAction,
@@ -1232,4 +1350,243 @@ class AdaptiveActionMenu<T> extends StatelessWidget {
     );
     if (selected != null) onSelected(selected);
   }
+}
+
+/// A text button that keeps the platform's own control.
+///
+/// Replaces `flutter_platform_widgets`' `PlatformTextButton` (discontinued
+/// upstream). A disabled button dims its content instead of repainting it in the
+/// system's disabled grey, matching the rule established for icons.
+class AdaptiveTextButton extends StatelessWidget {
+  const AdaptiveTextButton({
+    super.key,
+    required this.child,
+    required this.onPressed,
+    this.padding = EdgeInsets.zero,
+    this.textAlign,
+    this.color,
+    this.fontWeight,
+  });
+
+  final Widget child;
+  final VoidCallback? onPressed;
+  final EdgeInsetsGeometry padding;
+  final TextAlign? textAlign;
+  final Color? color;
+  final FontWeight? fontWeight;
+
+  @override
+  Widget build(BuildContext context) {
+    // The label may be a Text or a composed row (icon + label); render it as it
+    // is and only change colour/opacity, so nothing is re-laid out.
+    final label = DefaultTextStyle.merge(
+      style: TextStyle(
+        color: color ?? context.appPrimary,
+        fontWeight: fontWeight,
+      ),
+      child: child,
+    );
+    if (isApplePlatform(context)) {
+      return CupertinoButton(
+        padding: padding,
+        minimumSize: Size.zero,
+        onPressed: onPressed,
+        child: onPressed == null
+            ? Opacity(opacity: AppOpacity.disabled, child: label)
+            : label,
+      );
+    }
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: padding,
+        foregroundColor: color ?? context.appPrimary,
+        textStyle: TextStyle(fontWeight: fontWeight),
+        minimumSize: const Size(0, AppSizes.listAction),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: label,
+    );
+  }
+}
+
+/// A primary (filled) button for both platforms.
+class AdaptiveElevatedButton extends StatelessWidget {
+  const AdaptiveElevatedButton({
+    super.key,
+    required this.child,
+    required this.onPressed,
+    this.padding,
+  });
+
+  final Widget child;
+  final VoidCallback? onPressed;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isApplePlatform(context)) {
+      return CupertinoButton.filled(
+        padding: padding,
+        onPressed: onPressed,
+        child: onPressed == null
+            ? Opacity(opacity: AppOpacity.disabled, child: child)
+            : child,
+      );
+    }
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: padding == null
+          ? null
+          : ElevatedButton.styleFrom(padding: padding),
+      child: child,
+    );
+  }
+}
+
+/// A switch that keeps the platform's own control.
+class AdaptiveSwitch extends StatelessWidget {
+  const AdaptiveSwitch({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.activeColor,
+  });
+
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final Color? activeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isApplePlatform(context)) {
+      return CupertinoSwitch(
+        value: value,
+        onChanged: onChanged,
+        activeTrackColor: activeColor,
+      );
+    }
+    return Switch(
+      value: value,
+      onChanged: onChanged,
+      activeThumbColor: activeColor,
+    );
+  }
+}
+
+/// A progress indicator that keeps the platform's own control.
+class AdaptiveSpinner extends StatelessWidget {
+  const AdaptiveSpinner({super.key, this.padding = EdgeInsets.zero});
+
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => isApplePlatform(context)
+      ? const CupertinoActivityIndicator()
+      : CircularProgressIndicator(padding: padding);
+}
+
+/// A labelled text field for both platforms.
+///
+/// One [label] serves both design languages: the Material branch uses it as the
+/// floating label, the Apple branch as the row prefix. No call site has to
+/// describe the same field twice, and long labels wrap instead of being
+/// ellipsised.
+class AdaptiveTextFormField extends StatelessWidget {
+  const AdaptiveTextFormField({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.validator,
+    this.hint,
+    this.obscureText = false,
+    this.maxLines = 1,
+    this.keyboardType,
+    this.textInputAction,
+    this.autocorrect,
+    this.enableSuggestions,
+    this.autofocus = false,
+    this.enabled,
+    this.onChanged,
+    this.onFieldSubmitted,
+    this.focusNode,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final FormFieldValidator<String>? validator;
+  final String? hint;
+  final bool obscureText;
+  final int? maxLines;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final bool? autocorrect;
+  final bool? enableSuggestions;
+  final bool autofocus;
+  final bool? enabled;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onFieldSubmitted;
+  final FocusNode? focusNode;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isApplePlatform(context)) {
+      return CupertinoTextFormFieldRow(
+        controller: controller,
+        validator: validator,
+        placeholder: hint ?? label,
+        obscureText: obscureText,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        textInputAction: textInputAction,
+        autocorrect: autocorrect ?? true,
+        enableSuggestions: enableSuggestions ?? true,
+        autofocus: autofocus,
+        enabled: enabled,
+        onChanged: onChanged,
+        onFieldSubmitted: onFieldSubmitted,
+        focusNode: focusNode,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        prefix: AdaptiveFieldPrefix(label: label),
+      );
+    }
+    return TextFormField(
+      controller: controller,
+      validator: validator,
+      obscureText: obscureText,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      autocorrect: autocorrect ?? true,
+      enableSuggestions: enableSuggestions ?? true,
+      autofocus: autofocus,
+      enabled: enabled,
+      onChanged: onChanged,
+      onFieldSubmitted: onFieldSubmitted,
+      focusNode: focusNode,
+      decoration: InputDecoration(labelText: label, hintText: hint),
+    );
+  }
+}
+
+/// The label shown before an Apple-style form row.
+///
+/// A minimum width rather than a fixed one: the English labels ("Server
+/// Address") are wider than the Chinese and used to overflow a hard 112pt box.
+class AdaptiveFieldPrefix extends StatelessWidget {
+  const AdaptiveFieldPrefix({super.key, required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(minWidth: 112),
+    child: Text(
+      label,
+      style: AppType.rowTitle.copyWith(color: context.appSecondaryLabel),
+    ),
+  );
 }

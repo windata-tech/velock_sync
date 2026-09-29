@@ -1,5 +1,5 @@
 import 'package:velock_sync/l10n/sync_locale.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 
 /// Shared, presentation-only formatters.
 ///
@@ -114,6 +114,28 @@ abstract final class AppFormat {
     }
     if (normalized == 'provider.webdav.collection_not_writable') {
       return uncreatableFolderMessage(context);
+    }
+    if (normalized == 'local.velock_snapshot_application_required') {
+      return _optionalSyncText(
+        context,
+        '完整备份已下载。请打开格间，解锁并确认恢复；返回 Sync 后会继续完成备份检查。',
+        'The full backup is downloaded. Open and unlock Velock to confirm restoration, then return to Sync to finish checking the backup.',
+      );
+    }
+    if (normalized == 'local.velock_recovery_required') {
+      return _optionalSyncText(
+        context,
+        '请先打开并解锁格间，准备加密恢复文件，再回来重新备份。',
+        'Open and unlock Velock to prepare the encrypted recovery file, then retry backup.',
+      );
+    }
+    if (normalized == 'remote.immutable_object_mismatch') {
+      // Retrying re-sends the same object and hits the same file again.
+      return _optionalSyncText(
+        context,
+        '云端这个位置已有一个同名但内容不同的备份文件，重试不会解决。为保护已有数据已停止；请查看详细记录，或在新的空文件夹里建立新备份。',
+        'The backup folder already holds a file with this name but different content, so retrying will not help. Sync stopped to protect existing data; check the detailed log or start a new backup in an empty folder.',
+      );
     }
     if (normalized == 'remote.velock_history_incomplete') {
       return _optionalSyncText(

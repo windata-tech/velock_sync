@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -22,7 +22,8 @@ import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_dialogs.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/app_format.dart';
-import 'package:velock_sync/widgets/common_widgets.dart' show showPlatformMessage;
+import 'package:velock_sync/widgets/common_widgets.dart'
+    show showPlatformMessage;
 import 'plain_option_row.dart';
 
 /// One plain sync location: both halves, the sync policy and its history.
@@ -155,9 +156,7 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
   }) async {
     setState(() => _busy = true);
     try {
-      await ref
-          .read(plainFolderProfilesProvider)
-          .update(view.profile, change);
+      await ref.read(plainFolderProfilesProvider).update(view.profile, change);
       if (resetBaseline) {
         await ref
             .read(syncStateDatabaseProvider)
@@ -197,7 +196,10 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
       }
       await _refresh();
     } on Object catch (error, stackTrace) {
-      loge('Plain location state update failed: $error', stackTrace: stackTrace);
+      loge(
+        'Plain location state update failed: $error',
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         showPlatformMessage(
           context,
@@ -257,7 +259,9 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
     context.pushNamed(
       AppRoutes.connection.name,
       pathParameters: {'id': view.profile.connectionId},
-      queryParameters: {if (segments.isNotEmpty) 'segments': segments.join('/')},
+      queryParameters: {
+        if (segments.isNotEmpty) 'segments': segments.join('/'),
+      },
     );
   }
 
@@ -318,12 +322,9 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
             initialSegments: view.profile.remoteRootSegments,
             loadFolders: (relative) =>
                 loader(protocol: protocol, relativeSegments: relative),
-            createFolder: (parent, name) => ref
-                .read(backupFolderCreatorProvider)(
-                  protocol: protocol,
-                  relativeSegments: parent,
-                  name: name,
-                ),
+            createFolder: (parent, name) => ref.read(
+              backupFolderCreatorProvider,
+            )(protocol: protocol, relativeSegments: parent, name: name),
           ),
         ),
       );
@@ -418,9 +419,7 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
     if (!confirmed || !mounted) return;
     setState(() => _busy = true);
     try {
-      await ref
-          .read(syncProfileRepositoryProvider)
-          .remove(widget.profileId);
+      await ref.read(syncProfileRepositoryProvider).remove(widget.profileId);
       await ref
           .read(syncStateDatabaseProvider)
           .clearMirrorEntries(widget.profileId);
@@ -468,7 +467,8 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
     final view = data == null ? null : _view(data);
     final dirty = view != null && _hasDraft(view.profile);
     return AdaptiveScaffold(
-      title: view?.profile.displayName ??
+      title:
+          view?.profile.displayName ??
           syncText(context, '同步位置', 'Sync location'),
       actions: [
         if (view != null && dirty)
@@ -568,11 +568,7 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
               title: Text(syncText(context, '远端文件夹', 'Remote folder')),
               subtitle: Text(
                 view.connection == null
-                    ? syncText(
-                        context,
-                        '远端连接已删除',
-                        'Remote connection deleted',
-                      )
+                    ? syncText(context, '远端连接已删除', 'Remote connection deleted')
                     : '${view.connectionName}${view.remotePath}',
               ),
               trailing: view.connection == null
@@ -695,9 +691,7 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
                     },
             ),
             AdaptiveSwitchListTile(
-              title: Text(
-                syncText(context, '允许蜂窝网络', 'Allow cellular data'),
-              ),
+              title: Text(syncText(context, '允许蜂窝网络', 'Allow cellular data')),
               value: profile.backgroundAllowCellular,
               onChanged: !_busy && profile.backgroundEnabled
                   ? (value) async {
@@ -836,9 +830,7 @@ class _StatusCard extends StatelessWidget {
                       : (status.actionLabel ??
                             syncText(context, '立即同步', 'Sync now')),
                   busy: busy,
-                  onPressed: busy
-                      ? null
-                      : (paused ? onTogglePause : onRun),
+                  onPressed: busy ? null : (paused ? onTogglePause : onRun),
                 ),
               ),
               if (!paused) ...[

@@ -1,6 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
@@ -75,21 +73,18 @@ void main() {
                 connectionModel: _connection,
               ).overrideWith(() => browser = _Browser()),
             ],
-            child: PlatformProvider(
-              initialPlatform: platform,
-              builder: (_) => MaterialApp(
-                locale: const Locale('zh'),
-                supportedLocales: const [Locale('zh'), Locale('en')],
-                localizationsDelegates: GlobalMaterialLocalizations.delegates,
-                theme: ThemeData(platform: platform),
-                home: Builder(
-                  builder: (context) => Scaffold(
-                    body: TextButton(
-                      child: const Text('open'),
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const Connection('test'),
-                        ),
+            child: MaterialApp(
+              locale: const Locale('zh'),
+              supportedLocales: const [Locale('zh'), Locale('en')],
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
+              theme: ThemeData(platform: platform),
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    child: const Text('open'),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const Connection('test'),
                       ),
                     ),
                   ),

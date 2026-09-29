@@ -1,6 +1,6 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_recovery.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace_shared.dart';
 import 'package:velock_sync/sync_core/engine/sync_download_engine.dart';
@@ -52,11 +52,7 @@ Widget host(
 ) => MaterialApp(
   locale: locale,
   supportedLocales: const [Locale('zh'), Locale('en')],
-  localizationsDelegates: const [
-    GlobalMaterialLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-  ],
+  localizationsDelegates: const [...GlobalMaterialLocalizations.delegates],
   theme: ThemeData(platform: platform),
   home: Scaffold(
     body: Center(
@@ -121,6 +117,35 @@ Future<void> expectPersistentFailurePresentation(
 }
 
 void main() {
+  testWidgets('downloaded snapshot offers to open Velock instead of a dead end', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        TargetPlatform.iOS,
+        const Locale('zh'),
+        (context) => presentSyncFailureAlert(
+          context: context,
+          error: const VelockSnapshotApplicationRequired(),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('trigger')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('请到格间完成恢复'), findsOneWidget);
+    expect(
+      find.text('完整备份已下载。请打开格间，解锁并确认恢复；返回 Sync 后会继续完成备份检查。'),
+      findsOneWidget,
+    );
+    expect(find.text('打开格间'), findsOneWidget);
+    expect(find.text('同步失败'), findsNothing);
+
+    await tester.tap(find.text('稍后'));
+    await tester.pumpAndSettle();
+    expect(find.text('请到格间完成恢复'), findsNothing);
+  });
+
   for (final platform in const [TargetPlatform.iOS, TargetPlatform.android]) {
     testWidgets(
       'presentSyncResult shows a persistent acknowledged failure alert '

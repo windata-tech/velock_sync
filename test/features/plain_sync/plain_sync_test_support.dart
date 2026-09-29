@@ -18,9 +18,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -147,7 +145,6 @@ class PlainSyncWorld {
   /// Set by a test that pushed the wizard: completes with the value the wizard
   /// route popped with (`true` once a location was created).
   Future<bool?>? wizardPop;
-
 
   /// The profile as the repository reads it back from the database.
   Future<PlainFolderSyncProfile?> readProfile(String profileId) =>
@@ -351,15 +348,12 @@ Future<PlainSyncWorld> pumpPlainSyncApp(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: PlatformProvider(
-        initialPlatform: platform,
-        builder: (_) => MaterialApp.router(
-          locale: locale,
-          supportedLocales: const [Locale('zh'), Locale('en')],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          theme: ThemeData(platform: platform),
-          routerConfig: router,
-        ),
+      child: MaterialApp.router(
+        locale: locale,
+        supportedLocales: const [Locale('zh'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: ThemeData(platform: platform),
+        routerConfig: router,
       ),
     ),
   );

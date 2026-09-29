@@ -1,3 +1,7 @@
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_baseline.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_verification_record.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_trust.dart';
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_current_snapshot_transport.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -19,6 +23,10 @@ import 'package:velock_sync/sync_core/model/sync_models.dart';
 
 /// Bridges opaque, pre-signed Velock App Group packages to Sync Core. It
 /// deliberately does not decrypt operations or construct a signed ACK.
+///
+/// A Velock checkpoint is one signed pointer plus its commit marker, so it
+/// declares [CheckpointWithoutPartsDatasetAdapter]: there is no `parts/`
+/// collection for recovery to list.
 class VelockExchangeDatasetAdapter
     implements
         SyncDatasetAdapter,
@@ -27,7 +35,10 @@ class VelockExchangeDatasetAdapter
         GarbageCollectionCandidateProvider,
         CheckpointPreparingDatasetAdapter,
         CheckpointRecoveringDatasetAdapter,
-        RemoteHistoryValidatingDatasetAdapter {
+        CheckpointWithoutPartsDatasetAdapter,
+        RemoteHistoryValidatingDatasetAdapter,
+        SnapshotCoveredCommitCollectionAdapter,
+        CompletedIncomingBatchAdapter {
   VelockExchangeDatasetAdapter({
     required this.datasetId,
     required this.vaultId,
@@ -36,9 +47,18 @@ class VelockExchangeDatasetAdapter
     required VelockExchangeStore exchange,
     this.expectedProducerPublicKeyId,
     this.expectedExchangeBindingId,
+    this.currentSnapshotId,
+    this.currentSnapshotProducerId,
+    this.snapshotVerificationRecord,
+    this.snapshotLocationScope,
     Uuid? uuid,
   }) : _exchange = exchange,
        _uuid = uuid ?? const Uuid();
+
+  /// When set with [snapshotLocationScope], a snapshot whose objects were all
+  /// read back at this location recently is not downloaded again on each run.
+  final VelockSnapshotVerificationRecord? snapshotVerificationRecord;
+  final String? snapshotLocationScope;
 
   final String datasetId;
   final String vaultId;
@@ -46,6 +66,7 @@ class VelockExchangeDatasetAdapter
   final String displayName;
   final String? expectedProducerPublicKeyId;
   final String? expectedExchangeBindingId;
+  final String? currentSnapshotId, currentSnapshotProducerId;
   final VelockExchangeStore _exchange;
 
   /// Shared App Group directory that holds Velock's control artifacts.
@@ -53,6 +74,22 @@ class VelockExchangeDatasetAdapter
   final Uuid _uuid;
   VelockClaimedOutbox? _claimed;
   int _publishedThroughSequence = 0;
+  VerifiedVelockSnapshotBaseline? _verifiedSnapshotBaseline;
+
+  @override
+  bool permitsMissingCommitCollection({
+    required RemoteObjectStore remote,
+    required String vaultId,
+    required String producerDeviceId,
+    required int appliedSequence,
+  }) =>
+      appliedSequence > 0 &&
+      _verifiedSnapshotBaseline?.coveredThrough(
+            remote: remote,
+            vaultId: vaultId,
+            producerId: producerDeviceId,
+          ) ==
+          appliedSequence;
 
   @override
   Future<DatasetDescriptor> describe() async => DatasetDescriptor(
@@ -293,6 +330,13 @@ class VelockExchangeDatasetAdapter
     );
   }
 
+  /// Marks a delivered package as finished so Velock can delete it. Only
+  /// Velock knows whether its own cursor has moved past the batch, so the
+  /// package itself is removed there, never here.
+  @override
+  Future<void> incomingBatchCompleted(IncomingBatchReference batch) =>
+      _exchange.markInboxAcknowledged(batch.batchId);
+
   Future<ImmutableArtifact> _artifact(
     Directory root,
     String relativePath,
@@ -321,11 +365,22 @@ class VelockExchangeDatasetAdapter
       sha256.convert(await _read(artifact)).toString();
 
   @override
-  Future<void> verifyRemoteHistory(RemoteObjectStore remote) async {
+  String get historyProducerDeviceId => producerDeviceId;
+
+  @override
+  Future<void> verifyRemoteHistory(
+    RemoteObjectStore remote, {
+    required int publishedThroughSequence,
+  }) async {
+    _verifiedSnapshotBaseline = null;
     // prepareCheckpoint verifies the local signature/binding first. Remote
     // checkpoints are never accepted as proof of missing business records.
     final checkpoint = await prepareCheckpoint();
     var through = _publishedThroughSequence;
+    // Sync can restart before Velock consumes its publication receipt. Its
+    // durable local publication record still requires the remote history to
+    // exist; this boundary can only strengthen validation, never prove coverage.
+    if (publishedThroughSequence > through) through = publishedThroughSequence;
     if (checkpoint != null) {
       final envelope =
           jsonDecode(utf8.decode(await _read(checkpoint.envelope)))
@@ -334,12 +389,71 @@ class VelockExchangeDatasetAdapter
           (envelope['coveredSequences'] as Map)[producerDeviceId] as int;
       if (covered > through) through = covered;
     }
+    VerifiedVelockSnapshotBaseline? baseline;
+    if (currentSnapshotId != null) {
+      final descriptor = await _readTrustedDescriptor();
+      final snapshotProducer = currentSnapshotProducerId;
+      if (snapshotProducer == null) {
+        throw const FormatException('Missing snapshot producer.');
+      }
+      PublicKey? key;
+      if (snapshotProducer == producerDeviceId) {
+        key = descriptor.publicKey;
+      } else {
+        final file = File('${exchangeRoot.path}/Control/SnapshotTrust.json');
+        if (await FileSystemEntity.type(file.path, followLinks: false) !=
+            FileSystemEntityType.file) {
+          throw StateError('Snapshot producer trust is unavailable.');
+        }
+        final keys = await VelockSnapshotTrust.verify(
+          bytes: await readSnapshotObject(
+            file.openRead(),
+            VelockSnapshotTrust.maxBytes,
+          ),
+          vaultId: vaultId,
+          keyId: descriptor.producerPublicKeyId,
+          actorDeviceId: producerDeviceId,
+          exchangeBindingId: descriptor.exchangeBindingId,
+          trustedActorKey: descriptor.publicKey,
+        );
+        key = keys[snapshotProducer];
+      }
+      if (key == null) {
+        throw const FormatException('Snapshot producer is not trusted.');
+      }
+      try {
+        final record = snapshotVerificationRecord;
+        final scope = snapshotLocationScope;
+        baseline = await VerifiedVelockSnapshotBaseline.verify(
+          remote: remote,
+          snapshotId: currentSnapshotId!,
+          vaultId: vaultId,
+          producerId: snapshotProducer,
+          keyId: descriptor.producerPublicKeyId,
+          trustedSigningKey: key,
+          skipObjectCheck: record == null || scope == null
+              ? null
+              : (inventory) => record.isFresh(scope, inventory),
+          onObjectsVerified: record == null || scope == null
+              ? null
+              : (inventory) => record.remember(scope, inventory),
+        );
+      } on RemoteObjectNotFoundException {
+        throw const VelockRemoteHistoryIncomplete();
+      } on FormatException {
+        // Missing/corrupt snapshot bytes need the same find-or-rebuild choice
+        // as lost V1 history. Never turn that failure into coverage.
+        throw const VelockRemoteHistoryIncomplete();
+      }
+    }
     await verifyVelockRemoteHistory(
+      baseline: baseline,
       remote: remote,
       vaultId: vaultId,
       producerDeviceId: producerDeviceId,
       requiredThroughSequence: through,
     );
+    _verifiedSnapshotBaseline = baseline;
   }
 
   @override
@@ -569,15 +683,28 @@ class VelockExchangeDatasetAdapter
     return manifest.candidates;
   }
 
+  /// The commit must be byte-identical on every retry: it is written with
+  /// create-if-absent, so a retry after a lost response used to produce a
+  /// different commit for the same key. Its time is the envelope's signed
+  /// creation time instead of the clock at upload.
   String _commit(VelockExchangeEnvelopeMetadata value, Uint8List envelope) =>
       jsonEncode({
         'batchId': value.batchId,
-        'committedAt': DateTime.now().toUtc().toIso8601String(),
+        'committedAt': _envelopeCreatedAt(envelope),
         'envelopeSha256': sha256.convert(envelope).toString(),
         'sequence': value.sequence,
         'sourceDeviceId': value.sourceDeviceId,
         'vaultId': value.vaultId,
       });
+  String _envelopeCreatedAt(Uint8List envelope) {
+    final decoded = jsonDecode(utf8.decode(envelope));
+    final value = decoded is Map<String, dynamic> ? decoded['createdAt'] : null;
+    if (!_isUtcTimestamp(value)) {
+      throw const FormatException('Velock Exchange createdAt is invalid.');
+    }
+    return DateTime.parse(value as String).toUtc().toIso8601String();
+  }
+
   bool _isUtcTimestamp(Object? value) {
     if (value is! String || value.isEmpty) return false;
     try {

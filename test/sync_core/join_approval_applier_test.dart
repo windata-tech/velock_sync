@@ -29,6 +29,7 @@ VelockSyncProfile _profile() => VelockSyncProfile(
   exchangeBindingId: 'binding-1',
   trustedProducerIds: const [_localProducer],
   remoteRootSegments: _remoteRootSegments,
+  locationChangedAt: DateTime.utc(2026, 9, 27),
   backgroundPolicy: const SyncProfileBackgroundPolicy(),
   state: SyncProfileState.active,
   createdAt: DateTime.utc(2026, 9, 11),
@@ -102,6 +103,7 @@ void main() {
     final reloaded = VelockSyncProfile.fromEnvelope(persisted!);
     expect(reloaded.trustedProducerIds, contains(_joinedProducer));
     expect(reloaded.remoteRootSegments, _remoteRootSegments);
+    expect(reloaded.locationChangedAt, profile.locationChangedAt);
   });
 
   test(
@@ -202,5 +204,57 @@ void main() {
           velockSigningPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
         );
     expect(merged, [_localProducer]);
+  });
+
+  test('a verified revocation removes the device and old approvals cannot '
+      'bring it back', () async {
+    // Approvals are never deleted and used to be merged on every run, so a
+    // lost phone revoked in Velock stayed trusted here for ever.
+    final database = await SyncStateDatabase.inMemory();
+    final profiles = SyncProfileRepository(database);
+    final keyPair = await Ed25519().newKeyPair();
+    final publicKey = base64UrlEncode(
+      (await keyPair.extractPublicKey()).bytes,
+    );
+    final root = await Directory.systemTemp.createTemp('velock-approval-');
+    addTearDown(() async {
+      if (root.existsSync()) await root.delete(recursive: true);
+    });
+    final approvals = Directory('${root.path}/Control/JoinApprovals');
+    await approvals.create(recursive: true);
+    await File('${approvals.path}/$_joinedProducer.json').writeAsBytes(
+      await _signedApproval([_localProducer, _joinedProducer], keyPair),
+    );
+    final applier = JoinApprovalApplier(profiles: profiles, database: database);
+    final profile = _profile();
+    await profiles.save(profile.toEnvelope());
+    final joined = await applier.apply(
+      profile: profile,
+      exchangeRoot: root,
+      velockSigningPublicKey: publicKey,
+    );
+    expect(joined, contains(_joinedProducer));
+
+    final withJoined = VelockSyncProfile.fromEnvelope(
+      (await profiles.read('profile-1'))!,
+    );
+    final afterRevocation = await applier.apply(
+      profile: withJoined,
+      exchangeRoot: root,
+      velockSigningPublicKey: publicKey,
+      revokedDeviceIds: const {_joinedProducer},
+    );
+
+    expect(afterRevocation, [_localProducer]);
+    final reloaded = VelockSyncProfile.fromEnvelope(
+      (await profiles.read('profile-1'))!,
+    );
+    expect(reloaded.trustedProducerIds, [_localProducer]);
+    expect(
+      (await database.readTrustedDevicePublicKeys(
+        vaultId: _vaultId,
+      )).containsKey(_joinedProducer),
+      isFalse,
+    );
   });
 }

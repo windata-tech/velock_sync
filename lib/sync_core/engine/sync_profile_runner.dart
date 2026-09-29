@@ -66,6 +66,7 @@ class SyncProfileRunner {
     SyncGarbageCollector? garbageCollector,
     GarbageCollectionEvidenceBuilder? garbageCollectionEvidenceBuilder,
     VaultProtocolBootstrapper? protocolBootstrapper,
+    this.allowGarbageCollectionDeletion = false,
     Uuid? uuid,
     DateTime Function()? now,
   }) : _uploadEngine = uploadEngine ?? SyncUploadEngine(_database),
@@ -90,6 +91,17 @@ class SyncProfileRunner {
   final VaultProtocolBootstrapper _protocolBootstrapper;
   final Uuid _uuid;
   final DateTime Function() _now;
+
+  /// Whether a plan that passes every safety check may delete remote objects.
+  ///
+  /// Off in production: a Velock candidate covers a batch's `.commit` marker,
+  /// and the remote history guard requires one commit for every sequence
+  /// (`velock_remote_history_guard.dart`). Deleting one would make every later
+  /// run of that backup fail as `remote.velock_history_incomplete`, and a
+  /// device joining later would stop at the gap. Until the guard can accept a
+  /// gap proven by a trusted plan, GC only evaluates and records what it would
+  /// collect; it writes nothing remote.
+  final bool allowGarbageCollectionDeletion;
 
   Future<SyncProfileRunResult> run({
     required String profileId,
@@ -164,7 +176,14 @@ class SyncProfileRunner {
       // Missing business history is a failed backup, even after a successful
       // upload of the currently pending incremental batch.
       if (dataset case final RemoteHistoryValidatingDatasetAdapter validator) {
-        await validator.verifyRemoteHistory(remote);
+        final published = await _database.latestPublishedOutgoingBatch(
+          profileId: profileId,
+          sourceDeviceId: validator.historyProducerDeviceId,
+        );
+        await validator.verifyRemoteHistory(
+          remote,
+          publishedThroughSequence: published?.sequence ?? 0,
+        );
       }
       await _publishCheckpoint(dataset: dataset, remote: remote);
       CheckpointRecoveryResult? checkpointRecovery;
@@ -387,6 +406,10 @@ class SyncProfileRunner {
         candidates: validation.candidates,
       );
       eligibleCandidateCount = plan.candidates.length;
+      if (!allowGarbageCollectionDeletion) {
+        await finish(state: 'skipped', skipReason: 'deletion-paused');
+        return null;
+      }
       final result = await _garbageCollector.publishAndExecute(
         plan: plan,
         remote: remote,

@@ -17,11 +17,15 @@ void main() {
     int conflicts = 0,
     bool isolated = false,
     bool running = false,
+    DateTime? locationChangedAt,
+    bool velockHoldsChanges = false,
     VelockWizardAvailability? availability,
   }) => BackupPresentation.from(
     state: state,
     isolated: isolated,
     running: running,
+    locationChangedAt: locationChangedAt,
+    velockHoldsChanges: velockHoldsChanges,
     availability: availability,
     pendingIncoming: incoming,
     pendingOutgoing: outgoing,
@@ -64,6 +68,58 @@ void main() {
     expect(state(run: 'running').failedAt, isNull);
   });
 
+  test('changed location needs a new run; previous result is not current', () {
+    for (final oldResult in ['failed', 'completed']) {
+      final result = state(
+        run: oldResult,
+        error: 'remote.velock_history_incomplete',
+        locationChangedAt: DateTime.utc(2026, 9, 26),
+      );
+      expect(result.stage, BackupStage.locationNeedsCheck);
+      expect(result.action, BackupAction.transfer);
+      expect(result.failedAt, isNull);
+      expect(result.completedAt, isNull);
+    }
+    expect(
+      state(
+        run: 'failed',
+        error: 'remote.velock_history_incomplete',
+        locationChangedAt: DateTime.utc(2026, 9, 24),
+      ).action,
+      BackupAction.reviewHistory,
+    );
+    expect(
+      state(
+        run: 'completed',
+        locationChangedAt: DateTime.utc(2026, 9, 24),
+      ).stage,
+      BackupStage.lastTransferCompleted,
+    );
+  });
+
+  test('location change does not mask running, access, pause or conflicts', () {
+    final changed = DateTime.utc(2026, 9, 26);
+    expect(
+      state(run: 'running', locationChangedAt: changed).stage,
+      BackupStage.transferring,
+    );
+    expect(
+      state(
+        state: SyncProfileState.accessRequired,
+        locationChangedAt: changed,
+      ).stage,
+      BackupStage.needsVelock,
+    );
+    expect(
+      state(state: SyncProfileState.paused, locationChangedAt: changed).stage,
+      BackupStage.paused,
+    );
+    expect(
+      state(conflicts: 1, locationChangedAt: changed).action,
+      BackupAction.resolve,
+    );
+  });
+
   test('a saved connection and bytes never prove completed backup', () {
     expect(state().stage, BackupStage.notStarted);
   });
@@ -81,6 +137,29 @@ void main() {
     expect(result.stage, BackupStage.waitingForRestore);
     expect(result.action, BackupAction.openVelock);
     expect(result.completedAt, isNull);
+  });
+  test('waiting for Velock to apply a restore is not shown as a failure', () {
+    final result = state(
+      run: 'failed',
+      error: 'local.velock_snapshot_application_required',
+    );
+    expect(result.stage, BackupStage.waitingForRestore);
+    expect(result.action, BackupAction.openVelock);
+    expect(result.failedAt, isNull);
+  });
+  test('an object mismatch is not offered as "back up again"', () {
+    // Retrying re-sends the same object into the same conflicting file.
+    final result = state(
+      run: 'failed',
+      error: 'remote.immutable_object_mismatch',
+    );
+    expect(result.stage, BackupStage.needsAttention);
+    expect(result.action, BackupAction.manage);
+  });
+  test('changes still held by Velock are not shown as completed', () {
+    final result = state(run: 'completed', velockHoldsChanges: true);
+    expect(result.stage, BackupStage.velockHoldsChanges);
+    expect(result.action, BackupAction.openVelock);
   });
   test('pending output or queued transfers override last success', () {
     for (final value in [

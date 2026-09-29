@@ -1,4 +1,6 @@
-import 'package:flutter/cupertino.dart';
+import 'dart:io';
+import 'velock_recovery_download.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/app_router.dart';
@@ -19,6 +21,35 @@ class VelockRecoveryGuide extends ConsumerStatefulWidget {
 
 class _VelockRecoveryGuideState extends ConsumerState<VelockRecoveryGuide> {
   bool _accountRestored = false;
+  bool _downloadingRecovery = false;
+  bool _recoveryReady = false;
+  String? _recoveryError;
+
+  Future<void> _prepareRecovery() async {
+    if (_downloadingRecovery) return;
+    setState(() {
+      _downloadingRecovery = true;
+      _recoveryError = null;
+      _recoveryReady = false;
+    });
+    try {
+      final ready = await downloadVelockRecovery(context, ref);
+      if (mounted) setState(() => _recoveryReady = ready);
+    } on Object {
+      if (mounted) {
+        setState(
+          () => _recoveryError = syncText(
+            context,
+            '未能取回恢复文件。请检查网络、云端连接和原备份目录。旧备份没有此文件时，请用旧卡的完整二维码，或在原设备升级后再备份一次。',
+            'Could not retrieve the recovery file. Check your network, cloud connection and original backup folder. For an older backup without this file, use the old complete QR card, or update and back up once more on the original device.',
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingRecovery = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final profiles = ref.watch(velockExistingProfilesProvider);
@@ -85,6 +116,63 @@ class _VelockRecoveryGuideState extends ConsumerState<VelockRecoveryGuide> {
                 ),
               ),
             ] else ...[
+              if (Platform.isIOS || Platform.isMacOS)
+                BackupCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        syncText(
+                          context,
+                          '先取回加密恢复文件',
+                          'Retrieve the encrypted recovery file',
+                        ),
+                        style: const TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        syncText(
+                          context,
+                          '只有纸卡时，先选择原备份目录。Sync 只下载加密文件，不会索要密钥或密码；随后在格间输入纸卡上的四项信息。使用旧卡完整二维码时可跳过此步。',
+                          'If you have a paper card, first select the original backup folder. Sync downloads only encrypted files and never asks for your secret key or password. Then enter the four card fields in Velock. You can skip this step with an old complete QR card.',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      BackupActionButton(
+                        key: const Key('restore-download-recovery'),
+                        label: syncText(
+                          context,
+                          _downloadingRecovery ? '正在读取…' : '选择原备份目录',
+                          _downloadingRecovery
+                              ? 'Reading…'
+                              : 'Select original backup folder',
+                        ),
+                        onPressed: _downloadingRecovery
+                            ? null
+                            : _prepareRecovery,
+                      ),
+                      if (_recoveryReady)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(
+                            syncText(
+                              context,
+                              '恢复文件已就绪，请到格间输入纸卡信息。',
+                              'Recovery file ready. Enter your paper card information in Velock.',
+                            ),
+                          ),
+                        ),
+                      if (_recoveryError != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(_recoveryError!),
+                        ),
+                    ],
+                  ),
+                ),
               BackupCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,8 +182,8 @@ class _VelockRecoveryGuideState extends ConsumerState<VelockRecoveryGuide> {
                     Text(
                       syncText(
                         context,
-                        '先找回你的格间账号',
-                        'First, recover your Velock account',
+                        '在格间恢复原账号',
+                        'Recover your original account in Velock',
                       ),
                       style: const TextStyle(
                         fontSize: 25,

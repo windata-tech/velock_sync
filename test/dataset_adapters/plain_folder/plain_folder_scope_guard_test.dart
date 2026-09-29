@@ -44,7 +44,9 @@ void main() {
     final database = await _database();
     addTearDown(database.close);
     final backups = SyncProfileRepository(database);
-    await backups.save(_backup(profileId: 'b1', segments: const ['USB', '111']));
+    await backups.save(
+      _backup(profileId: 'b1', segments: const ['USB', '111']),
+    );
 
     for (final scope in <List<String>>[
       const ['USB', '111'],
@@ -68,7 +70,9 @@ void main() {
     final database = await _database();
     addTearDown(database.close);
     final backups = SyncProfileRepository(database);
-    await backups.save(_backup(profileId: 'b1', segments: const ['USB_HDD_8T']));
+    await backups.save(
+      _backup(profileId: 'b1', segments: const ['USB_HDD_8T']),
+    );
 
     await expectLater(
       assertPlainScopeAvoidsBackups(
@@ -84,7 +88,9 @@ void main() {
     final database = await _database();
     addTearDown(database.close);
     final backups = SyncProfileRepository(database);
-    await backups.save(_backup(profileId: 'b1', segments: const ['USB', '111']));
+    await backups.save(
+      _backup(profileId: 'b1', segments: const ['USB', '111']),
+    );
 
     // A sibling folder.
     await assertPlainScopeAvoidsBackups(
@@ -104,7 +110,9 @@ void main() {
     final database = await _database();
     addTearDown(database.close);
     final backups = SyncProfileRepository(database);
-    await backups.save(_backup(profileId: 'b1', segments: const ['USB', '111']));
+    await backups.save(
+      _backup(profileId: 'b1', segments: const ['USB', '111']),
+    );
     await backups.remove('b1', forceRunning: true);
 
     await assertPlainScopeAvoidsBackups(
@@ -225,5 +233,4 @@ void main() {
     );
     expect(await profiles.list(), hasLength(1));
   });
-
 }

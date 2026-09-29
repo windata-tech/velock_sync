@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'dart:typed_data';
@@ -32,18 +33,25 @@ import 'package:velock_sync/infrastructure/database/sync_state_devices.dart';
 /// (`sync_state_*.dart`); every public method keeps its original signature
 /// so callers are unaffected by the split.
 class SyncStateDatabase {
-  SyncStateDatabase._(this._database, {Object? executionScopeKey})
-    : executionScopeKey = executionScopeKey ?? Object(),
-      _connections = ConnectionQueries(_database),
-      _profiles = ProfileQueries(_database),
-      _runs = RunQueries(_database),
-      _transfers = TransferQueries(_database),
-      _locks = LockQueries(_database),
-      _batches = BatchQueries(_database),
-      _folderScan = FolderScanQueries(_database),
-      _conflicts = ConflictQueries(_database),
-      _devices = DeviceQueries(_database),
-      _mirror = MirrorQueries(_database);
+  SyncStateDatabase._(
+    this._database, {
+    Object? executionScopeKey,
+    String? processToken,
+  }) : executionScopeKey = executionScopeKey ?? Object(),
+       processToken = processToken ?? 'pid-$pid',
+       _connections = ConnectionQueries(_database),
+       _profiles = ProfileQueries(_database),
+       _runs = RunQueries(_database),
+       _transfers = TransferQueries(_database),
+       _locks = LockQueries(
+         _database,
+         processToken: processToken ?? 'pid-$pid',
+       ),
+       _batches = BatchQueries(_database),
+       _folderScan = FolderScanQueries(_database),
+       _conflicts = ConflictQueries(_database),
+       _devices = DeviceQueries(_database),
+       _mirror = MirrorQueries(_database);
   static late SyncStateDatabase _instance;
 
   final Database _database;
@@ -51,6 +59,10 @@ class SyncStateDatabase {
   /// Same on-disk DB => same in-isolate dispatch scope. In-memory DBs stay
   /// isolated, even if tests or profiles happen to reuse the same IDs.
   final Object executionScopeKey;
+
+  /// The process that owns this connection's locks (see [LockQueries]).
+  /// Every isolate of one process shares it; tests inject one per "process".
+  final String processToken;
 
   final ConnectionQueries _connections;
   final ProfileQueries _profiles;
@@ -71,12 +83,16 @@ class SyncStateDatabase {
     _instance = await open(file);
   }
 
-  static Future<SyncStateDatabase> open(File file) async {
+  static Future<SyncStateDatabase> open(
+    File file, {
+    @visibleForTesting String? processToken,
+  }) async {
     await file.parent.create(recursive: true);
     final database = sqlite3.open(file.path);
     final state = SyncStateDatabase._(
       database,
       executionScopeKey: p.normalize(file.absolute.path),
+      processToken: processToken,
     );
     state._migrate();
     return state;
@@ -96,6 +112,26 @@ class SyncStateDatabase {
 
   Future<void> replaceConnectionPayloads(Map<String, String> payloads) async =>
       _connections.replaceConnectionPayloads(payloads);
+
+  Future<bool> replaceSyncProfilePayloadIfCurrent({
+    BackupRebuildCompletion? rebuild,
+    required String profileId,
+    required String expectedPayload,
+    required String datasetId,
+    required String targetId,
+    required String vaultId,
+    required String state,
+    required String payload,
+  }) => _profiles.replaceSyncProfilePayloadIfCurrent(
+    rebuild: rebuild,
+    profileId: profileId,
+    expectedPayload: expectedPayload,
+    datasetId: datasetId,
+    targetId: targetId,
+    vaultId: vaultId,
+    state: state,
+    payload: payload,
+  );
 
   Future<void> upsertSyncProfilePayload({
     required String profileId,
@@ -146,6 +182,11 @@ class SyncStateDatabase {
 
   Future<List<String>> readActiveSyncProfilePayloads() async =>
       _profiles.readActiveSyncProfilePayloads();
+
+  Future<bool> hasSyncRun(String runId) async => _database.select(
+    'SELECT 1 FROM sync_runs WHERE run_id = ? LIMIT 1',
+    [runId],
+  ).isNotEmpty;
 
   Future<void> startSyncRun({
     required String runId,
@@ -227,10 +268,15 @@ class SyncStateDatabase {
   /// normal completion callback ran. This is used only for an explicit local
   /// profile removal, so a removed profile cannot leave a permanent "running"
   /// record that blocks future cleanup.
-  /// Closes runs left `running` by a previous process (see the mixed-in run
-  /// store). Startup calls this before the first read.
-  Future<int> failInterruptedSyncRuns({String errorCode = 'sync.interrupted'}) =>
-      _runs.failInterruptedSyncRuns(errorCode: errorCode);
+  /// Closes runs and frees locks left by a process that is no longer alive.
+  /// Runs of this process (any isolate) are untouched, so it is safe to call
+  /// on startup, on a foreground resume and from a background task.
+  Future<int> failInterruptedSyncRuns({
+    String errorCode = 'sync.interrupted',
+  }) => _runs.failInterruptedSyncRuns(
+    liveOwnerPrefix: '$processToken$lockOwnerProcessSeparator',
+    errorCode: errorCode,
+  );
 
   Future<int> failRunningSyncRunsForProfile({
     required String profileId,

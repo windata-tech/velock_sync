@@ -16,8 +16,7 @@
 /// `getApplicationSupportDirectory`.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
@@ -204,4 +203,3 @@ class _StubSyncSettingsService implements SyncSettingsService {
     garbageCollection: null,
   );
 }
-

@@ -12,11 +12,10 @@ library;
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
@@ -126,9 +125,7 @@ Widget _harness(GlobalKey captureKey, ProtocolModel protocol, Locale locale) =>
         locale: locale,
         supportedLocales: const [Locale('zh'), Locale('en')],
         localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
+          ...GlobalMaterialLocalizations.delegates,
         ],
         theme: ThemeData(
           platform: TargetPlatform.iOS,

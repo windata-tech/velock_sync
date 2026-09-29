@@ -22,6 +22,11 @@ class VelockSyncProfile {
     required this.exchangeBindingId,
     List<String>? trustedProducerIds,
     List<String> remoteRootSegments = const [],
+    this.locationChangedAt,
+    this.currentSnapshotId,
+    this.currentSnapshotProducerId,
+    this.snapshotRestoreRequestId,
+    this.snapshotDiscoveryPending = false,
     required this.backgroundPolicy,
     required this.state,
     required this.createdAt,
@@ -50,6 +55,17 @@ class VelockSyncProfile {
   /// The connection remains the immutable NAS entrance. This per-profile scope
   /// is appended only when constructing that profile's remote client.
   final List<String> remoteRootSegments;
+
+  /// Presentation-only: a saved location still needs a new verified run.
+  final DateTime? locationChangedAt;
+
+  /// An explicit full snapshot reference, never a coverage proof by itself.
+  /// Every run revalidates its trusted signature and all remote objects.
+  final String? currentSnapshotId, currentSnapshotProducerId;
+  final String? snapshotRestoreRequestId;
+
+  /// Durable restore intent; discovery/download failures must resume before any upload.
+  final bool snapshotDiscoveryPending;
   final SyncProfileBackgroundPolicy backgroundPolicy;
   final SyncProfileState state;
   final DateTime createdAt;
@@ -73,6 +89,14 @@ class VelockSyncProfile {
         'trustedProducerIds': trustedProducerIds,
         if (remoteRootSegments.isNotEmpty)
           'remoteRootSegments': remoteRootSegments,
+        if (snapshotDiscoveryPending) 'snapshotDiscoveryPending': true,
+        if (snapshotRestoreRequestId != null)
+          'snapshotRestoreRequestId': snapshotRestoreRequestId,
+        if (currentSnapshotId != null) 'currentSnapshotId': currentSnapshotId,
+        if (currentSnapshotProducerId != null)
+          'currentSnapshotProducerId': currentSnapshotProducerId,
+        if (locationChangedAt != null)
+          'locationChangedAt': locationChangedAt!.toUtc().toIso8601String(),
       },
       createdAt: createdAt.toUtc(),
     );
@@ -81,6 +105,13 @@ class VelockSyncProfile {
   VelockSyncProfile copyWith({
     SyncProfileState? state,
     List<String>? remoteRootSegments,
+    DateTime? locationChangedAt,
+    String? currentSnapshotId,
+    String? currentSnapshotProducerId,
+    bool clearCurrentSnapshot = false,
+    String? snapshotRestoreRequestId,
+    bool clearSnapshotRestoreRequest = false,
+    bool? snapshotDiscoveryPending,
   }) => VelockSyncProfile(
     profileId: profileId,
     datasetId: datasetId,
@@ -93,6 +124,19 @@ class VelockSyncProfile {
     exchangeBindingId: exchangeBindingId,
     trustedProducerIds: trustedProducerIds,
     remoteRootSegments: remoteRootSegments ?? this.remoteRootSegments,
+    locationChangedAt: locationChangedAt ?? this.locationChangedAt,
+    snapshotDiscoveryPending:
+        snapshotDiscoveryPending ?? this.snapshotDiscoveryPending,
+    snapshotRestoreRequestId:
+        clearCurrentSnapshot || clearSnapshotRestoreRequest
+        ? null
+        : snapshotRestoreRequestId ?? this.snapshotRestoreRequestId,
+    currentSnapshotId: clearCurrentSnapshot
+        ? null
+        : currentSnapshotId ?? this.currentSnapshotId,
+    currentSnapshotProducerId: clearCurrentSnapshot
+        ? null
+        : currentSnapshotProducerId ?? this.currentSnapshotProducerId,
     backgroundPolicy: backgroundPolicy,
     state: state ?? this.state,
     createdAt: createdAt,
@@ -111,12 +155,21 @@ class VelockSyncProfile {
       ...requiredDatasetFields,
       'trustedProducerIds',
       'remoteRootSegments',
+      'locationChangedAt',
+      'currentSnapshotId',
+      'currentSnapshotProducerId',
+      'snapshotRestoreRequestId',
+      'snapshotDiscoveryPending',
     };
     if (!envelope.dataset.keys.toSet().containsAll(requiredDatasetFields) ||
         envelope.dataset.keys.any(
           (key) => !allowedDatasetFields.contains(key),
         )) {
       throw const FormatException('Velock profile payload is invalid.');
+    }
+    final discovery = envelope.dataset['snapshotDiscoveryPending'];
+    if (discovery != null && discovery is! bool) {
+      throw const FormatException('Invalid snapshot restore intent.');
     }
     final profile = VelockSyncProfile(
       profileId: envelope.profileId,
@@ -133,12 +186,32 @@ class VelockSyncProfile {
       exchangeBindingId: _requiredDatasetString(envelope, 'exchangeBindingId'),
       trustedProducerIds: _trustedProducerIdsFromEnvelope(envelope),
       remoteRootSegments: _remoteRootSegmentsFromEnvelope(envelope),
+      locationChangedAt: locationChangedAtFromEnvelope(envelope),
+      snapshotDiscoveryPending: discovery == true,
+      snapshotRestoreRequestId: _snapshotField(
+        envelope,
+        'snapshotRestoreRequestId',
+      ),
+      currentSnapshotId: _snapshotField(envelope, 'currentSnapshotId'),
+      currentSnapshotProducerId: _snapshotField(
+        envelope,
+        'currentSnapshotProducerId',
+      ),
       backgroundPolicy: envelope.backgroundPolicy,
       state: envelope.state,
       createdAt: envelope.createdAt,
     );
     profile._validate();
     return profile;
+  }
+
+  static DateTime? locationChangedAtFromEnvelope(SyncProfileEnvelope envelope) {
+    final value = envelope.dataset['locationChangedAt'];
+    if (value == null) return null;
+    if (value is! String || DateTime.tryParse(value) == null) {
+      throw const FormatException('Invalid location change time.');
+    }
+    return DateTime.parse(value);
   }
 
   static String _requiredDatasetString(
@@ -201,7 +274,41 @@ class VelockSyncProfile {
     return List.unmodifiable(values);
   }
 
+  static String? _snapshotField(SyncProfileEnvelope envelope, String field) {
+    final value = envelope.dataset[field];
+    if (value == null) return null;
+    if (value is! String ||
+        !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$').hasMatch(value) ||
+        value.contains('..')) {
+      throw const FormatException('Invalid snapshot reference.');
+    }
+    return value;
+  }
+
   void _validate() {
+    if ((currentSnapshotId == null) != (currentSnapshotProducerId == null) ||
+        (currentSnapshotProducerId != null &&
+            !trustedProducerIds.contains(currentSnapshotProducerId))) {
+      throw const FormatException(
+        'Snapshot producer is not locally authorized.',
+      );
+    }
+    if (snapshotRestoreRequestId != null &&
+        (currentSnapshotId == null ||
+            currentSnapshotProducerId == pairedProducerId)) {
+      throw const FormatException('Invalid pending snapshot restoration.');
+    }
+    for (final id in [
+      currentSnapshotId,
+      currentSnapshotProducerId,
+      snapshotRestoreRequestId,
+    ]) {
+      if (id != null &&
+          (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$').hasMatch(id) ||
+              id.contains('..'))) {
+        throw const FormatException('Invalid snapshot reference.');
+      }
+    }
     for (final value in [
       profileId,
       datasetId,

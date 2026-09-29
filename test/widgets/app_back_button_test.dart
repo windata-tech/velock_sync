@@ -1,7 +1,5 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
@@ -12,14 +10,14 @@ Widget _app({
   required TargetPlatform platform,
   required Widget home,
   Locale locale = const Locale('en'),
-}) => PlatformProvider(
-  initialPlatform: platform,
-  builder: (context) => PlatformApp(
-    locale: locale,
-    supportedLocales: const [Locale('en'), Locale('zh')],
-    localizationsDelegates: GlobalMaterialLocalizations.delegates,
-    home: home,
-  ),
+}) => MaterialApp(
+  // The design language the app picks follows ThemeData.platform, so the theme
+  // is what drives the Cupertino branch under test.
+  theme: ThemeData(platform: platform),
+  locale: locale,
+  supportedLocales: const [Locale('en'), Locale('zh')],
+  localizationsDelegates: GlobalMaterialLocalizations.delegates,
+  home: home,
 );
 
 Route<void> _routeTo(Widget page) => PageRouteBuilder<void>(
@@ -32,10 +30,10 @@ class _RootPage extends StatelessWidget {
   const _RootPage();
 
   @override
-  Widget build(BuildContext context) => PlatformScaffold(
+  Widget build(BuildContext context) => AdaptivePageScaffold(
     appBar: WDAppBar(title: const Text('Root')),
     body: Center(
-      child: PlatformTextButton(
+      child: AdaptiveTextButton(
         onPressed: () =>
             Navigator.of(context).push(_routeTo(const _PushedPage())),
         child: const Text('Push page'),
@@ -48,7 +46,7 @@ class _PushedPage extends StatelessWidget {
   const _PushedPage();
 
   @override
-  Widget build(BuildContext context) => PlatformScaffold(
+  Widget build(BuildContext context) => AdaptivePageScaffold(
     appBar: WDAppBar(title: const Text('Pushed')),
     body: const SizedBox.shrink(),
   );
@@ -60,7 +58,7 @@ class _BlockedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: false,
-    child: PlatformScaffold(
+    child: AdaptivePageScaffold(
       appBar: WDAppBar(title: const Text('Blocked')),
       body: const SizedBox.shrink(),
     ),
@@ -71,10 +69,10 @@ class _BlockingRootPage extends StatelessWidget {
   const _BlockingRootPage();
 
   @override
-  Widget build(BuildContext context) => PlatformScaffold(
+  Widget build(BuildContext context) => AdaptivePageScaffold(
     appBar: WDAppBar(title: const Text('Root')),
     body: Center(
-      child: PlatformTextButton(
+      child: AdaptiveTextButton(
         onPressed: () =>
             Navigator.of(context).push(_routeTo(const _BlockedPage())),
         child: const Text('Push blocked page'),
@@ -167,7 +165,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           platform: platform,
-          home: PlatformScaffold(
+          home: AdaptivePageScaffold(
             appBar: WDAppBar(
               title: const Text('Header'),
               leading: AppBackButton(onPressed: () => calls++),
@@ -217,7 +215,7 @@ void main() {
             _app(
               platform: platform,
               locale: localizedCase.locale,
-              home: PlatformScaffold(
+              home: AdaptivePageScaffold(
                 appBar: WDAppBar(
                   title: const Text('Header'),
                   leading: AppBackButton(onPressed: () => calls++),
@@ -247,7 +245,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           platform: platform,
-          home: PlatformScaffold(
+          home: AdaptivePageScaffold(
             appBar: WDAppBar(
               title: const Text('Header'),
               leading: AppBackButton(onPressed: null),

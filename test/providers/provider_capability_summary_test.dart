@@ -7,8 +7,7 @@
 library;
 
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/providers/provider_capability_summary.dart';
@@ -58,13 +57,7 @@ void main() {
         final prose = [...summary.features, ...summary.limitations].join('\n');
         // Jargon that told a user nothing, or a service feature the app never
         // calls: a cloud trash and a ranged read are not Sync features.
-        for (final claim in [
-          '条件创建',
-          '范围下载',
-          '回收站',
-          '可恢复上传',
-          'Token Broker',
-        ]) {
+        for (final claim in ['条件创建', '范围下载', '回收站', '可恢复上传', 'Token Broker']) {
           expect(prose, isNot(contains(claim)), reason: '$claim in $prose');
         }
       }
@@ -133,9 +126,7 @@ void main() {
           locale: const Locale('en'),
           supportedLocales: const [Locale('zh'), Locale('en')],
           localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
+            ...GlobalMaterialLocalizations.delegates,
           ],
           home: Builder(
             builder: (context) {

@@ -59,10 +59,11 @@ void main() {
 
         final page = await store.list(prefix: 'mirror');
 
-        expect(
-          page.items.map((item) => item.logicalKey),
-          ['mirror/notes.txt', 'mirror/photos', 'mirror/plain.bin'],
-        );
+        expect(page.items.map((item) => item.logicalKey), [
+          'mirror/notes.txt',
+          'mirror/photos',
+          'mirror/plain.bin',
+        ]);
         final photos = page.items.singleWhere(
           (item) => item.logicalKey == 'mirror/photos',
         );
@@ -157,14 +158,17 @@ void main() {
     });
 
     for (final statusCode in [200, 202, 204, 404]) {
-      test('accepts DELETE of a collection answered with $statusCode', () async {
-        adapter.response = ResponseBody.fromBytes(const [], statusCode);
+      test(
+        'accepts DELETE of a collection answered with $statusCode',
+        () async {
+          adapter.response = ResponseBody.fromBytes(const [], statusCode);
 
-        await store.delete('mirror/photos');
+          await store.delete('mirror/photos');
 
-        expect(adapter.lastOptions!.method, 'DELETE');
-        expect(adapter.lastOptions!.uri.path, '/root/mirror/photos');
-      });
+          expect(adapter.lastOptions!.method, 'DELETE');
+          expect(adapter.lastOptions!.uri.path, '/root/mirror/photos');
+        },
+      );
     }
 
     test('does not treat a 207 DELETE report as success', () async {
@@ -263,44 +267,54 @@ void main() {
       );
     });
 
-    test('lists the store root when the caller asks for an empty prefix', () async {
-      adapter.response = ResponseBody.fromString(
-        '''<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+    test(
+      'lists the store root when the caller asks for an empty prefix',
+      () async {
+        adapter.response = ResponseBody.fromString(
+          '''<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
           <d:response><d:href>/root/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
           <d:response><d:href>/root/photos/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
           <d:response><d:href>/root/notes.txt</d:href><d:propstat><d:prop><d:getcontentlength>5</d:getcontentlength><d:resourcetype/></d:prop></d:propstat></d:response>
         </d:multistatus>''',
-        207,
-      );
+          207,
+        );
 
-      final page = await store.list(prefix: '');
+        final page = await store.list(prefix: '');
 
-      // The root request must hit the base collection itself, not a child path.
-      expect(adapter.lastOptions!.uri.path, '/root/');
-      expect(
-        page.items.map((item) => item.logicalKey),
-        containsAll(<String>['photos', 'notes.txt']),
-      );
-      expect(
-        page.items.firstWhere((item) => item.logicalKey == 'photos').isDirectory,
-        isTrue,
-      );
-      expect(
-        page.items.firstWhere((item) => item.logicalKey == 'notes.txt').isDirectory,
-        isFalse,
-      );
-    });
+        // The root request must hit the base collection itself, not a child path.
+        expect(adapter.lastOptions!.uri.path, '/root/');
+        expect(
+          page.items.map((item) => item.logicalKey),
+          containsAll(<String>['photos', 'notes.txt']),
+        );
+        expect(
+          page.items
+              .firstWhere((item) => item.logicalKey == 'photos')
+              .isDirectory,
+          isTrue,
+        );
+        expect(
+          page.items
+              .firstWhere((item) => item.logicalKey == 'notes.txt')
+              .isDirectory,
+          isFalse,
+        );
+      },
+    );
 
-    test('still rejects an empty key outside an explicit root listing', () async {
-      // read() is a stream generator, so its ArgumentError arrives as a stream
-      // error; put() and stat() fail synchronously.
-      await expectLater(store.read('').drain<void>(), throwsArgumentError);
-      await expectLater(store.stat(''), throwsArgumentError);
-      expect(
-        () => store.put('', Stream.value(<int>[1]), contentLength: 1),
-        throwsArgumentError,
-      );
-    });
+    test(
+      'still rejects an empty key outside an explicit root listing',
+      () async {
+        // read() is a stream generator, so its ArgumentError arrives as a stream
+        // error; put() and stat() fail synchronously.
+        await expectLater(store.read('').drain<void>(), throwsArgumentError);
+        await expectLater(store.stat(''), throwsArgumentError);
+        expect(
+          () => store.put('', Stream.value(<int>[1]), contentLength: 1),
+          throwsArgumentError,
+        );
+      },
+    );
 
     test(
       'uses protected MOVE and translates 412 without changing immutable bytes',
@@ -394,6 +408,64 @@ void main() {
         );
       },
     );
+
+    test(
+      'a failed write clears parent hints without retrying the stream',
+      () async {
+        var status = 201;
+        adapter.handler = (_, body, _) async {
+          await body?.drain();
+          return ResponseBody.fromBytes(const [], status);
+        };
+        await store.put('a/b/one', Stream.value([1]), contentLength: 1);
+        adapter.requests.clear();
+        status = 409;
+        await expectLater(
+          store.put('a/b/two', Stream.value([2]), contentLength: 1),
+          throwsA(isA<ProviderRequestException>()),
+        );
+        expect(adapter.requests.map((r) => r.method), ['PUT']);
+        adapter.requests.clear();
+        status = 201;
+        await store.put('a/b/two', Stream.value([2]), contentLength: 1);
+        expect(adapter.requests.map((r) => r.method), [
+          'MKCOL',
+          'MKCOL',
+          'PUT',
+        ]);
+      },
+    );
+    test('deleting a cached parent forces fresh directory checks', () async {
+      adapter.handler = (_, body, _) async {
+        await body?.drain();
+        return ResponseBody.fromBytes(const [], 204);
+      };
+      await store.put('a/b/one', Stream.value([1]), contentLength: 1);
+      await store.delete('a/b');
+      adapter.requests.clear();
+      await store.put('a/b/two', Stream.value([2]), contentLength: 1);
+      expect(adapter.requests.map((r) => '${r.method} ${r.uri.path}'), [
+        'MKCOL /root/a/b',
+        'PUT /root/a/b/two',
+      ]);
+    });
+    test('parent hints are isolated between scoped store instances', () async {
+      adapter.responseFactory = () => ResponseBody.fromBytes(const [], 201);
+      await store.put('a/b/one', Stream.value([1]), contentLength: 1);
+      final other = WebDavObjectStore(
+        dio: Dio()..httpClientAdapter = adapter,
+        baseUri: Uri.parse('https://dav.example.test/other'),
+        username: 'alice',
+        password: 'secret',
+      );
+      adapter.requests.clear();
+      await other.put('a/b/two', Stream.value([2]), contentLength: 1);
+      expect(adapter.requests.map((r) => '${r.method} ${r.uri.path}'), [
+        'MKCOL /other/a',
+        'MKCOL /other/a/b',
+        'PUT /other/a/b/two',
+      ]);
+    });
 
     test('rejects path traversal before issuing a request', () async {
       await expectLater(store.stat('../secrets'), throwsArgumentError);

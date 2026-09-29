@@ -48,6 +48,11 @@ String syncRunConclusionLabel(
 }) => switch (run.state) {
   'running' => _runLabel(context, '运行中', 'Running'),
   'failed' => _runLabel(context, '失败', 'Failed'),
+  'completed' when run.rebuild != null => _runLabel(
+    context,
+    '新备份已建立',
+    'New backup created',
+  ),
   'completed' when transfers.isEmpty => _runLabel(
     context,
     '无需传输',

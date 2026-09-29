@@ -71,6 +71,10 @@ class SyncCheckpointRecovery {
       remote: remote,
       limits: limits,
     );
+    // A dataset that declares its checkpoints carry no `parts/` must not have
+    // that collection probed: the publisher never creates it, and providers
+    // answer 404 for a collection that was never created.
+    final includeParts = dataset is! CheckpointWithoutPartsDatasetAdapter;
     var considered = 0;
     for (final candidate in candidates) {
       considered++;
@@ -81,6 +85,7 @@ class SyncCheckpointRecovery {
           checkpointId: candidate.checkpointId,
           remote: remote,
           limits: limits,
+          includeParts: includeParts,
         );
       } on RemoteObjectNotFoundException {
         continue;
@@ -108,20 +113,29 @@ class SyncCheckpointRecovery {
     final ids = <String>{};
     var listed = 0;
     String? cursor;
-    do {
-      final page = await remote.list(prefix: prefix, cursor: cursor);
-      for (final item in page.items) {
-        if (++listed > limits.maxListedEntries) {
-          throw const CheckpointIntegrityException('listing-limit');
+    try {
+      do {
+        final page = await remote.list(prefix: prefix, cursor: cursor);
+        for (final item in page.items) {
+          if (++listed > limits.maxListedEntries) {
+            throw const CheckpointIntegrityException('listing-limit');
+          }
+          final suffix = item.logicalKey.startsWith(prefix)
+              ? item.logicalKey.substring(prefix.length)
+              : '';
+          final checkpointId = suffix.split('/').first;
+          if (_isOpaqueId(checkpointId)) ids.add(checkpointId);
         }
-        final suffix = item.logicalKey.startsWith(prefix)
-            ? item.logicalKey.substring(prefix.length)
-            : '';
-        final checkpointId = suffix.split('/').first;
-        if (_isOpaqueId(checkpointId)) ids.add(checkpointId);
-      }
-      cursor = page.nextCursor;
-    } while (cursor != null);
+        cursor = page.nextCursor;
+      } while (cursor != null);
+    } on RemoteObjectNotFoundException {
+      // Providers answer 404 for a collection that was never created, which is
+      // the normal state before the first checkpoint is published. Unlike a
+      // business folder listing, "no checkpoint collection" can only disable an
+      // optimization: recovery reports no checkpoint, so garbage collection
+      // stays skipped and no producer cursor is restored.
+      return const [];
+    }
 
     final candidates = <_CheckpointCandidate>[];
     for (final checkpointId in ids) {
@@ -157,6 +171,7 @@ class SyncCheckpointRecovery {
     required String checkpointId,
     required RemoteObjectStore remote,
     required CheckpointRecoveryLimits limits,
+    required bool includeParts,
   }) async {
     final commitKey = LogicalKeys.checkpointCommit(vaultId, checkpointId);
     final commit = await _readLimited(remote, commitKey, limits.maxCommitBytes);
@@ -165,12 +180,14 @@ class SyncCheckpointRecovery {
       LogicalKeys.checkpointEnvelope(vaultId, checkpointId),
       limits.maxEnvelopeBytes,
     );
-    final parts = await _readParts(
-      vaultId: vaultId,
-      checkpointId: checkpointId,
-      remote: remote,
-      limits: limits,
-    );
+    final parts = includeParts
+        ? await _readParts(
+            vaultId: vaultId,
+            checkpointId: checkpointId,
+            remote: remote,
+            limits: limits,
+          )
+        : const <IncomingCheckpointPart>[];
     return IncomingCheckpoint(
       vaultId: vaultId,
       checkpointId: checkpointId,

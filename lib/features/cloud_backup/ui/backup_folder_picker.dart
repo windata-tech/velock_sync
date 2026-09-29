@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -362,7 +362,7 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
                     Text(
                       _displayPath,
                       key: const Key('backup-folder-current-path'),
-                      style: TextStyle(color: context.appSecondaryLabel),
+                      style: const TextStyle(height: 1.4),
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -375,21 +375,56 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
                             ? 'Choose the folder you originally saved to. Sync will look for your Velock backup inside it.'
                             : 'Choose a folder or create an empty one for your backup. Other folders stay unchanged.',
                       ),
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.45,
+                        color: context.appSecondaryLabel,
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    if (!widget.restoring && widget.createFolder != null)
-                      Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: TextButton.icon(
-                          key: const Key('new-backup-folder'),
-                          icon: const Icon(CupertinoIcons.folder_badge_plus),
-                          label: Text(syncText(context, '新建文件夹', 'New folder')),
-                          onPressed:
-                              _busy || _error != null || _creationError != null
-                              ? null
-                              : _newFolder,
-                        ),
-                      ),
+                    OverflowBar(
+                      alignment: MainAxisAlignment.spaceBetween,
+                      overflowAlignment: OverflowBarAlignment.end,
+                      spacing: 16,
+                      overflowSpacing: 4,
+                      children: [
+                        if (_segments.isNotEmpty)
+                          _folderAction(
+                            key: const Key('backup-folder-up'),
+                            icon: CupertinoIcons.arrow_up,
+                            label: syncText(context, '上一级', 'Parent folder'),
+                            onPressed: _busy
+                                ? null
+                                : () => _load(
+                                    _segments.sublist(0, _segments.length - 1),
+                                  ),
+                          )
+                        else
+                          Text(
+                            syncText(context, '文件夹', 'Folders'),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: context.appSecondaryLabel,
+                            ),
+                          ),
+                        if (!widget.restoring && widget.createFolder != null)
+                          _folderAction(
+                            key: const Key('new-backup-folder'),
+                            icon: CupertinoIcons.folder_badge_plus,
+                            label: syncText(context, '新建文件夹', 'New folder'),
+                            onPressed:
+                                _busy ||
+                                    _error != null ||
+                                    _creationError != null
+                                ? null
+                                : _newFolder,
+                          ),
+                      ],
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 8),
+                      child: Divider(height: 1, color: context.appSeparator),
+                    ),
                     if (_creating)
                       Text(syncText(context, '正在新建文件夹…', 'Creating folder…')),
                     if (_justCreated && !_loading && _error == null)
@@ -414,18 +449,6 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 12),
-                    if (_segments.isNotEmpty)
-                      ListTile(
-                        key: const Key('backup-folder-up'),
-                        leading: const Icon(CupertinoIcons.arrow_up),
-                        title: Text(syncText(context, '上一级', 'Parent folder')),
-                        onTap: _busy
-                            ? null
-                            : () => _load(
-                                _segments.sublist(0, _segments.length - 1),
-                              ),
-                      ),
                     if (_loading)
                       const Padding(
                         padding: EdgeInsets.all(32),
@@ -467,7 +490,14 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
                       for (final folder in _folders)
                         ListTile(
                           key: ValueKey('backup-folder-${folder.name}'),
-                          leading: const Icon(CupertinoIcons.folder),
+                          minTileHeight: 56,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
+                          leading: Icon(
+                            CupertinoIcons.folder,
+                            color: context.appPrimary,
+                          ),
                           title: Text(folder.name),
                           trailing: const Icon(
                             CupertinoIcons.chevron_right,
@@ -495,6 +525,27 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
             ],
           ),
         ),
+      ),
+    ),
+  );
+
+  Widget _folderAction({
+    required Key key,
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) => AdaptiveTextButton(
+    key: key,
+    onPressed: onPressed,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 44),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: context.appPrimary),
+          const SizedBox(width: 8),
+          Flexible(child: Text(label)),
+        ],
       ),
     ),
   );

@@ -1,7 +1,6 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
@@ -24,6 +23,7 @@ import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/app_components.dart';
 import 'package:velock_sync/widgets/app_format.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 
@@ -215,7 +215,7 @@ class NewOAuthConnection extends HookConsumerWidget {
     }
 
     final provider = _providerLabel(providerType);
-    return PlatformScaffold(
+    return AdaptivePageScaffold(
       appBar: WDAppBar(
         title: Text(
           syncText(
@@ -225,7 +225,7 @@ class NewOAuthConnection extends HookConsumerWidget {
           ),
         ),
         trailingActions: [
-          PlatformTextButton(
+          AdaptiveTextButton(
             padding: EdgeInsets.zero,
             onPressed: () => context.pushNamed(
               AppRoutes.connectionHelp.name,
@@ -282,8 +282,8 @@ class NewOAuthConnection extends HookConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      PlatformElevatedButton(
-                        widgetKey: const Key('oauth-sign-in'),
+                      AdaptiveElevatedButton(
+                        key: const Key('oauth-sign-in'),
                         onPressed: isLoading.value ? null : authorizeAndSave,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -567,8 +567,8 @@ class _MissingOAuthRegistration extends StatelessWidget {
           style: TextStyle(color: context.appSecondaryLabel, height: 1.5),
         ),
         const SizedBox(height: 22),
-        PlatformElevatedButton(
-          widgetKey: const Key('oauth-choose-another'),
+        AdaptiveElevatedButton(
+          key: const Key('oauth-choose-another'),
           onPressed: onChooseAnother,
           child: Text(
             syncText(context, '选择其他保存位置', 'Choose another location'),
@@ -600,8 +600,8 @@ class _MissingOAuthRegistration extends StatelessWidget {
               decoration: const InputDecoration(labelText: 'Client ID'),
             ),
             const SizedBox(height: 12),
-            PlatformTextButton(
-              widgetKey: const Key('oauth-save-client-id'),
+            AdaptiveTextButton(
+              key: const Key('oauth-save-client-id'),
               onPressed: onSave,
               child: Text(
                 syncText(context, '保存开发者配置', 'Save developer settings'),

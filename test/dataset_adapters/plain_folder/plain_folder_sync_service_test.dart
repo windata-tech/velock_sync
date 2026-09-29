@@ -167,7 +167,10 @@ class _FakeMirrorRemote implements RemoteObjectStore, RemoteCollectionCreator {
   }
 
   /// One chunk followed by the connection error of a dropped download.
-  static Stream<List<int>> _failingRead(List<int> chunk, Object failure) async* {
+  static Stream<List<int>> _failingRead(
+    List<int> chunk,
+    Object failure,
+  ) async* {
     if (chunk.isNotEmpty) yield chunk.sublist(0, 1);
     throw failure;
   }
@@ -1138,9 +1141,9 @@ void main() {
       expect(deferred.stats.skippedCount, greaterThanOrEqualTo(1));
       expect(remote.readCalls, readCallsAfterFirstRun);
       expect(
-        (await database.readMirrorEntries(_profileId)).containsKey(
-          'deferred.txt',
-        ),
+        (await database.readMirrorEntries(
+          _profileId,
+        )).containsKey('deferred.txt'),
         isFalse,
         reason: 'a deferred pair was never proven equal, so it gets no row',
       );
@@ -1395,129 +1398,138 @@ void main() {
     expect(rerun.heldDeletionCount, 6);
   });
 
-  test('an empty remote listing with a baseline never deletes local files',
-      () async {
-    await saveProfile();
-    await writeLocal(
-      'keep-a.txt',
-      utf8.encode('a'),
-      modifiedAt: DateTime.utc(2026, 9, 27, 9),
-    );
-    await writeLocal(
-      'keep-b.txt',
-      utf8.encode('b'),
-      modifiedAt: DateTime.utc(2026, 9, 27, 9),
-    );
-    await service().run(_profileId);
-    expect(await database.readMirrorEntries(_profileId), hasLength(2));
+  test(
+    'an empty remote listing with a baseline never deletes local files',
+    () async {
+      await saveProfile();
+      await writeLocal(
+        'keep-a.txt',
+        utf8.encode('a'),
+        modifiedAt: DateTime.utc(2026, 9, 27, 9),
+      );
+      await writeLocal(
+        'keep-b.txt',
+        utf8.encode('b'),
+        modifiedAt: DateTime.utc(2026, 9, 27, 9),
+      );
+      await service().run(_profileId);
+      expect(await database.readMirrorEntries(_profileId), hasLength(2));
 
-    // The share is unmounted / the folder was renamed: the root listing simply
-    // comes back with nothing, and the old code read that as "delete everything
-    // locally" because two baseline rows are below the fraction minimum.
-    remote.files.clear();
-    remote.directories.clear();
+      // The share is unmounted / the folder was renamed: the root listing simply
+      // comes back with nothing, and the old code read that as "delete everything
+      // locally" because two baseline rows are below the fraction minimum.
+      remote.files.clear();
+      remote.directories.clear();
 
-    await expectLater(
-      service().run(_profileId),
-      throwsA(
-        isA<PlainFolderSyncException>().having(
-          (error) => error.syncFailure.errorCode,
-          'errorCode',
-          'plain_folder.remote_folder_missing',
+      await expectLater(
+        service().run(_profileId),
+        throwsA(
+          isA<PlainFolderSyncException>().having(
+            (error) => error.syncFailure.errorCode,
+            'errorCode',
+            'plain_folder.remote_folder_missing',
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(remote.deleteCalls, 0);
-    expect(await existsLocal('keep-a.txt'), isTrue);
-    expect(await existsLocal('keep-b.txt'), isTrue);
-    expect(
-      await database.readMirrorEntries(_profileId),
-      hasLength(2),
-      reason: 'the baseline survives an unreadable remote folder',
-    );
-    expect((await database.latestSyncRun(_profileId))!.state, 'failed');
-  });
+      expect(remote.deleteCalls, 0);
+      expect(await existsLocal('keep-a.txt'), isTrue);
+      expect(await existsLocal('keep-b.txt'), isTrue);
+      expect(
+        await database.readMirrorEntries(_profileId),
+        hasLength(2),
+        reason: 'the baseline survives an unreadable remote folder',
+      );
+      expect((await database.latestSyncRun(_profileId))!.state, 'failed');
+    },
+  );
 
-  test('a store 404 while listing becomes the missing remote folder code',
-      () async {
-    await saveProfile();
-    await writeLocal(
-      'a.txt',
-      utf8.encode('a'),
-      modifiedAt: DateTime.utc(2026, 9, 27, 9),
-    );
-    // The store no longer turns a PROPFIND 404 into an empty page.
-    remote.listError = const RemoteObjectNotFoundException('');
+  test(
+    'a store 404 while listing becomes the missing remote folder code',
+    () async {
+      await saveProfile();
+      await writeLocal(
+        'a.txt',
+        utf8.encode('a'),
+        modifiedAt: DateTime.utc(2026, 9, 27, 9),
+      );
+      // The store no longer turns a PROPFIND 404 into an empty page.
+      remote.listError = const RemoteObjectNotFoundException('');
 
-    await expectLater(
-      service().run(_profileId),
-      throwsA(
-        isA<PlainFolderSyncException>().having(
-          (error) => error.syncFailure.errorCode,
-          'errorCode',
-          'plain_folder.remote_folder_missing',
+      await expectLater(
+        service().run(_profileId),
+        throwsA(
+          isA<PlainFolderSyncException>().having(
+            (error) => error.syncFailure.errorCode,
+            'errorCode',
+            'plain_folder.remote_folder_missing',
+          ),
         ),
-      ),
-    );
-    expect(remote.deleteCalls, 0);
-    expect(await existsLocal('a.txt'), isTrue);
-  });
+      );
+      expect(remote.deleteCalls, 0);
+      expect(await existsLocal('a.txt'), isTrue);
+    },
+  );
 
-  test('a directory the remote never listed cannot take the local folder',
-      () async {
-    await saveProfile();
-    await writeLocal(
-      'photos/a.jpg',
-      utf8.encode('beach'),
-      modifiedAt: DateTime.utc(2026, 9, 27, 9),
-    );
-    await writeLocal(
-      'notes/b.txt',
-      utf8.encode('note'),
-      modifiedAt: DateTime.utc(2026, 9, 27, 9),
-    );
-    await service().run(_profileId);
-    expect(remote.files, hasLength(2));
+  test(
+    'a directory the remote never listed cannot take the local folder',
+    () async {
+      await saveProfile();
+      await writeLocal(
+        'photos/a.jpg',
+        utf8.encode('beach'),
+        modifiedAt: DateTime.utc(2026, 9, 27, 9),
+      );
+      await writeLocal(
+        'notes/b.txt',
+        utf8.encode('note'),
+        modifiedAt: DateTime.utc(2026, 9, 27, 9),
+      );
+      await service().run(_profileId);
+      expect(remote.files, hasLength(2));
 
-    // A provider that drops the href of one directory: the folder and its file
-    // are still there, but this run never saw them. Reading that as a deletion
-    // would recursively remove the local folder.
-    remote.hiddenFromListing.add('photos');
-    final planner = _CapturingPlanner();
+      // A provider that drops the href of one directory: the folder and its file
+      // are still there, but this run never saw them. Reading that as a deletion
+      // would recursively remove the local folder.
+      remote.hiddenFromListing.add('photos');
+      final planner = _CapturingPlanner();
 
-    final outcome = await service(planner: planner).run(_profileId);
+      final outcome = await service(planner: planner).run(_profileId);
 
-    expect(planner.lastListingScope!.listsRemote('photos'), isFalse);
-    expect(outcome.stats.deletedLocalCount, 0);
-    expect(
-      outcome.stats.skippedCount,
-      greaterThanOrEqualTo(1),
-      reason: 'the file under the unread directory is reported as skipped',
-    );
-    expect(
-      outcome.heldDeletionPaths,
-      contains('photos'),
-      reason: 'a recursive folder delete needs an explicit confirmation',
-    );
-    expect(await existsLocal('photos/a.jpg'), isTrue);
-    expect(await readLocal('photos/a.jpg'), utf8.encode('beach'));
-    expect(remote.files.containsKey('photos/a.jpg'), isTrue);
-    final baseline = await database.readMirrorEntries(_profileId);
-    expect(baseline.containsKey('photos'), isTrue);
-    expect(baseline.containsKey('photos/a.jpg'), isTrue);
-    expect((await database.latestSyncRun(_profileId))!.state, 'completed');
+      expect(planner.lastListingScope!.listsRemote('photos'), isFalse);
+      expect(outcome.stats.deletedLocalCount, 0);
+      expect(
+        outcome.stats.skippedCount,
+        greaterThanOrEqualTo(1),
+        reason: 'the file under the unread directory is reported as skipped',
+      );
+      expect(
+        outcome.heldDeletionPaths,
+        contains('photos'),
+        reason: 'a recursive folder delete needs an explicit confirmation',
+      );
+      expect(await existsLocal('photos/a.jpg'), isTrue);
+      expect(await readLocal('photos/a.jpg'), utf8.encode('beach'));
+      expect(remote.files.containsKey('photos/a.jpg'), isTrue);
+      final baseline = await database.readMirrorEntries(_profileId);
+      expect(baseline.containsKey('photos'), isTrue);
+      expect(baseline.containsKey('photos/a.jpg'), isTrue);
+      expect((await database.latestSyncRun(_profileId))!.state, 'completed');
 
-    // Confirming the folder path is what really deletes it.
-    final confirmed = await service().runConfirmedDeletions(
-      _profileId,
-      outcome.heldDeletionPaths,
-    );
+      // Confirming the folder path is what really deletes it.
+      final confirmed = await service().runConfirmedDeletions(
+        _profileId,
+        outcome.heldDeletionPaths,
+      );
 
-    expect(confirmed.stats.deletedLocalCount, 1);
-    expect(await Directory(p.join(localRoot.path, 'photos')).exists(), isFalse);
-    expect(remote.files.containsKey('notes/b.txt'), isTrue);
-  });
+      expect(confirmed.stats.deletedLocalCount, 1);
+      expect(
+        await Directory(p.join(localRoot.path, 'photos')).exists(),
+        isFalse,
+      );
+      expect(remote.files.containsKey('notes/b.txt'), isTrue);
+    },
+  );
 
   test('only the confirmed deletions run and the rest is held again', () async {
     await saveProfile();

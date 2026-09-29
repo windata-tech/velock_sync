@@ -24,42 +24,61 @@ class JoinApprovalApplier {
   final SyncStateDatabase _database;
 
   /// Reads `Control/JoinApprovals/*.json` from the shared exchange folder and
-  /// returns the merged trusted producer ids for [profile].
+  /// returns the trusted producer ids for [profile].
+  ///
+  /// Approvals are never deleted, so on their own they only ever add devices.
+  /// [revokedDeviceIds] are devices Velock revoked with a verified signature:
+  /// they are removed from the allow-list and from the local trust store, and
+  /// an old approval can no longer bring them back. (Velock deletes the
+  /// revocation marker when it re-authorizes a device.)
   Future<List<String>> apply({
     required VelockSyncProfile profile,
     required Directory exchangeRoot,
     required String velockSigningPublicKey,
+    Set<String> revokedDeviceIds = const {},
   }) async {
     final directory = Directory('${exchangeRoot.path}/Control/JoinApprovals');
-    if (!await directory.exists()) return profile.trustedProducerIds;
-
     final approved = <String>{};
-    await for (final entity in directory.list(followLinks: false)) {
-      if (entity is! File || !entity.path.endsWith('.json')) continue;
-      try {
-        final parsed = _parse(await entity.readAsBytes());
-        if (parsed == null) continue;
-        if (parsed.vaultId != profile.vaultId) continue;
-        if (!await parsed.verifyAgainst(velockSigningPublicKey)) continue;
-        // The download engine verifies batch signatures with this device key,
-        // so trust the approved device locally as well.
-        await _database.trustDevice(
-          vaultId: profile.vaultId,
-          deviceId: parsed.deviceId,
-          signingPublicKey: _decodeBase64Url(parsed.signingPublicKey),
-        );
-        approved.addAll(parsed.trustedProducerIds);
-      } on Object {
-        continue;
+    if (await directory.exists()) {
+      await for (final entity in directory.list(followLinks: false)) {
+        if (entity is! File || !entity.path.endsWith('.json')) continue;
+        try {
+          final parsed = _parse(await entity.readAsBytes());
+          if (parsed == null) continue;
+          if (parsed.vaultId != profile.vaultId) continue;
+          if (!await parsed.verifyAgainst(velockSigningPublicKey)) continue;
+          if (revokedDeviceIds.contains(parsed.deviceId)) continue;
+          // Batch signatures are verified by Velock before anything is
+          // applied; this local record lets GC count the device's ACKs.
+          await _database.trustDevice(
+            vaultId: profile.vaultId,
+            deviceId: parsed.deviceId,
+            signingPublicKey: _decodeBase64Url(parsed.signingPublicKey),
+          );
+          approved.addAll(parsed.trustedProducerIds);
+        } on Object {
+          continue;
+        }
       }
     }
-    if (approved.isEmpty) return profile.trustedProducerIds;
+    final revoked = revokedDeviceIds.difference({profile.pairedProducerId});
+    for (final deviceId in revoked) {
+      try {
+        await _database.revokeTrustedDevice(
+          vaultId: profile.vaultId,
+          deviceId: deviceId,
+        );
+      } on Object {
+        // Unknown locally: nothing to revoke.
+      }
+    }
 
     final merged = <String>{
       ...profile.trustedProducerIds,
       ...approved,
-    }.toList(growable: false);
-    if (merged.length == profile.trustedProducerIds.length) {
+    }.difference(revoked).toList(growable: false);
+    if (merged.length == profile.trustedProducerIds.length &&
+        merged.toSet().containsAll(profile.trustedProducerIds)) {
       return profile.trustedProducerIds;
     }
     final updated = VelockSyncProfile(
@@ -74,6 +93,11 @@ class JoinApprovalApplier {
       exchangeBindingId: profile.exchangeBindingId,
       trustedProducerIds: merged,
       remoteRootSegments: profile.remoteRootSegments,
+      locationChangedAt: profile.locationChangedAt,
+      snapshotRestoreRequestId: profile.snapshotRestoreRequestId,
+      snapshotDiscoveryPending: profile.snapshotDiscoveryPending,
+      currentSnapshotId: profile.currentSnapshotId,
+      currentSnapshotProducerId: profile.currentSnapshotProducerId,
       backgroundPolicy: profile.backgroundPolicy,
       state: profile.state,
       createdAt: profile.createdAt,

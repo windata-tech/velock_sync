@@ -8,11 +8,12 @@ import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/l10n/sync_language_setting.dart';
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
+import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_global_settings.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_settings_service.dart';
 import 'package:velock_sync/widgets/adaptive_dialogs.dart';
@@ -63,45 +64,6 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
           ),
         );
         _reload();
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _cleanupStaging() async {
-    setState(() => _busy = true);
-    try {
-      final result = await ref
-          .read(syncSettingsServiceProvider)
-          .cleanupStaging();
-      if (!mounted) return;
-      final runningNote = result.busyProfileCount == 0
-          ? syncText(context, '。', '.')
-          : syncText(
-              context,
-              '，${result.busyProfileCount} 个运行中配置未清理。',
-              '; ${result.busyProfileCount} profiles that were syncing were left alone.',
-            );
-      showMessage(
-        context,
-        '${syncText(context, '已释放', 'Freed')} '
-        '${AppFormat.bytes(result.freedBytes)}'
-        '${syncText(context, '；保留', '; kept')} '
-        '${result.preservedRecoverableBatchCount} '
-        '${syncText(context, '个可恢复批次', 'recoverable batches')}$runningNote',
-      );
-      _reload();
-    } on Object {
-      if (mounted) {
-        showMessage(
-          context,
-          syncText(
-            context,
-            '暂存空间清理未完成，请稍后重试。',
-            'Staging cleanup did not finish. Try again later.',
-          ),
-        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -444,33 +406,7 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                gc == null
-                    ? syncText(
-                        context,
-                        '完成一次包含有效检查点的同步后才会开始安全清理。',
-                        'Safe cleanup starts after one sync completes with a valid checkpoint.',
-                      )
-                    : gc.state == 'completed'
-                    ? syncText(
-                        context,
-                        '本次检查 ${gc.candidateCount} 个候选，'
-                            '${gc.eligibleCandidateCount} 个满足清理条件，'
-                            '已删除 ${gc.deletedObjectCount} 个对象。',
-                        'This check found ${gc.candidateCount} candidates, '
-                            '${gc.eligibleCandidateCount} met the cleanup rules, '
-                            'and ${gc.deletedObjectCount} objects were deleted.',
-                      )
-                    : gc.skipReason == 'checkpoint-missing'
-                    ? syncText(
-                        context,
-                        '尚未获得可信检查点，本次安全清理已跳过。',
-                        'No trusted checkpoint yet, so this safe cleanup was skipped.',
-                      )
-                    : syncText(
-                        context,
-                        '本次安全清理已跳过。',
-                        'This safe cleanup was skipped.',
-                      ),
+                _deletionProtectionStatus(context, gc),
                 style: AppType.footnote.copyWith(
                   color: context.appSecondaryLabel,
                 ),
@@ -519,63 +455,51 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
                 maxLines: 2,
               ),
               trailing: AdaptiveStatusBadge(
-                label: syncText(context, '已开启', 'On'),
-                tone: AppTone.ok,
-                icon: CupertinoIcons.check_mark_circled,
+                // The policy is a protocol property, not a switch, but it can
+                // only act once a trusted checkpoint exists. Claiming "on"
+                // before that hides the state that actually matters.
+                label: gc?.checkpointId == null
+                    ? syncText(context, '尚未生效', 'Not active yet')
+                    : syncText(context, '已开启', 'On'),
+                tone: gc?.checkpointId == null ? AppTone.attention : AppTone.ok,
+                icon: gc?.checkpointId == null
+                    ? CupertinoIcons.time
+                    : CupertinoIcons.check_mark_circled,
               ),
             ),
             AppFormRow(
               label: syncText(context, '最近清理', 'Last cleanup'),
-              value: gc?.completedAt == null
-                  ? syncText(context, '尚未执行', 'Not run yet')
-                  : AppFormat.relativeTime(gc!.completedAt, context: context),
+              // Only a pass that really reclaimed objects counts. Skipped and
+              // failed passes also record a completion time, and a completed
+              // pass can legitimately delete nothing (no candidate is past the
+              // retention window yet), so a timestamp alone would claim a
+              // cleanup that never happened.
+              value:
+                  gc?.state == 'completed' &&
+                      gc?.completedAt != null &&
+                      (gc?.deletedObjectCount ?? 0) > 0
+                  ? AppFormat.relativeTime(gc!.completedAt!, context: context)
+                  : syncText(context, '尚未执行', 'Not run yet'),
             ),
             AppFormRow(
               label: syncText(context, '等待确认', 'Waiting for confirmation'),
-              value: syncText(
-                context,
-                '${gc?.unackedDeviceCount ?? 0} 台设备',
-                '${gc?.unackedDeviceCount ?? 0} devices',
-              ),
+              value: gc?.checkpointId == null
+                  ? syncText(context, '尚未统计', 'Not measured yet')
+                  : syncText(
+                      context,
+                      '${gc?.unackedDeviceCount ?? 0} 台设备',
+                      '${gc?.unackedDeviceCount ?? 0} devices',
+                    ),
             ),
             AppFormRow(
               label: syncText(context, '活跃设备', 'Active devices'),
-              value: syncText(
-                context,
-                '${gc?.activeDeviceCount ?? 0} 台',
-                '${gc?.activeDeviceCount ?? 0} devices',
-              ),
-            ),
-          ],
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: AdaptiveListSection(
-          header: syncText(context, '暂存空间', 'Staging space'),
-          children: [
-            AdaptiveListTile(
-              leading: AdaptiveIconBadge(
-                icon: CupertinoIcons.archivebox,
-                color: AppTone.brand.color(context),
-              ),
-              title: Text(
-                AppFormat.bytes(value.staging.totalBytes),
-                style: AppType.rowTitleStrong,
-              ),
-              subtitle: Text(
-                syncText(
-                  context,
-                  '${value.staging.batchCount} 个批次 · ${value.staging.fileCount} 个文件。'
-                      '清理会保留可恢复批次，并跳过正在同步的配置。',
-                  '${value.staging.batchCount} batches · ${value.staging.fileCount} files. '
-                      'Cleanup keeps recoverable batches and skips profiles that are syncing right now.',
-                ),
-              ),
-              trailing: AppSecondaryButton(
-                key: const Key('cleanup-staging'),
-                label: syncText(context, '清理', 'Clean'),
-                onPressed: _busy ? null : _cleanupStaging,
-              ),
+              value: gc?.checkpointId == null
+                  ? syncText(context, '尚未统计', 'Not measured yet')
+                  : syncText(
+                      context,
+                      '${gc?.activeDeviceCount ?? 0} 台',
+                      '${gc?.activeDeviceCount ?? 0} devices',
+                    ),
             ),
           ],
         ),
@@ -657,4 +581,71 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
       ),
     ];
   }
+}
+
+/// One honest sentence about the newest garbage-collection pass.
+///
+/// The pass also records a completion time when it skips or fails, so this line
+/// must name *when* it was checked and *what* happened instead of implying that
+/// a cleanup ran.
+String _deletionProtectionStatus(
+  BuildContext context,
+  GarbageCollectionDiagnostics? gc,
+) {
+  final checkedAt = gc?.completedAt == null
+      ? null
+      : AppFormat.relativeTime(gc!.completedAt, context: context);
+  if (gc == null) {
+    return syncText(
+      context,
+      '完成一次包含有效检查点的同步后才会开始安全清理。',
+      'Safe cleanup starts after one sync completes with a valid checkpoint.',
+    );
+  }
+  if (gc.state == 'completed') {
+    return syncText(
+      context,
+      '本次检查 ${gc.candidateCount} 个候选，'
+          '${gc.eligibleCandidateCount} 个满足清理条件，'
+          '已删除 ${gc.deletedObjectCount} 个对象。',
+      'This check found ${gc.candidateCount} candidates, '
+          '${gc.eligibleCandidateCount} met the cleanup rules, '
+          'and ${gc.deletedObjectCount} objects were deleted.',
+    );
+  }
+  if (checkedAt == null) {
+    return syncText(
+      context,
+      '本次安全清理已跳过。',
+      'This safe cleanup was skipped.',
+    );
+  }
+  if (gc.state == 'failed') {
+    return syncText(
+      context,
+      '上次检查：$checkedAt。安全清理未完成，没有删除任何对象。',
+      'Last check: $checkedAt. Safe cleanup did not finish and nothing was deleted.',
+    );
+  }
+  if (gc.skipReason == 'deletion-paused') {
+    return syncText(
+      context,
+      '上次检查：$checkedAt。${gc.eligibleCandidateCount} 个对象已满足清理条件；'
+          '这一版只统计，不删除云端备份。',
+      'Last check: $checkedAt. ${gc.eligibleCandidateCount} objects met the cleanup '
+          'rules; this version only counts them and deletes nothing from the backup.',
+    );
+  }
+  if (gc.skipReason == 'checkpoint-missing') {
+    return syncText(
+      context,
+      '上次检查：$checkedAt。尚未获得可信检查点，本次安全清理已跳过。',
+      'Last check: $checkedAt. No trusted checkpoint yet, so this safe cleanup was skipped.',
+    );
+  }
+  return syncText(
+    context,
+    '上次检查：$checkedAt。本次安全清理已跳过。',
+    'Last check: $checkedAt. This safe cleanup was skipped.',
+  );
 }

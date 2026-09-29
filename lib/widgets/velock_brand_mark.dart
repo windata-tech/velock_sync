@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The Velock brand mark, taken from the Velock app itself.
 ///
@@ -8,7 +8,12 @@ import 'package:flutter/material.dart';
 /// silhouette in a single colour, which the bottom tab tints with its own
 /// selected/unselected colours.
 class VelockBrandMark extends StatelessWidget {
-  const VelockBrandMark({super.key, this.size = 28, this.flat = false, this.color});
+  const VelockBrandMark({
+    super.key,
+    this.size = 28,
+    this.flat = false,
+    this.color,
+  });
 
   final double size;
   final bool flat;

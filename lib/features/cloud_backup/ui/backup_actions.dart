@@ -1,16 +1,16 @@
+import 'package:velock_sync/core/state/common.dart';
+import 'package:velock_sync/features/cloud_backup/application/velock_snapshot_providers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_dialogs.dart';
 
-/// App launch is injectable; a failed launch never counts as authorization.
+/// Backup entry opens Cloud backup, including after unlocking Velock. Merely
+/// waking the app with velock://open would leave users on its previous page.
+/// Launch is injectable; a failed launch never counts as authorization.
 final velockAppLauncherProvider = Provider<Future<bool> Function()>(
-  (ref) =>
-      () => launchUrl(
-        Uri.parse('velock://open'),
-        mode: LaunchMode.externalApplication,
-      ),
+  (ref) => ref.watch(velockBackupSettingsLauncherProvider),
 );
 
 /// Backup-settings deep link launcher for the recovery card and authorized
@@ -25,10 +25,22 @@ final velockBackupSettingsLauncherProvider = Provider<Future<bool> Function()>(
       ),
 );
 
-Future<void> openVelockForBackup(BuildContext context, WidgetRef ref) async {
+Future<void> openVelockForBackup(
+  BuildContext context,
+  WidgetRef ref, {
+  String? profileId,
+}) async {
   var opened = false;
   try {
-    opened = await ref.read(velockAppLauncherProvider)();
+    final envelope = profileId == null
+        ? null
+        : await ref.read(syncProfileRepositoryProvider).read(profileId);
+    if (envelope?.dataset['snapshotRestoreRequestId'] != null) {
+      await ref.read(velockSnapshotRecoveryServiceProvider).open(profileId!);
+      opened = true;
+    } else {
+      opened = await ref.read(velockAppLauncherProvider)();
+    }
   } on Object {
     /* UI below */
   }

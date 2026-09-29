@@ -206,6 +206,12 @@
       "languageVersion": "3.9"
     },
     {
+      "name": "cupertino_ui",
+      "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/cupertino_ui-1.1.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.13"
+    },
+    {
       "name": "custom_lint",
       "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/custom_lint-0.8.1",
       "packageUri": "lib/",
@@ -354,12 +360,6 @@
       "rootUri": "file:///Users/parcool/Flutter/SDK/packages/flutter_localizations",
       "packageUri": "lib/",
       "languageVersion": "3.11"
-    },
-    {
-      "name": "flutter_platform_widgets",
-      "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/flutter_platform_widgets-10.0.1",
-      "packageUri": "lib/",
-      "languageVersion": "3.8"
     },
     {
       "name": "flutter_riverpod",
@@ -588,6 +588,12 @@
       "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/material_color_utilities-0.13.0",
       "packageUri": "lib/",
       "languageVersion": "3.5"
+    },
+    {
+      "name": "material_ui",
+      "rootUri": "file:///Users/parcool/.pub-cache/hosted/pub.dev/material_ui-1.4.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.13"
     },
     {
       "name": "meta",

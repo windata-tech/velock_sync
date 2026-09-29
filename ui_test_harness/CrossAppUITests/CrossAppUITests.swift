@@ -583,6 +583,122 @@ final class CrossAppUITests: XCTestCase {
         velockApp = XCUIApplication(bundleIdentifier: velockBundleID)
     }
 
+    /// Opt-in check against an existing installation. Saves the currently
+    /// selected folder through the UI; does not start backup or seed/reset data.
+    func testSavedBackupLocationLeavesHistoryHelpLoop() throws {
+        guard ProcessInfo.processInfo.environment["E2E_LOCATION_CHECK"] == "1" else {
+            throw XCTSkip("Requires explicit permission to save the current backup location")
+        }
+        func node(_ label: String) -> XCUIElement {
+            let exact = syncApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label == %@", label)
+            ).firstMatch
+            if exact.exists { return exact }
+            return syncApp.descendants(matching: .any).matching(
+                NSPredicate(format: "label BEGINSWITH %@ OR label CONTAINS %@", label + "\n", "\n" + label)
+            ).firstMatch
+        }
+        func press(_ label: String, timeout: TimeInterval = 20) {
+            let target = node(label)
+            XCTAssertTrue(target.waitForExistence(timeout: timeout), "Missing: \(label)\n\(syncApp.debugDescription)")
+            if target.elementType == .button && target.label != label {
+                // Flutter exposes the status card as one accessibility button.
+                // Its action is in the bottom part of the observed card frame.
+                target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.87)).tap()
+            } else {
+                target.tap()
+            }
+        }
+        syncApp.launch()
+        press("详情")
+        // Existing automatic backup can finish after launch. Do not manufacture
+        // another failure just to exercise the help route; both entries share
+        // the same folder-save implementation.
+        let historyHelp = node("查看原因和下一步").exists
+        if historyHelp {
+            press("查看原因和下一步")
+            press("选择原备份文件夹")
+        } else {
+            XCTAssertTrue(node("上次备份已完成").waitForExistence(timeout: 60))
+            press("管理")
+            press("更换保存位置")
+        }
+        XCTAssertTrue(node("/USB_HDD_8T/111").waitForExistence(timeout: 20))
+        press("使用这个文件夹")
+        press("保存位置", timeout: 60)
+        if historyHelp {
+            press("完成")
+        } else {
+            press("返回")
+        }
+        XCTAssertTrue(node("保存位置已更改").waitForExistence(timeout: 20))
+        XCTAssertTrue(node("检查并备份").exists)
+        XCTAssertFalse(node("查看原因和下一步").exists)
+        attachScreenshot("saved-location-ready-to-check")
+        if let path = ProcessInfo.processInfo.environment["E2E_LOCATION_SCREENSHOT"] {
+            try XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: path))
+        }
+    }
+
+    func testManualBackupCompletionDoesNotShowFailureAlert() throws {
+        guard ProcessInfo.processInfo.environment["E2E_MANUAL_BACKUP_CHECK"] == "1" else {
+            throw XCTSkip("Explicit opt-in: runs the existing backup without changing its configuration")
+        }
+        syncApp.launch()
+        let exact = syncApp.buttons.matching(NSPredicate(format: "label == %@", "立即备份")).firstMatch
+        let card = syncApp.buttons.matching(NSPredicate(format: "label CONTAINS %@", "\n立即备份")).firstMatch
+        XCTAssertTrue(exact.waitForExistence(timeout: 10) || card.waitForExistence(timeout: 50))
+        if exact.exists {
+            exact.tap()
+        } else {
+            // The observed home card exposes both actions in one AX node;
+            // the primary backup action occupies its bottom-left half.
+            card.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.87)).tap()
+        }
+        let failure = syncApp.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "同步失败")).firstMatch
+        XCTAssertFalse(failure.waitForExistence(timeout: 8), syncApp.debugDescription)
+        XCTAssertTrue(card.waitForExistence(timeout: 60) || exact.exists)
+        XCTAssertFalse(failure.exists)
+        let completed = syncApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "上次备份已完成")).firstMatch
+        XCTAssertTrue(completed.exists)
+        attachScreenshot("manual-backup-completed-without-failure")
+        if let path = ProcessInfo.processInfo.environment["E2E_MANUAL_BACKUP_SCREENSHOT"] {
+            try XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: path))
+        }
+    }
+
+    func testManageBackupLocationOffersNewFolderOnRight() throws {
+        guard ProcessInfo.processInfo.environment["E2E_FOLDER_BUTTON_CHECK"] == "1" else {
+            throw XCTSkip("Explicit opt-in: opens and cancels new-folder form; no remote writes")
+        }
+        func node(_ label: String) -> XCUIElement {
+            let exact = syncApp.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+            if exact.exists { return exact }
+            return syncApp.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@ OR label CONTAINS %@", label, label + "\n", "\n" + label)).firstMatch
+        }
+        func press(_ label: String) {
+            let target = node(label)
+            XCTAssertTrue(target.waitForExistence(timeout: 25), "Missing \(label): \(syncApp.debugDescription)")
+            target.tap()
+        }
+        syncApp.launch()
+        press("详情")
+        press("管理")
+        press("更换保存位置")
+        XCTAssertTrue(node("选择备份文件夹").waitForExistence(timeout: 25), syncApp.debugDescription)
+        let create = node("新建文件夹")
+        XCTAssertTrue(create.waitForExistence(timeout: 25))
+        XCTAssertGreaterThan(create.frame.midX, node("上一级").frame.midX)
+        press("新建文件夹")
+        XCTAssertTrue(node("创建并进入").waitForExistence(timeout: 10))
+        press("取消")
+        XCTAssertTrue(node("选择备份文件夹").waitForExistence(timeout: 10), syncApp.debugDescription)
+        attachScreenshot("manage-location-new-folder-on-right")
+        if let path = ProcessInfo.processInfo.environment["E2E_FOLDER_BUTTON_SCREENSHOT"] {
+            try XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: path))
+        }
+    }
+
     override func record(_ issue: XCTIssue) {
         if let root = ProcessInfo.processInfo.environment["E2E_TUTORIAL_DIR"] {
             try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: root).appendingPathComponent("rejected-failure.png"))
@@ -776,16 +892,23 @@ final class CrossAppUITests: XCTestCase {
             screenshotName: "deletion-protection-settings"
         )
         XCTAssertTrue(
-            syncApp.descendants(matching: .any)["删除保护：已开启"]
-                .waitForExistence(timeout: 20),
-            "Deletion protection status is missing: \(syncApp.debugDescription)"
-        )
-        XCTAssertTrue(
             syncApp.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS '等待设备确认'")
-            ).firstMatch.waitForExistence(timeout: 10),
-            "GC acknowledgement status is missing"
+                NSPredicate(format: "label CONTAINS '删除保护'")
+            ).firstMatch.waitForExistence(timeout: 20),
+            "Deletion protection card is missing: \(syncApp.debugDescription)"
         )
+        // The badge is state-dependent by design ("尚未生效" until a trusted
+        // checkpoint exists, then "已开启"), so this only pins that the card and
+        // its rows are reachable; both badge states are covered by the widget
+        // tests in test/features/sync_profiles.
+        for row in ["最近清理", "等待确认", "活跃设备"] {
+            XCTAssertTrue(
+                syncApp.descendants(matching: .any).matching(
+                    NSPredicate(format: "label CONTAINS %@", row)
+                ).firstMatch.waitForExistence(timeout: 10),
+                "Deletion protection row is missing: \(row)"
+            )
+        }
         attachScreenshot("deletion-protection-settings-verified")
     }
 

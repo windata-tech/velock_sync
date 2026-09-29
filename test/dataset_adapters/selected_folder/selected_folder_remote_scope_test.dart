@@ -202,7 +202,11 @@ void main() {
       scopes.single.address,
       'https://nas.invalid/base/entry/USB_HDD_8T/111',
     );
-    expect(scopes.single.path, isNull, reason: 'the provider path is folded in');
+    expect(
+      scopes.single.path,
+      isNull,
+      reason: 'the provider path is folded in',
+    );
     expect(connections.lastPasswordRef, 'cred-1');
   });
 
@@ -281,6 +285,9 @@ void main() {
 
     await service().run('profile-1');
 
-    expect(scopes.single.address, 'https://nas.invalid/base/entry/USB_HDD_8T/111');
+    expect(
+      scopes.single.address,
+      'https://nas.invalid/base/entry/USB_HDD_8T/111',
+    );
   });
 }

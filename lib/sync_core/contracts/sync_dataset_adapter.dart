@@ -235,6 +235,16 @@ abstract interface class CheckpointRecoveringDatasetAdapter {
   );
 }
 
+/// Optional capability for datasets whose signed checkpoints never ship
+/// `parts/` artifacts.
+///
+/// Recovery lists `parts/` only for datasets that do not declare this. A
+/// provider answers 404 for a collection its publisher never created, and a 404
+/// while reading a candidate means "that candidate is unusable", so probing a
+/// collection that cannot exist would skip every checkpoint and silently
+/// disable garbage collection.
+abstract interface class CheckpointWithoutPartsDatasetAdapter {}
+
 /// Optional two-phase import contract for a trusted peer that applies inboxes
 /// asynchronously. The sync engine does not advance its cursor until a later
 /// receipt returns an applied result.
@@ -279,8 +289,30 @@ abstract interface class SyncDatasetAdapter {
 abstract interface class OrderedDeferredIncomingBatchAdapter
     implements DeferredIncomingBatchAdapter {}
 
+/// Told once a deferred batch is complete: applied by the owner and its
+/// acknowledgement stored remotely. The adapter may then release local
+/// hand-off copies. Best effort; a failure never undoes the completion.
+abstract interface class CompletedIncomingBatchAdapter {
+  Future<void> incomingBatchCompleted(IncomingBatchReference batch);
+}
+
 /// Optional fail-closed check before a run may report success. A progress-only
 /// checkpoint must not make missing business history look like a full backup.
 abstract interface class RemoteHistoryValidatingDatasetAdapter {
-  Future<void> verifyRemoteHistory(RemoteObjectStore remote);
+  String get historyProducerDeviceId;
+  Future<void> verifyRemoteHistory(
+    RemoteObjectStore remote, {
+    required int publishedThroughSequence,
+  });
+}
+
+/// Allows an absent incremental collection only with a separately verified
+/// full-state baseline covering the exact already-applied position.
+abstract interface class SnapshotCoveredCommitCollectionAdapter {
+  bool permitsMissingCommitCollection({
+    required RemoteObjectStore remote,
+    required String vaultId,
+    required String producerDeviceId,
+    required int appliedSequence,
+  });
 }

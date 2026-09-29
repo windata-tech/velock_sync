@@ -1,6 +1,6 @@
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
@@ -174,12 +174,9 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
             initialSegments: profile.remoteRootSegments,
             loadFolders: (relative) =>
                 loader(protocol: protocol, relativeSegments: relative),
-            createFolder: (parent, name) => ref
-                .read(backupFolderCreatorProvider)(
-                  protocol: protocol,
-                  relativeSegments: parent,
-                  name: name,
-                ),
+            createFolder: (parent, name) => ref.read(
+              backupFolderCreatorProvider,
+            )(protocol: protocol, relativeSegments: parent, name: name),
           ),
         ),
       );
@@ -196,7 +193,11 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
       }
       final confirmed = await showAdaptiveConfirmation(
         context,
-        title: syncText(context, '更改这个任务的保存位置？', 'Change this task’s location?'),
+        title: syncText(
+          context,
+          '更改这个任务的保存位置？',
+          'Change this task’s location?',
+        ),
         message:
             '${connection.name}\n${pathFor(connection, picked)}\n\n${syncText(context, '只把这个文件同步任务的云端保存位置改为上面的文件夹，不改动连接本身，也不会删除或迁移旧文件夹里的数据。保存后仍需另行开始同步。', 'This only points this file-sync task at the folder above. The connection is not changed and nothing in the old folder is deleted or migrated. Sync still has to be started separately.')}',
         confirmLabel: syncText(context, '保存位置', 'Save location'),
@@ -306,11 +307,7 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      syncText(
-                        context,
-                        '保存位置',
-                        'Save location',
-                      ),
+                      syncText(context, '保存位置', 'Save location'),
                       style: const TextStyle(
                         fontSize: 23,
                         fontWeight: FontWeight.w700,
@@ -513,7 +510,11 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
                         child: Text(
                           showDetails
                               ? syncText(context, '收起', 'Show less')
-                              : syncText(context, '它具体做什么？', 'What exactly does it do?'),
+                              : syncText(
+                                  context,
+                                  '它具体做什么？',
+                                  'What exactly does it do?',
+                                ),
                         ),
                       ),
                     ],

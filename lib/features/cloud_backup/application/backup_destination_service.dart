@@ -1,3 +1,4 @@
+import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_recovery.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -84,9 +85,16 @@ class BackupDestinationService {
         for (final producer in trustedProducerIds.toSet()) {
           cancellation.throwIfCancelled();
           final prefix = LogicalKeys.deviceCommitsPrefix(vaultId, producer);
-          final page = await remote
-              .list(prefix: prefix, limit: 1, cancellation: cancellation)
-              .timeout(timeout);
+          final RemoteObjectPage page;
+          try {
+            page = await remote
+                .list(prefix: prefix, limit: 1, cancellation: cancellation)
+                .timeout(timeout);
+          } on RemoteObjectNotFoundException {
+            // A trusted producer may never have published to this folder.
+            // Continue discovery without treating missing history as success.
+            continue;
+          }
           if (page.items.any(
             (item) =>
                 item.logicalKey.startsWith(prefix) &&
@@ -94,6 +102,14 @@ class BackupDestinationService {
           )) {
             return;
           }
+        }
+        if (await hasVelockSnapshotCandidate(
+          remote: remote,
+          vaultId: vaultId,
+          allowedProducers: trustedProducerIds,
+          cancellation: cancellation,
+        ).timeout(timeout)) {
+          return;
         }
         throw const BackupDestinationException('backup_not_found');
       }

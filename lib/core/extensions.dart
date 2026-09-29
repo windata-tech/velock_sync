@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 extension CancelTokenX on Ref {
@@ -18,9 +18,12 @@ extension AppTheme on BuildContext {
     required T Function(ThemeData materialTheme) material,
     required T Function(CupertinoThemeData cupertinoTheme) cupertino,
   }) {
-    return isMaterial(this)
-        ? material(Theme.of(this))
-        : cupertino(CupertinoTheme.of(this));
+    // `isApplePlatform` is the app's single source of truth for the design
+    // language (it reads ThemeData.platform), so this no longer needs
+    // flutter_platform_widgets' isMaterial helper.
+    return isApplePlatform(this)
+        ? cupertino(CupertinoTheme.of(this))
+        : material(Theme.of(this));
   }
 
   /// 获取主色调

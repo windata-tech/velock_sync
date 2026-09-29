@@ -116,7 +116,13 @@ class SyncDownloadEngine {
               producerDeviceId: producer,
             ) +
             1;
-        final commits = await _listCommits(remote, vaultId, producer);
+        final commits = await _listCommits(
+          remote,
+          vaultId,
+          producer,
+          dataset: dataset,
+          appliedSequence: expected - 1,
+        );
         var awaitingReceipt = false;
         while (visited < maxBatches) {
           final batchId = commits[expected];
@@ -154,17 +160,32 @@ class SyncDownloadEngine {
   Future<Map<int, String>> _listCommits(
     RemoteObjectStore remote,
     String vaultId,
-    String producerDeviceId,
-  ) async {
+    String producerDeviceId, {
+    required SyncDatasetAdapter dataset,
+    required int appliedSequence,
+  }) async {
     final prefix = LogicalKeys.deviceCommitsPrefix(vaultId, producerDeviceId);
     final commits = <int, String>{};
     String? cursor;
     do {
-      final page = await remote.list(
-        prefix: prefix,
-        cursor: cursor,
-        limit: 100,
-      );
+      RemoteObjectPage page;
+      try {
+        page = await remote.list(prefix: prefix, cursor: cursor, limit: 100);
+      } on RemoteObjectNotFoundException {
+        if (cursor != null ||
+            commits.isNotEmpty ||
+            dataset is! SnapshotCoveredCommitCollectionAdapter ||
+            !(dataset as SnapshotCoveredCommitCollectionAdapter)
+                .permitsMissingCommitCollection(
+                  remote: remote,
+                  vaultId: vaultId,
+                  producerDeviceId: producerDeviceId,
+                  appliedSequence: appliedSequence,
+                )) {
+          rethrow;
+        }
+        return const {};
+      }
       for (final item in page.items) {
         final suffix = item.logicalKey.startsWith(prefix)
             ? item.logicalKey.substring(prefix.length)
@@ -215,6 +236,13 @@ class SyncDownloadEngine {
           batchId: batchId,
           remote: remote,
         );
+        if (dataset case final CompletedIncomingBatchAdapter completed) {
+          try {
+            await completed.incomingBatchCompleted(reference);
+          } on Object {
+            // Only local clean-up; the batch is complete either way.
+          }
+        }
         return true;
       }
       if (await _database.incomingBatchState(

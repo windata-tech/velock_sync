@@ -1,5 +1,4 @@
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
@@ -31,11 +30,7 @@ void main() {
           child: const MaterialApp(
             locale: Locale('zh', 'CN'),
             supportedLocales: [Locale('zh', 'CN'), Locale('en')],
-            localizationsDelegates: [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
+            localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
             home: SyncProfilesHome(),
           ),
         ),
@@ -73,11 +68,7 @@ void main() {
         child: const MaterialApp(
           locale: Locale('zh', 'CN'),
           supportedLocales: [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
+          localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
           home: SyncProfilesHome(),
         ),
       ),
@@ -101,11 +92,7 @@ void main() {
         child: MaterialApp(
           locale: Locale('zh', 'CN'),
           supportedLocales: [Locale('zh', 'CN'), Locale('en')],
-          localizationsDelegates: [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
+          localizationsDelegates: [...GlobalMaterialLocalizations.delegates],
           home: NewSyncProfile(),
         ),
       ),

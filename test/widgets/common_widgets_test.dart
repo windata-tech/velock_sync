@@ -1,8 +1,8 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 void main() {
@@ -72,27 +72,64 @@ void main() {
   });
 
   testWidgets(
+    'Cupertino page under MaterialApp does not use an empty messenger',
+    (tester) async {
+      final calls = <MethodCall>[];
+      const channel = MethodChannel('PonnamKarthik/fluttertoast');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return true;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          home: CupertinoPageScaffold(
+            child: Builder(
+              builder: (context) => CupertinoButton(
+                onPressed: () => showPlatformMessage(context, '同步完成'),
+                child: const Text('show'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('show'));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(calls, hasLength(1));
+      expect(calls.single.arguments, containsPair('msg', '同步完成'));
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
+
+  testWidgets(
     'Cupertino app-bar icon builds without conflicting size arguments',
     (tester) async {
       await tester.pumpWidget(
-        PlatformProvider(
-          initialPlatform: TargetPlatform.iOS,
-          builder: (context) => PlatformApp(
-            home: PlatformScaffold(
-              appBar: WDAppBar(
-                title: const Text('连接详情'),
-                trailingActions: [
-                  PlatformIconButton(
-                    padding: EdgeInsets.zero,
-                    cupertino: (context, platform) => CupertinoIconButtonData(
-                      icon: const Icon(CupertinoIcons.refresh),
-                    ),
-                    onPressed: () {},
-                  ),
-                ],
-              ),
-              body: const SizedBox.shrink(),
+        MaterialApp(
+          // iOS design language: the trailing icon must resolve to the Cupertino
+          // glyph without any conflicting size argument.
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          home: AdaptivePageScaffold(
+            appBar: WDAppBar(
+              title: const Text('连接详情'),
+              trailingActions: [
+                AdaptiveIconButton(
+                  icon: const Icon(CupertinoIcons.refresh),
+                  materialIcon: const Icon(Icons.refresh),
+                  onPressed: () {},
+                ),
+              ],
             ),
+            body: const SizedBox.shrink(),
           ),
         ),
       );

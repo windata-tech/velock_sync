@@ -1,6 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
@@ -45,15 +43,12 @@ void main() {
                 'test',
               ).overrideWith(() => _Detail(provider)),
             ],
-            child: PlatformProvider(
-              initialPlatform: TargetPlatform.iOS,
-              builder: (_) => MaterialApp(
-                locale: const Locale('zh'),
-                supportedLocales: const [Locale('zh'), Locale('en')],
-                localizationsDelegates: GlobalMaterialLocalizations.delegates,
-                theme: ThemeData(platform: TargetPlatform.iOS),
-                home: const Connection('test'),
-              ),
+            child: MaterialApp(
+              locale: const Locale('zh'),
+              supportedLocales: const [Locale('zh'), Locale('en')],
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
+              theme: ThemeData(platform: TargetPlatform.iOS),
+              home: const Connection('test'),
             ),
           ),
         );

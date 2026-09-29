@@ -110,9 +110,6 @@ void main() {
     expect(uri.path, contains('%E7%85%A7%E7%89%87'));
     expect(uri.path, contains('%E6%97%85%E8%A1%8C%202026.jpg'));
     expect(uri.path, isNot(contains('%25E7%85%A7')));
-    expect(
-      Uri.decodeFull(uri.path),
-      contains('照片/旅行 2026.jpg'),
-    );
+    expect(Uri.decodeFull(uri.path), contains('照片/旅行 2026.jpg'));
   });
 }

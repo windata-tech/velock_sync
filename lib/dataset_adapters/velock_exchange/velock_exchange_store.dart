@@ -58,13 +58,22 @@ class VelockExchangeStore {
 
   Future<List<String>> readyOutboxIds() => _directoryIds(_outboxReady);
 
-  /// Atomically claims the first ready package. A crash-safe lease is written
-  /// only after the rename, so a concurrent sync process cannot consume it.
+  /// Atomically claims the lowest-sequence complete package of one producer.
+  /// A crash-safe lease is written only after the rename, so a concurrent sync
+  /// process cannot consume it.
   ///
   /// Only packages whose envelope belongs to the requested vault and source
   /// device are claimed. The shared App Group exchange can hold packages from
   /// several Velock vaults; claiming one for another vault would fail identity
   /// validation and abort the run.
+  ///
+  /// Order matters: remote history must stay contiguous per producer, and
+  /// batch IDs are random, so packages are claimed by envelope sequence. A
+  /// package without its READY marker is still being written and is never
+  /// claimed. While a lower sequence of the same producer is still claimed
+  /// (a previous run died holding it), nothing is claimed until its lease
+  /// expires and it returns to Ready; uploading a later one first would leave
+  /// a gap the history guard reports as an incomplete backup.
   Future<VelockClaimedOutbox?> claimNextOutbox({
     required String leaseId,
     required String vaultId,
@@ -72,11 +81,38 @@ class VelockExchangeStore {
   }) async {
     _id(leaseId, 'leaseId');
     await initialize();
+    final candidates = <({String batchId, int sequence})>[];
     for (final batchId in await readyOutboxIds()) {
-      final ready = Directory('${_outboxReady.path}/$batchId');
-      if (!await _matchesClaimIdentity(batchId, vaultId, sourceDeviceId)) {
-        continue;
+      final sequence = await _claimableSequence(
+        Directory('${_outboxReady.path}/$batchId'),
+        vaultId,
+        sourceDeviceId,
+        requireReady: true,
+      );
+      if (sequence != null) {
+        candidates.add((batchId: batchId, sequence: sequence));
       }
+    }
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) {
+      final bySequence = a.sequence.compareTo(b.sequence);
+      return bySequence != 0 ? bySequence : a.batchId.compareTo(b.batchId);
+    });
+    final lowestReady = candidates.first.sequence;
+    for (final batchId in await _directoryIds(_outboxClaimed)) {
+      final claimedSequence = await _claimableSequence(
+        Directory('${_outboxClaimed.path}/$batchId'),
+        vaultId,
+        sourceDeviceId,
+        requireReady: false,
+      );
+      if (claimedSequence != null && claimedSequence < lowestReady) {
+        return null;
+      }
+    }
+    for (final candidate in candidates) {
+      final batchId = candidate.batchId;
+      final ready = Directory('${_outboxReady.path}/$batchId');
       final claimed = Directory('${_outboxClaimed.path}/$batchId');
       try {
         await ready.rename(claimed.path);
@@ -100,19 +136,34 @@ class VelockExchangeStore {
     return null;
   }
 
-  Future<bool> _matchesClaimIdentity(
-    String batchId,
+  /// The envelope sequence of a package this producer may upload, or `null`.
+  Future<int?> _claimableSequence(
+    Directory package,
     String vaultId,
-    String sourceDeviceId,
-  ) async {
-    final envelope = File('${_outboxReady.path}/$batchId/envelope.json');
+    String sourceDeviceId, {
+    required bool requireReady,
+  }) async {
     try {
-      final json = jsonDecode(await envelope.readAsString());
-      return json is Map<String, dynamic> &&
-          json['vaultId'] == vaultId &&
-          json['sourceDeviceId'] == sourceDeviceId;
+      if (requireReady &&
+          await FileSystemEntity.type(
+                '${package.path}/READY',
+                followLinks: false,
+              ) !=
+              FileSystemEntityType.file) {
+        return null;
+      }
+      final json = jsonDecode(
+        await File('${package.path}/envelope.json').readAsString(),
+      );
+      if (json is! Map<String, dynamic> ||
+          json['vaultId'] != vaultId ||
+          json['sourceDeviceId'] != sourceDeviceId) {
+        return null;
+      }
+      final sequence = json['sequence'];
+      return sequence is int && sequence > 0 ? sequence : null;
     } on Object {
-      return false;
+      return null;
     }
   }
 
@@ -145,6 +196,17 @@ class VelockExchangeStore {
         await _quarantine(claimed, batchId);
       }
     }
+  }
+
+  /// Records that an imported package's ACK is stored remotely
+  /// (`Inbox/Acknowledged/<batchId>`); Velock deletes the package after it.
+  Future<void> markInboxAcknowledged(String batchId) async {
+    _id(batchId, 'batchId');
+    await initialize();
+    await _writeAtomic(
+      File('${root.path}/Inbox/Acknowledged/$batchId'),
+      Uint8List(0),
+    );
   }
 
   Future<void> writeOutboxReceipt({

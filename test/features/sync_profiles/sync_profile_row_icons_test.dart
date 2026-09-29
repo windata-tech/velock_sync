@@ -12,11 +12,10 @@ library;
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -90,12 +89,7 @@ void main() {
 
     await _pumpDetail(tester, database, captureKey);
 
-    for (final title in const [
-      '云端保存位置',
-      '传输记录',
-      '查看等待传输的内容',
-      '管理',
-    ]) {
+    for (final title in const ['云端保存位置', '传输记录', '查看等待传输的内容', '管理']) {
       expect(_leadingOf(tester, title), isNotNull, reason: title);
     }
     await capture(tester, '01-overview-with-pending');
@@ -167,9 +161,7 @@ Future<void> _pumpDetail(
         locale: const Locale('zh'),
         supportedLocales: const [Locale('zh'), Locale('en')],
         localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
+          ...GlobalMaterialLocalizations.delegates,
         ],
         theme: _qaTheme(),
         builder: (context, child) =>

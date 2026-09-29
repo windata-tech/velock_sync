@@ -141,9 +141,7 @@ void main() {
       database: database,
       profiles: profiles,
       connections: _LiveConnections(),
-      remoteFactory: ({required protocol, required password}) => store([
-        scope,
-      ]),
+      remoteFactory: ({required protocol, required password}) => store([scope]),
     );
 
     try {
@@ -224,7 +222,9 @@ void main() {
           .toList();
       expect(conflicts, hasLength(1));
       expect(
-        await File('${localRoot.path}/notes/${conflicts.single}').readAsString(),
+        await File(
+          '${localRoot.path}/notes/${conflicts.single}',
+        ).readAsString(),
         'local-version',
       );
     } finally {

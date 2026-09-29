@@ -1,6 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -128,13 +127,13 @@ class NewBaiduToken extends HookConsumerWidget {
       }
     }
 
-    return PlatformScaffold(
+    return AdaptivePageScaffold(
       appBar: WDAppBar(
         title: Text(
           syncText(context, '配置百度网盘 Token', 'Configure Baidu Netdisk token'),
         ),
         trailingActions: [
-          PlatformTextButton(
+          AdaptiveTextButton(
             padding: EdgeInsets.zero,
             onPressed: () => context.pushNamed(
               AppRoutes.connectionHelp.name,
@@ -142,7 +141,7 @@ class NewBaiduToken extends HookConsumerWidget {
             ),
             child: Text(syncText(context, '说明', 'About')),
           ),
-          PlatformTextButton(
+          AdaptiveTextButton(
             padding: EdgeInsets.zero,
             onPressed: isSaving.value ? null : saveCredentials,
             child: isSaving.value
@@ -198,7 +197,7 @@ class NewBaiduToken extends HookConsumerWidget {
                   spacing: AppSpacing.md,
                   runSpacing: AppSpacing.xs,
                   children: [
-                    PlatformTextButton(
+                    AdaptiveTextButton(
                       padding: EdgeInsets.zero,
                       onPressed: () => launchUrl(
                         Uri.parse(
@@ -214,7 +213,7 @@ class NewBaiduToken extends HookConsumerWidget {
                         ),
                       ),
                     ),
-                    PlatformTextButton(
+                    AdaptiveTextButton(
                       padding: EdgeInsets.zero,
                       onPressed: () => context.pushNamed(
                         AppRoutes.connectionHelp.name,

@@ -55,11 +55,18 @@ void main() {
         expected: profile,
         segments: ['old', '中文 空格'],
       );
+      final changedAt = VelockSyncProfile.fromEnvelope(saved).locationChangedAt;
+      expect(changedAt, isNotNull);
+      expect((await repo.listSummaries()).single.locationChangedAt, changedAt);
       expect(
         saved.toJson(),
-        VelockSyncProfile.fromEnvelope(
-          profile,
-        ).copyWith(remoteRootSegments: ['old', '中文 空格']).toEnvelope().toJson(),
+        VelockSyncProfile.fromEnvelope(profile)
+            .copyWith(
+              remoteRootSegments: ['old', '中文 空格'],
+              locationChangedAt: changedAt,
+            )
+            .toEnvelope()
+            .toJson(),
       );
       expect(
         await db.appliedSequence(profileId: 'p', producerDeviceId: 'source'),
