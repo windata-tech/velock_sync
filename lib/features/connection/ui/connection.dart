@@ -8,13 +8,13 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
-import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/files_provider.dart';
+import 'package:velock_sync/features/connection/ui/connection_editor_entry.dart';
 import 'package:velock_sync/features/connection/ui/connection_info_sheet.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/app_components.dart';
@@ -178,10 +178,8 @@ class Connection extends HookConsumerWidget {
                 AdaptiveIconButton(
                   icon: const Icon(CupertinoIcons.pencil),
                   materialIcon: const Icon(Icons.edit_outlined, size: 24),
-                  onPressed: () => context.pushNamed(
-                    AppRoutes.newWebDav.name,
-                    queryParameters: {'replace': connectionModel.id},
-                  ),
+                  onPressed: () =>
+                      openConnectionEditor(context, connectionModel),
                 ),
                 AdaptiveIconButton(
                   icon: const Icon(CupertinoIcons.refresh),
@@ -242,10 +240,8 @@ class Connection extends HookConsumerWidget {
                       onRetry: notifier.refresh,
                       secondaryAction: AppSecondaryButton(
                         label: syncText(context, '编辑连接', 'Edit connection'),
-                        onPressed: () => context.pushNamed(
-                          AppRoutes.newWebDav.name,
-                          queryParameters: {'replace': connectionModel.id},
-                        ),
+                        onPressed: () =>
+                            openConnectionEditor(context, connectionModel),
                       ),
                     ),
                   )
@@ -406,11 +402,7 @@ class _OAuthConnectionDetails extends StatelessWidget {
             onPressed: onTestConnection,
           ),
           AdaptiveTextButton(
-            onPressed: () => context.pushNamed(
-              AppRoutes.newOAuth.name,
-              pathParameters: {'provider': protocol.providerType.name},
-              queryParameters: {'replace': connection.id},
-            ),
+            onPressed: () => openConnectionEditor(context, connection),
             child: Text(syncText(context, '重新授权', 'Authorize again')),
           ),
         ],

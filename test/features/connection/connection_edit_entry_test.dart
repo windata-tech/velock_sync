@@ -12,6 +12,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart'
@@ -78,8 +79,22 @@ Future<GoRouter> _mount(WidgetTester tester, ConnectionModel connection) async {
       GoRoute(
         name: 'newWebDav',
         path: '/protocol/webdav/new',
-        builder: (_, state) =>
+        builder: (context, state) => Column(
+          children: [
             Text('WebDAV 表单 replace=${state.uri.queryParameters['replace']}'),
+            TextButton(
+              onPressed: () => leaveConnectionEditor(
+                context,
+                state.uri.queryParameters['returnTo'],
+              ),
+              child: const Text('fake-save'),
+            ),
+          ],
+        ),
+      ),
+      GoRoute(
+        path: '/connections',
+        builder: (_, _) => const Text('replaced-connections-stack'),
       ),
       GoRoute(
         name: 'newOAuth',
@@ -155,6 +170,21 @@ void main() {
 
     // The prefilled WebDAV form is what opens, not a fresh connection form.
     expect(find.text('WebDAV 表单 replace=conn-webdav'), findsOneWidget);
+  });
+
+  // QA 2026-09-29: saving an edit started from the list used to replace the
+  // stack with a bare connections page — no back button, no tab bar.
+  testWidgets('saving an edit returns to the page that opened the editor', (
+    tester,
+  ) async {
+    final router = await _mount(tester, _webDav());
+    await _openEdit(tester);
+    await tester.tap(find.text('fake-save'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('replaced-connections-stack'), findsNothing);
+    expect(find.byType(Connections), findsOneWidget);
+    expect(router.state.uri.path, '/');
   });
 
   testWidgets('an OAuth connection reopens its provider authorization', (

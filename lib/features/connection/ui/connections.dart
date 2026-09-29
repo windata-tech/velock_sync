@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/features/connection/ui/connection_editor_entry.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
@@ -202,19 +203,7 @@ class Connections extends HookConsumerWidget {
 
   /// Editing a connection reopens the form it was created with, prefilled.
   void _editConnection(BuildContext context, ConnectionModel connection) {
-    final protocol = connection.protocol;
-    if (protocol is OAuthProtocolModel) {
-      context.pushNamed(
-        AppRoutes.newOAuth.name,
-        pathParameters: {'provider': protocol.providerType.name},
-        queryParameters: {'replace': connection.id},
-      );
-      return;
-    }
-    context.pushNamed(
-      AppRoutes.newWebDav.name,
-      queryParameters: {'replace': connection.id},
-    );
+    openConnectionEditor(context, connection);
   }
 
   Future<void> _removeConnection(

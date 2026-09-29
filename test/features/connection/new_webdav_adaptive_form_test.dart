@@ -140,6 +140,49 @@ void main() {
     });
   }
 
+  // QA 2026-09-29: after switching HTTPS off, the scheme error it fixed stayed
+  // on screen until the next save.
+  testWidgets('turning HTTPS off clears the https:// error it fixed', (
+    tester,
+  ) async {
+    await _pump(tester, TargetPlatform.iOS);
+    const schemeError =
+        'The address must start with https:// when HTTPS is enabled';
+
+    await tester.enterText(_fieldEditor('address'), 'http://nas.local');
+    await tester.enterText(_fieldEditor('port'), '5006');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text(schemeError), findsOneWidget);
+
+    await tester.tap(find.byType(AdaptiveSwitch));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use HTTP Anyway'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(schemeError), findsNothing);
+    expect(
+      tester.widget<AdaptiveSwitch>(find.byType(AdaptiveSwitch)).value,
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('toggling HTTPS before any save shows no errors', (
+    tester,
+  ) async {
+    await _pump(tester, TargetPlatform.iOS);
+    await tester.tap(find.byType(AdaptiveSwitch));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use HTTP Anyway'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter a port'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the Apple branch shows the label as the row prefix', (
     tester,
   ) async {

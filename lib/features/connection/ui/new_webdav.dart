@@ -51,6 +51,9 @@ class NewWebDav extends HookConsumerWidget {
 
     final isLoading = useState(false);
     final hasPrefilled = useRef(false);
+    // Once a save showed the errors, toggling HTTPS rewrites the scheme; the
+    // scheme error it fixed must not stay on screen until the next save.
+    final validationShown = useRef(false);
 
     useEffect(() {
       if (existingWebDav == null || hasPrefilled.value) return null;
@@ -81,6 +84,11 @@ class NewWebDav extends HookConsumerWidget {
         }
       }
 
+      if (validationShown.value) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          formKey.currentState?.validate();
+        });
+      }
       if (newText == oldValue.text) return null;
 
       final oldSelection = oldValue.selection;
@@ -169,6 +177,7 @@ class NewWebDav extends HookConsumerWidget {
             onPressed: isLoading.value
                 ? null
                 : () async {
+                    validationShown.value = true;
                     final isValidate = formKey.currentState?.validate();
                     if (isValidate == true) {
                       String? createdCredentialRef;
