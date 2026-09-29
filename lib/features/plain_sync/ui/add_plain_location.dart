@@ -702,15 +702,42 @@ class AddPlainLocation extends HookConsumerWidget {
         0,
       ),
       child: Text(
-        syncText(
-          context,
-          '第一次同步会合并两边：只在本机的文件上传，只在远端的文件下载，两边都有但内容不同的文件按冲突设置处理。远端是明文，请确认这个账号只有你自己可访问。',
-          'The first sync merges both sides: files only here are uploaded, files only there are downloaded, and files that differ follow the conflict setting. The remote folder is not encrypted, so make sure only you can access that account.',
-        ),
+        firstSyncNote(context, direction.value),
+        key: const Key('plain-first-sync-note'),
         style: AppType.footnote.copyWith(color: context.appSecondaryLabel),
       ),
     ),
   ];
+}
+
+/// What the first sync of a new location does, for the chosen direction.
+///
+/// QA 2026-09-29: the note always described the two-way merge, even when
+/// "upload only" or "download only" was selected.
+String firstSyncNote(BuildContext context, MirrorDirection direction) {
+  final merge = switch (direction) {
+    MirrorDirection.bidirectional => syncText(
+      context,
+      '第一次同步会合并两边：只在本机的文件上传，只在远端的文件下载，两边都有但内容不同的文件按冲突设置处理。',
+      'The first sync merges both sides: files only here are uploaded, files only there are downloaded, and files that differ follow the conflict setting.',
+    ),
+    MirrorDirection.uploadOnly => syncText(
+      context,
+      '第一次同步只上传：本机的文件上传到远端，两边内容不同时用本机版本覆盖远端；只在远端的文件保持原样，不会下载。',
+      'The first sync only uploads: files here are uploaded, and where both sides differ the remote copy is replaced with this device\'s. Files only on the remote stay there and are not downloaded.',
+    ),
+    MirrorDirection.downloadOnly => syncText(
+      context,
+      '第一次同步只下载：远端的文件下载到本机，两边内容不同时用远端版本覆盖本机；只在本机的文件保持原样，不会上传。',
+      'The first sync only downloads: remote files are downloaded, and where both sides differ this device\'s copy is replaced with the remote one. Files only on this device stay here and are not uploaded.',
+    ),
+  };
+  final plaintext = syncText(
+    context,
+    '远端是明文，请确认这个账号只有你自己可访问。',
+    'The remote folder is not encrypted, so make sure only you can access that account.',
+  );
+  return syncText(context, '$merge$plaintext', '$merge $plaintext');
 }
 
 /// Why a remote folder that holds (or contains) a Velock backup is refused.

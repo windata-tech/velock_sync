@@ -308,6 +308,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // QA 2026-09-29: the first-sync note always described the two-way merge.
+  testWidgets('the first-sync note follows the chosen direction', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [webDavConnection()],
+      platform: TargetPlatform.android,
+      folderListing: (segments) async => segments.isEmpty
+          ? const [WebDavBackupFolder(name: '手机备份')]
+          : const [],
+    );
+    await pickLocalAndContinue(tester);
+    await tapVisible(tester, find.byKey(const Key('plain-remote-conn-1')));
+    await tester.tap(find.byKey(ValueKey('backup-folder-手机备份')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('use-backup-folder')));
+    await tester.pumpAndSettle();
+    await tapVisible(tester, find.byKey(const Key('plain-wizard-next-2')));
+
+    // The note sits below the options, outside the built part of the list.
+    final noteFinder = find.byKey(const Key('plain-first-sync-note'));
+    Future<String> note() async {
+      await tester.scrollUntilVisible(
+        noteFinder,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      return tester.widget<Text>(noteFinder).data!;
+    }
+
+    expect(await note(), contains('第一次同步会合并两边'));
+
+    await tapVisible(
+      tester,
+      find.byKey(const Key('plain-direction-uploadOnly')),
+    );
+    expect(await note(), contains('第一次同步只上传'));
+    expect(await note(), contains('只在远端的文件保持原样，不会下载'));
+    expect(await note(), isNot(contains('下载到本机')));
+    expect(await note(), isNot(contains('冲突设置')));
+
+    await tapVisible(
+      tester,
+      find.byKey(const Key('plain-direction-downloadOnly')),
+    );
+    expect(await note(), contains('第一次同步只下载'));
+    expect(await note(), contains('只在本机的文件保持原样，不会上传'));
+    expect(await note(), isNot(contains('上传到远端')));
+    expect(await note(), isNot(contains('冲突设置')));
+
+    // The plaintext warning stays for every direction.
+    expect(await note(), contains('远端是明文'));
+  });
+
   testWidgets(
     'step 3 creates the location with the chosen direction and policy',
     (tester) async {
