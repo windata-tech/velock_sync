@@ -5,6 +5,8 @@
 #   e2e.sh --from backup       resume the current run at a stage
 #   e2e.sh --only verify       run a single stage of the current run
 #   e2e.sh --list              print the stages
+#   e2e.sh --record ...        also record the simulator screen to <run>/e2e-<time>.mp4
+#                              (starts after the build stage, stops on exit, pass or fail)
 #
 # Stages (in order):
 #   build    flutter builds of both apps; skipped when sources are unchanged
@@ -28,13 +30,14 @@ source "$SIM/common.sh"
 VELOCK_ROOT="${VELOCK_ROOT:-$(cd "$ROOT_DIR/../velock_codex" && pwd)}"
 STAGES=(build reset init document file photo verify backup)
 
-from=build only=""
+from=build only="" record=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --from) from="$2"; shift 2 ;;
     --only) only="$2"; shift 2 ;;
+    --record) record=1; shift ;;
     --list) printf '%s\n' "${STAGES[@]}"; exit 0 ;;
-    *) echo "unknown argument: $1 (see --list, --from, --only)" >&2; exit 2 ;;
+    *) echo "unknown argument: $1 (see --list, --from, --only, --record)" >&2; exit 2 ;;
   esac
 done
 for s in "$from" ${only:+"$only"}; do
@@ -67,6 +70,33 @@ stage_start=0 stage=setup
 begin() { stage_start=$SECONDS; stage="$1"; echo "── $1"; }
 trap 'echo "FAILED at stage: $stage — fix, then: e2e.sh --from ${stage%% *}" >&2' ERR
 done_() { echo "   ok ($((SECONDS - stage_start))s)"; }
+
+# simctl only finalises the .mp4 on SIGINT, so the EXIT trap always stops it.
+rec_pid="" video=""
+start_recording() {
+  [[ $record == 1 && -z "$rec_pid" ]] || return 0
+  video="$run_dir/e2e-$(date +%H%M%S).mp4"
+  xcrun simctl io "$E2E_SIMULATOR_UDID" recordVideo --codec=h264 --force "$video" \
+    >"$run_dir/record.log" 2>&1 &
+  rec_pid=$!
+  local _
+  for _ in $(seq 100); do
+    grep -q 'Recording started' "$run_dir/record.log" 2>/dev/null && break
+    kill -0 "$rec_pid" 2>/dev/null || { echo "recordVideo exited, see $run_dir/record.log" >&2; exit 1; }
+    sleep 0.1
+  done
+  grep -q 'Recording started' "$run_dir/record.log" ||
+    { echo "recordVideo did not start, see $run_dir/record.log" >&2; exit 1; }
+  echo "   recording → $video"
+}
+stop_recording() {
+  [[ -n "$rec_pid" ]] || return 0
+  kill -INT "$rec_pid" 2>/dev/null || true
+  wait "$rec_pid" 2>/dev/null || true
+  rec_pid=""
+  if [[ -s "$video" ]]; then echo "Video: $video"; else echo "Video missing: $video" >&2; fi
+}
+trap stop_recording EXIT
 
 APPS="$OUT_DIR/apps"
 SYNC_APP="$APPS/Sync.app"
@@ -170,6 +200,7 @@ if wants reset; then
 fi
 
 run() { "$SIM/run_test.sh" "$@"; }
+start_recording
 
 if wants init; then
   begin "init (space + password, credit card, note)"

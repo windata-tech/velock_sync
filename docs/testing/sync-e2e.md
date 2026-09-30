@@ -9,6 +9,7 @@ tool/ios_ui_test/sim/e2e.sh                 # 全新：构建 → 重装两 App 
 tool/ios_ui_test/sim/e2e.sh --from backup   # 从某一步续跑（沿用本轮目录与 WebDAV 根）
 tool/ios_ui_test/sim/e2e.sh --only verify   # 只跑一步
 tool/ios_ui_test/sim/e2e.sh --list
+tool/ios_ui_test/sim/e2e.sh --record       # 同时录屏到本轮目录 e2e-<时间>.mp4（build 之后开始，成功或失败退出都会收尾）
 ```
 
 | 阶段 | 做什么 | 判定 |
