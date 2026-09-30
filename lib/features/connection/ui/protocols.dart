@@ -1,10 +1,13 @@
 import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/features/connection/ui/remote_provider_icon.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/providers/oauth/oauth_user_registration_provider.dart';
 import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
@@ -15,12 +18,28 @@ class Protocols extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Only types this build can finish setting up are offered. Saved
-    // connections of other types stay visible in the connection list.
+    // Types that work out of the box come first. OAuth types this build has
+    // no registration for need the user's own app key; they join the main
+    // list once one is saved and otherwise wait in a folded section, so
+    // nobody lands on a setup page by accident. Saved connections of every
+    // type stay visible in the connection list.
     final availability = ref.watch(remoteProviderAvailabilityProvider);
-    final hasOtherServices =
-        availability.canCreate(RemoteProviderType.baiduNetdisk) ||
-        availability.canCreate(RemoteProviderType.aliyunDrive);
+    final ownKeyTypes = [
+      for (final type in availability.needsOwnRegistration)
+        if (ref.watch(oauthUserRegistrationProvider(type)).value != null) type,
+    ];
+    final waitingTypes = [
+      for (final type in availability.needsOwnRegistration)
+        if (!ownKeyTypes.contains(type)) type,
+    ];
+    final showMore = useState(false);
+
+    void openOAuth(RemoteProviderType type) => context.pushNamed(
+      AppRoutes.newOAuth.name,
+      queryParameters: {'returnTo': ?returnTo},
+      pathParameters: {'provider': type.name},
+    );
+
     return AdaptiveScaffold(
       title: syncText(context, '选择云端位置', 'Choose cloud storage'),
       leading: AppBackButton(
@@ -58,10 +77,8 @@ class Protocols extends HookConsumerWidget {
             ),
             children: [
               AdaptiveListTile(
-                leading: AdaptiveIconBadge(
-                  icon: CupertinoIcons.rectangle_stack,
-                  color: AppTone.brand.color(context),
-                ),
+                widgetKey: const Key('protocol-webDav'),
+                leading: RemoteProviderBadge(RemoteProviderType.webDav),
                 title: Text('WebDAV'),
                 subtitle: Text(
                   syncText(
@@ -77,96 +94,66 @@ class Protocols extends HookConsumerWidget {
                   queryParameters: {'returnTo': ?returnTo},
                 ),
               ),
-              if (availability.canCreate(RemoteProviderType.googleDrive))
-                AdaptiveListTile(
-                  leading: AdaptiveIconBadge(
-                    icon: CupertinoIcons.folder_badge_plus,
-                    color: AppTone.ok.color(context),
+              for (final type in RemoteProviderAvailability.oauthProviderTypes)
+                if (availability.canCreate(type) || ownKeyTypes.contains(type))
+                  _OAuthProviderTile(
+                    type: type,
+                    subtitle: availability.canCreate(type)
+                        ? _signInSubtitle(context, type)
+                        : syncText(
+                            context,
+                            '使用你自己的应用密钥登录，然后选择同步所用的云端目录。',
+                            'Sign in with your own app key, then choose a cloud folder for sync.',
+                          ),
+                    onTap: () => openOAuth(type),
                   ),
-                  title: Text('Google Drive'),
-                  subtitle: Text(
-                    syncText(
-                      context,
-                      '使用 Google 账号授权，然后选择同步所用的云端目录。',
-                      'Sign in with Google, then choose a cloud folder for sync.',
-                    ),
-                    maxLines: 2,
-                  ),
-                  showChevron: true,
-                  onTap: () => context.pushNamed(
-                    AppRoutes.newOAuth.name,
-                    queryParameters: {'returnTo': ?returnTo},
-                    pathParameters: {
-                      'provider': RemoteProviderType.googleDrive.name,
-                    },
-                  ),
-                ),
-              if (availability.canCreate(RemoteProviderType.oneDrive))
-                AdaptiveListTile(
-                  leading: AdaptiveIconBadge(
-                    icon: CupertinoIcons.cloud,
-                    color: AppTone.brand.color(context),
-                  ),
-                  title: Text('OneDrive'),
-                  subtitle: Text(
-                    syncText(
-                      context,
-                      '使用 Microsoft 账号授权，然后选择同步所用的云端目录。',
-                      'Sign in with Microsoft, then choose a cloud folder for sync.',
-                    ),
-                    maxLines: 2,
-                  ),
-                  showChevron: true,
-                  onTap: () => context.pushNamed(
-                    AppRoutes.newOAuth.name,
-                    queryParameters: {'returnTo': ?returnTo},
-                    pathParameters: {
-                      'provider': RemoteProviderType.oneDrive.name,
-                    },
-                  ),
-                ),
             ],
           ),
-          if (hasOtherServices)
+          if (waitingTypes.isNotEmpty)
             AdaptiveListSection(
-              header: syncText(context, '其他服务', 'Other Services'),
+              header: syncText(context, '更多云盘', 'More cloud drives'),
+              footer: Text(
+                syncText(
+                  context,
+                  '这个版本没有内置这些云盘的应用密钥。你可以在对应的开放平台免费注册一个自己的应用，把密钥填进来后即可使用；密钥只保存在本机的系统安全存储里。',
+                  'This build has no app key for these services. You can register your own app for free on each provider’s developer platform and enter its key here; it is kept only in this device’s secure storage.',
+                ),
+                style: AppType.footnote.copyWith(
+                  color: context.appSecondaryLabel,
+                ),
+              ),
               children: [
-                if (availability.canCreate(RemoteProviderType.baiduNetdisk))
+                if (!showMore.value)
                   AdaptiveListTile(
-                    leading: AdaptiveIconBadge(
-                      icon: CupertinoIcons.cloud_fill,
-                      color: AppTone.neutral.color(context),
-                    ),
-                    title: Text(syncText(context, '百度网盘', 'Baidu Netdisk')),
-                    subtitle: Text(
+                    widgetKey: const Key('protocols-more-toggle'),
+                    leading: const Icon(CupertinoIcons.ellipsis_circle),
+                    title: Text(
                       syncText(
                         context,
-                        '可填写 AppKey 与 Token，同步适配器尚未开放。',
-                        'AppKey and token setup is available. Sync support is not yet available.',
+                        '使用自己的应用密钥连接',
+                        'Connect with your own app key',
                       ),
-                      maxLines: 2,
                     ),
-                    showChevron: true,
-                    onTap: () =>
-                        context.pushNamed(AppRoutes.newBaiduToken.name),
-                  ),
-                if (availability.canCreate(RemoteProviderType.aliyunDrive))
-                  AdaptiveListTile(
-                    leading: AdaptiveIconBadge(
-                      icon: CupertinoIcons.lock,
-                      color: AppTone.neutral.color(context),
-                    ),
-                    title: Text(syncText(context, '阿里云盘', 'Aliyun Drive')),
                     subtitle: Text(
-                      syncText(
-                        context,
-                        '需要官方 Token Broker，当前未开放。',
-                        'Requires an official token broker. Not currently available.',
-                      ),
+                      waitingTypes
+                          .map((type) => _providerName(context, type))
+                          .join(syncText(context, '、', ', ')),
                       maxLines: 2,
                     ),
-                    enabled: false,
-                  ),
+                    trailing: const Icon(CupertinoIcons.chevron_down, size: 16),
+                    onTap: () => showMore.value = true,
+                  )
+                else
+                  for (final type in waitingTypes)
+                    _OAuthProviderTile(
+                      type: type,
+                      subtitle: syncText(
+                        context,
+                        '需要先在${_providerName(context, type)}开放平台注册自己的应用。',
+                        'Needs an app you register on the ${_providerName(context, type)} developer platform.',
+                      ),
+                      onTap: () => openOAuth(type),
+                    ),
               ],
             ),
         ],
@@ -174,6 +161,61 @@ class Protocols extends HookConsumerWidget {
     );
   }
 }
+
+class _OAuthProviderTile extends StatelessWidget {
+  const _OAuthProviderTile({
+    required this.type,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final RemoteProviderType type;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveListTile(
+    widgetKey: Key('protocol-${type.name}'),
+    leading: RemoteProviderBadge(type),
+    title: Text(_providerName(context, type)),
+    subtitle: Text(subtitle, maxLines: 2),
+    showChevron: true,
+    onTap: onTap,
+  );
+}
+
+String _providerName(
+  BuildContext context,
+  RemoteProviderType type,
+) => switch (type) {
+  RemoteProviderType.baiduNetdisk => syncText(context, '百度网盘', 'Baidu Netdisk'),
+  RemoteProviderType.aliyunDrive => syncText(context, '阿里云盘', 'Aliyun Drive'),
+  _ => remoteProviderDisplayName(type),
+};
+
+String _signInSubtitle(BuildContext context, RemoteProviderType type) =>
+    switch (type) {
+      RemoteProviderType.googleDrive => syncText(
+        context,
+        '使用 Google 账号授权，然后选择同步所用的云端目录。',
+        'Sign in with Google, then choose a cloud folder for sync.',
+      ),
+      RemoteProviderType.oneDrive => syncText(
+        context,
+        '使用 Microsoft 账号授权，然后选择同步所用的云端目录。',
+        'Sign in with Microsoft, then choose a cloud folder for sync.',
+      ),
+      RemoteProviderType.baiduNetdisk => syncText(
+        context,
+        '使用百度账号授权，然后选择同步所用的云端目录。',
+        'Sign in with Baidu, then choose a cloud folder for sync.',
+      ),
+      _ => syncText(
+        context,
+        '使用阿里云盘账号授权，然后选择同步所用的云端目录。',
+        'Sign in with Aliyun Drive, then choose a cloud folder for sync.',
+      ),
+    };
 
 class _InlineHelpAction extends StatelessWidget {
   const _InlineHelpAction({required this.onPressed});

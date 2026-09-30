@@ -37,6 +37,7 @@ import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dar
 import 'package:velock_sync/sync_profiles/settings/sync_global_settings.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_settings_service.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_pairing_session.dart';
+import 'package:velock_sync/sync_profiles/wizard/velock_pending_pairing_store.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_profile_finalizer.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 
@@ -208,8 +209,21 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
   void sessionStarted(
     VelockPairingSession session, {
     String? replacingProfileId,
+    bool restoring = false,
   }) {
     _flowSession = session;
+    // Survives Sync being terminated while the user approves in Velock.
+    unawaited(
+      ref
+          .read(velockPendingPairingStoreProvider)
+          .save(
+            VelockPendingPairing(
+              request: session.request,
+              restoring: restoring,
+              replacingProfileId: replacingProfileId,
+            ),
+          ),
+    );
     state = VelockWizardSessionState(
       session: session,
       connectionNeeded: state.connectionNeeded,
@@ -287,6 +301,7 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
       return;
     }
     _expirationTimer?.cancel();
+    _forgetPendingRequest();
     state = VelockWizardSessionState(
       connectionNeeded: state.connectionNeeded,
       selectedConnectionId: state.selectedConnectionId,
@@ -309,6 +324,7 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
     // profile. A successful commit remains authorized even if its response/ACK
     // arrives after the one-time deadline. Never apply it to a replacement flow.
     _expirationTimer?.cancel();
+    _forgetPendingRequest();
     state = VelockWizardSessionState(
       finalization: result,
       session: result.pairingAcknowledged ? null : (session ?? state.session),
@@ -329,6 +345,7 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
 
   void acknowledged() {
     _expirationTimer?.cancel();
+    _forgetPendingRequest();
     final result = state.finalization;
     state = VelockWizardSessionState(
       finalization: result == null
@@ -343,9 +360,17 @@ class VelockWizardSessionController extends Notifier<VelockWizardSessionState> {
   void reset() {
     _flowSession = null;
     _expirationTimer?.cancel();
+    _forgetPendingRequest();
     state = const VelockWizardSessionState();
   }
+
+  void _forgetPendingRequest() =>
+      unawaited(ref.read(velockPendingPairingStoreProvider).clear());
 }
+
+final velockPendingPairingStoreProvider = Provider<VelockPendingPairingStore>(
+  (ref) => LocalVelockPendingPairingStore(ref.watch(localDataManagerProvider)),
+);
 
 final velockWizardSessionProvider =
     NotifierProvider<VelockWizardSessionController, VelockWizardSessionState>(

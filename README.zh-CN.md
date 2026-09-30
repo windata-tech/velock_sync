@@ -33,6 +33,10 @@ Velock Sync 是一款开源、跨平台的增量同步工具，承担两类任�
 
 本项目由重庆文数科技有限公司维护。开源与格间 App 的商业运营相互独立：你始终可以自行构建、自托管，也可以使用官方渠道提供的版本。使用 Velock Sync 无需注册 Velock 账号，也不会被绑定到任何特定云端服务。
 
+## 自行构建：网盘应用密钥
+
+仓库里不包含任何网盘应用密钥。官方版本在构建时注入；没有内置密钥的版本也能用——用户可以在连接页的“使用自己的应用密钥”里填写自己免费注册的应用。想用自己的密钥构建时，把 `oauth_keys.example.json` 复制为已被 git 忽略的 `oauth_keys.json`，再加上 `--dart-define-from-file=oauth_keys.json`。详见 [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md)。
+
 ## 格间已在 App Store 上架
 
 <div style="text-align: left;">

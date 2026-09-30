@@ -15,6 +15,7 @@ import 'package:velock_sync/background/foreground_sync_coordinator.dart';
 import 'package:velock_sync/core/local_data_manager.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/features/connection/ui/remote_provider_icon.dart';
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/features/plain_sync/state/plain_sync_providers.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_providers.dart';
@@ -33,6 +34,7 @@ late final OAuthCallbackLinkReceiver oauthCallbackLinkReceiver;
 void main() async {
   // debugDefaultTargetPlatformOverride = TargetPlatform.android;
   WidgetsFlutterBinding.ensureInitialized();
+  registerTrademarkNotices();
   oauthCallbackLinkReceiver = OAuthCallbackLinkReceiver.system();
   await LocalDataManager.instance.init();
   await SyncStateDatabase.initialize();

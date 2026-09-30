@@ -54,8 +54,38 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
     WidgetsBinding.instance.addObserver(this);
     _profiles = _load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_continueAppliedSnapshots());
+      if (!mounted) return;
+      unawaited(_continueAppliedSnapshots());
+      unawaited(_resumePendingPairing());
     });
+  }
+
+  /// iOS can terminate Sync while the user approves a pairing in Velock, and
+  /// Velock then relaunches Sync here. Reopen setup so that approval is picked
+  /// up (and verified) instead of the user having to start over.
+  Future<void> _resumePendingPairing() async {
+    if (!_isVelock || ref.read(velockWizardSessionProvider).session != null) {
+      return;
+    }
+    final pending = await ref
+        .read(velockPendingPairingStoreProvider)
+        .load(now: ref.read(velockWizardClockProvider)());
+    if (pending == null ||
+        !mounted ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        ref.read(velockWizardSessionProvider).session != null) {
+      return;
+    }
+    final query = {
+      if (pending.restoring) 'intent': 'restore',
+      'replace': ?pending.replacingProfileId,
+    };
+    await _open(
+      Uri(
+        path: AppRoutes.velockDatasetWizard.path,
+        queryParameters: query.isEmpty ? null : query,
+      ).toString(),
+    );
   }
 
   @override

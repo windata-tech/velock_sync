@@ -55,7 +55,11 @@ void main() {
       }
     }
 
-    final metadata = await store().put('slow.bin', slowBody(), contentLength: 8);
+    final metadata = await store().put(
+      'slow.bin',
+      slowBody(),
+      contentLength: 8,
+    );
 
     expect(metadata.size, 8);
     expect(received, [0, 1, 2, 3, 4, 5, 6, 7]);

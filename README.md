@@ -33,6 +33,10 @@ Velock Sync is fully open source under the Apache-2.0 license. Anyone can audit 
 
 The project is maintained by Chongqing Win Data Technology Co., Ltd. Open source and the commercial operations of Velock are independent of each other: you may always build from source, self-host, or use versions from official channels. Using Velock Sync requires no Velock account and does not lock you into any specific cloud service.
 
+## Building from source: cloud drive keys
+
+The repository contains no cloud drive app keys. Official releases inject them at build time; a build without them still works — users enter their own free app registration on the connection page (“Use your own app key”). To build with your own keys, copy `oauth_keys.example.json` to the git-ignored `oauth_keys.json` and pass `--dart-define-from-file=oauth_keys.json`. See [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md).
+
 ## Velock is available on the App Store
 
 <div style="text-align: left;">

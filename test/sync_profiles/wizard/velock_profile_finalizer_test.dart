@@ -513,16 +513,19 @@ void main() {
           finalizeReplacement(remoteRootSegments: const ['elsewhere']),
           'replacement_location_mismatch',
         );
-        expect((await profiles.read('old-profile'))!.toJson(), original.toJson());
+        expect(
+          (await profiles.read('old-profile'))!.toJson(),
+          original.toJson(),
+        );
         expect(await profiles.read('new-profile'), isNull);
 
         await profiles.remove('old-profile');
         final otherVault = await saveOriginalAs('vault-2', profiles, now);
-        await _expectCode(
-          finalizeReplacement(),
-          'replacement_vault_mismatch',
+        await _expectCode(finalizeReplacement(), 'replacement_vault_mismatch');
+        expect(
+          (await profiles.read('old-profile'))!.toJson(),
+          otherVault.toJson(),
         );
-        expect((await profiles.read('old-profile'))!.toJson(), otherVault.toJson());
         expect(events, isNot(contains('ack')));
       });
 
@@ -535,7 +538,10 @@ void main() {
         );
 
         await _expectCode(finalizeReplacement(), 'replaced_profile_changed');
-        expect((await profiles.read('old-profile'))!.toJson(), original.toJson());
+        expect(
+          (await profiles.read('old-profile'))!.toJson(),
+          original.toJson(),
+        );
         expect(await profiles.read('new-profile'), isNull);
         expect(events, isNot(contains('ack')));
       });

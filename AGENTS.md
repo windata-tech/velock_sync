@@ -8,13 +8,21 @@
 
 - 地址、账号、密码记录在 `tool/local_webdav/nas_webdav.local.env`（已 gitignore，**禁止提交、禁止复制到受版本控制的文件**）。
 - 需要凭据时先读该文件，例如：`set -a; source tool/local_webdav/nas_webdav.local.env; set +a`，再用 `curl -u "$WEBDAV_USER:$WEBDAV_PASSWORD" ...`。
-- NAS 文件系统路径 `/vol4/1000/USB_HDD_8T/velock-sync` 在 WebDAV 上对应的真实目录是 `parcool 共享给我/velock-sync`（共享名带空格和中文，URL 需编码）。
+- NAS 文件系统路径（`WEBDAV_NAS_PATH`）与它在 WebDAV 上对应的真实目录（`WEBDAV_DISPLAY_PATH`）同样只记在该 env 文件里；共享名带空格和中文，URL 需编码。
+- 本仓库公开：真实服务器域名/IP、NAS 路径、共享名不得写进受版本控制的代码、文档、测试或截图；截图含连接列表时先脱敏（用 `nas.example.com` 等占位）。
 - 若认证返回 401 或路径 404，先核对本文件记录并向用户确认，不要猜测或改写凭据。
 
 ### 2. 本机测试服务（WsgiDAV）
 
 - `tool/local_webdav/start_local_webdav.sh [start|stop|restart|status]`，默认端口 8888、账号 `velock` / `velock123`，数据根目录 `ui_test_results/persistent-webdav-root`。
 - 这是模拟器/本机自测用的假服务，与上面的 NAS 无关，勿混用凭据。
+
+## Sync 单模拟器 E2E（2026-09-30，跨会话入口）
+
+- 先读 `docs/testing/sync-e2e.md`。脚本在 `tool/ios_ui_test/sim/`（`ui.sh` 精简树、`tap.sh` 按 identifier 点击、`run_test.sh` 单测、`backup_smoke.sh` 本机 WebDAV 冒烟）；私密值只放 gitignore 的 `local.env`。
+- 界面自动化只按 widget key 发布的 accessibility identifier 定位，不再用中文标签；改界面时同一次改动里补 key / 更新 `testBackupSmoke`。
+- 只改 Sync 时增量：重建安装 Sync、复用模拟器与格间状态，只跑受影响的测试。
+- **用户说“测试”= 运行 `tool/ios_ui_test/sim/e2e.sh`**（构建→重装两 App→格间六类造数→数据库校验→Sync 配对备份→远端无明文），约 5–7 分钟；失败按提示 `--from <阶段>` 续跑，不要重新探索界面。重装只允许 `local.env` 的 `E2E_RESET_ALLOWED_UDID`。
 
 ## 教程录制与验收（跨会话入口）
 
@@ -343,3 +351,17 @@
 - 等待格间应用快照的恢复 profile 提供「检查恢复进度」，回前台自动检查；前台自动同步结束要刷新首页卡片。
 - 文件同步选择远端目录时，按内容拒绝含 `velock-sync` 的格间备份目录（不只查本机 profile）。
 - 格间侧：恢复密钥输入规范化（U+2011 等短横线）、等待恢复横幅由 `waitEnded` 信号刷新、恢复场景批准文案。详见 `docs/verification/2026-09-29-qa-fixes.md`（Sync 1303、格间 1399 项通过；未模拟器复测）。
+
+## 百度网盘 / 阿里云盘连接（2026-09-30）
+
+- 新建连接直达协议列表（中间页 `new_connection.dart` 已删）。百度 `BaiduNetdiskObjectStore`（xpan，token 走 query、错误是 HTTP200+errno、4MiB 分块 MD5、`rtype=0` 防覆盖、返回路径不同即拒绝、spool 必删）与阿里云 `AliyunDriveObjectStore`（openapi.alipan.com，`check_name_mode=refuse`、预签名 URL 过期仅刷新一次、存储域名不带 Bearer、同名改名即拒绝）均已接入 OAuth、目录选择、连接说明与矩阵。
+- 内置密钥只在构建时注入（`BAIDU_NETDISK_APP_KEY`/`BAIDU_NETDISK_SECRET_KEY`/可选 `BAIDU_NETDISK_APP_FOLDER`、`ALIYUN_DRIVE_CLIENT_ID`/可选 `ALIYUN_DRIVE_CLIENT_SECRET`、`GOOGLE_OAUTH_CLIENT_ID`、`ONEDRIVE_OAUTH_CLIENT_ID`），用 `cp oauth_keys.example.json oauth_keys.json` + `--dart-define-from-file`，见 `docs/OAUTH_SETUP.md`。
+
+### 网盘应用密钥：仓库不带、用户可自带（2026-09-30）
+
+- 用户原话：「我这是开源项目啊，我注册好了，开源后，别人都能用我的key了？」。**仓库里不得出现任何网盘 AppKey/Client ID/Secret**；`oauth_keys.json` / `*.oauth_keys.json` 已 gitignore，示例 `oauth_keys.example.json` 全部留空（空 define 视为“没有内置密钥”，`BAIDU_NETDISK_APP_FOLDER` 空值回落 `Velock Sync`）。
+- 没有内置密钥不再是死路「此版本暂未开通」：连接页给「使用自己的应用密钥」表单（`oauth-own-*` keys，Google/OneDrive 只要 Client ID；百度要 AppKey+SecretKey+应用名称；阿里云 App ID、Secret 可选），存在系统安全存储 `velock-sync/oauth-client/<type>`，优先于内置密钥，release 构建也可用。协议列表里既无内置也无自带密钥的网盘折叠在「更多云盘」（`protocols-more-toggle`）。
+- 用户自带的 secret 随该次登录的 token 一起保存（刷新需要它）；**内置 secret 永不持久化、也不混进用户自己的应用**（`isBuiltInClientId` 判定）。已有连接保留它登录时用的密钥，改/删自带密钥只影响下一次登录。
+- 面向用户的界面与帮助不得出现 dart-define/环境变量等构建术语（开发者表单与 `AppKeys` 中的 OAuth Client ID 已删除）。
+- 回归：`test/providers/oauth/oauth_client_registration_test.dart`（12 项，含变异检查）、`remote_provider_availability_test.dart`、`backup_navigation_test.dart`（四家各：折叠入口、自带密钥表单、显式保存）。未验证：真实账号端到端；Google iOS 客户端是否接受自定义 scheme `velocksync://oauth/callback`。
+- 验证边界：两家各 16 项 V1 契约 + 专项用例在**有状态假服务器**上通过并做过变异检查；接口细节未能对照官方文档在线核实，**没有真实账号端到端**。`velocksync://oauth/callback` 是否被两家后台接受、百度 `/apps` 目录限制、阿里云默认盘/资源盘选择都待真实账号确认。百度 secret 打进客户端二进制可被提取。

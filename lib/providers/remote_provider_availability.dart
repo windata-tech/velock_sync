@@ -1,28 +1,24 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:hooks_riverpod/hooks_riverpod.dart' show Provider;
 import 'package:velock_sync/providers/oauth/oauth_public_client_configuration.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 
-/// Which remote location types this build can actually set up.
-///
-/// Only types that can finish a real connection are offered when adding a
-/// connection. A type is never hidden from lists of connections that already
-/// exist; those stay listable, editable and deletable.
+/// Which remote location types this build can set up without any extra step.
 ///
 /// - WebDAV is always available.
-/// - Google Drive / OneDrive need a public OAuth client ID supplied at build
-///   time (`--dart-define`). Debug builds also offer them so developers can
-///   reach the developer Client ID form; release builds never do.
-/// - Baidu Netdisk and Aliyun Drive have no storage adapter in this build.
+/// - Google Drive, OneDrive, Baidu Netdisk and Aliyun Drive are ready when the
+///   build carries an OAuth registration for them (`--dart-define`; Baidu also
+///   needs its SecretKey). The repository ships none, so a self-built copy has
+///   none unless its builder adds their own.
+/// - Any OAuth type without one can still be connected with the user's own
+///   app registration ([needsOwnRegistration]); such types are listed apart
+///   so nobody reaches a dead end by accident.
+///
+/// A type is never hidden from lists of connections that already exist.
 class RemoteProviderAvailability {
-  const RemoteProviderAvailability({
-    required this.creatable,
-    required this.allowsDeveloperClientId,
-  });
+  const RemoteProviderAvailability({required this.creatable});
 
   /// Availability for the running build.
   factory RemoteProviderAvailability.forBuild({
-    bool developerMode = kDebugMode,
     bool Function(RemoteProviderType)? hasBuiltInClientId,
   }) {
     final configured =
@@ -31,24 +27,30 @@ class RemoteProviderAvailability {
     return RemoteProviderAvailability(
       creatable: {
         RemoteProviderType.webDav,
-        for (final type in const [
-          RemoteProviderType.googleDrive,
-          RemoteProviderType.oneDrive,
-        ])
-          if (developerMode || configured(type)) type,
+        for (final type in oauthProviderTypes)
+          if (configured(type)) type,
       },
-      allowsDeveloperClientId: developerMode,
     );
   }
 
-  /// Types a user may pick when adding a new connection, in display order.
+  static const oauthProviderTypes = [
+    RemoteProviderType.googleDrive,
+    RemoteProviderType.oneDrive,
+    RemoteProviderType.baiduNetdisk,
+    RemoteProviderType.aliyunDrive,
+  ];
+
+  /// Types that work out of the box in this build, in display order.
   final Set<RemoteProviderType> creatable;
 
-  /// Whether the developer-only Client ID form (and a Client ID saved through
-  /// it) may be used. Always false in release builds.
-  final bool allowsDeveloperClientId;
-
   bool canCreate(RemoteProviderType type) => creatable.contains(type);
+
+  /// OAuth types this build has no registration for. They can only be
+  /// connected with an app the user registered on that provider themselves.
+  List<RemoteProviderType> get needsOwnRegistration => [
+    for (final type in oauthProviderTypes)
+      if (!creatable.contains(type)) type,
+  ];
 
   /// Creatable types in the fixed order used by pickers and summaries.
   List<RemoteProviderType> get ordered => [

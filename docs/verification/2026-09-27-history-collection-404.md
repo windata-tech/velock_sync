@@ -30,7 +30,7 @@
 - 只读数据库核对：当前配置已保存为 `/USB_HDD_8T/222`；17:34 失败码为 `remote.velock_history_incomplete`。本地签名 checkpoint 的 coveredSequences 为 7。
 - outgoing_batches 中第 1 批属于旧配置 A，第 2～7 批属于旧配置 B，均为 published；A、B 的保存位置均是 `/USB_HDD_8T/111`。这比仅查看旧路径提供了更强的定位依据，但仍不是对当前 NAS 内容的重新验签。
 - 本机 GC 的 deleted_object_count 总和为 0，没有本机同步清理删除旧历史的证据。
-- 私有测试 WebDAV 账号只能读共享目录 `parcool 共享给我` 下的测试空间，不能代替 App 内账号检查 `/111`、`/222`。XcodeBuildMCP 的 AX 工具缺少 SimulatorKit.framework，备用桌面工具超时，本轮没有取得 App 账号的实际目录列表。GUI 租约已释放。
+- 私有测试 WebDAV 账号只能读共享目录 `<共享名>` 下的测试空间，不能代替 App 内账号检查 `/111`、`/222`。XcodeBuildMCP 的 AX 工具缺少 SimulatorKit.framework，备用桌面工具超时，本轮没有取得 App 账号的实际目录列表。GUI 租约已释放。
 
 ### 防止任意已有目录被当成原备份位置
 

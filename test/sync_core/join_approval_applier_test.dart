@@ -213,9 +213,7 @@ void main() {
     final database = await SyncStateDatabase.inMemory();
     final profiles = SyncProfileRepository(database);
     final keyPair = await Ed25519().newKeyPair();
-    final publicKey = base64UrlEncode(
-      (await keyPair.extractPublicKey()).bytes,
-    );
+    final publicKey = base64UrlEncode((await keyPair.extractPublicKey()).bytes);
     final root = await Directory.systemTemp.createTemp('velock-approval-');
     addTearDown(() async {
       if (root.existsSync()) await root.delete(recursive: true);

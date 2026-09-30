@@ -1,9 +1,8 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
-import 'package:velock_sync/core/app_router.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_object_store.dart';
 import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
@@ -23,11 +22,14 @@ class ConnectionHelpPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // The overview documents only the location types this build can set up.
-    // A single-provider page stays reachable for any saved connection.
-    final availability = ref.watch(remoteProviderAvailabilityProvider);
+    // Every type can be set up — a cloud drive without a built-in key takes
+    // the user's own app registration — so the overview documents them all.
     final documents = providerType == null
-        ? [for (final type in availability.ordered) _documentFor(context, type)]
+        ? [
+            _documentFor(context, RemoteProviderType.webDav),
+            for (final type in RemoteProviderAvailability.oauthProviderTypes)
+              _documentFor(context, type),
+          ]
         : [_documentFor(context, providerType!)];
 
     return AdaptiveScaffold(
@@ -38,18 +40,6 @@ class ConnectionHelpPage extends ConsumerWidget {
               '${documents.single.title} 配置说明',
               '${documents.single.title} setup',
             ),
-      actions:
-          providerType == RemoteProviderType.baiduNetdisk &&
-              availability.canCreate(RemoteProviderType.baiduNetdisk)
-          ? [
-              AdaptiveTextButton(
-                padding: EdgeInsets.zero,
-                onPressed: () =>
-                    context.pushNamed(AppRoutes.newBaiduToken.name),
-                child: Text(syncText(context, '配置 Token', 'Configure token')),
-              ),
-            ]
-          : const [],
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.page,
@@ -536,24 +526,29 @@ ConnectionHelpDocument _googleDriveDocument(
         ConnectionHelpItem(
           title: syncText(
             context,
-            '准备公开 OAuth Client ID',
-            'Prepare a public OAuth Client ID',
+            '内置密钥或你自己的 Client ID',
+            'The built-in key or your own Client ID',
           ),
           body: syncText(
             context,
-            '在 Google Cloud 项目中启用 Drive API，配置 OAuth 同意屏幕并创建 OAuth Client ID。移动端使用公开客户端，不需要、也不应该把 Client Secret 放进应用。',
-            'In your Google Cloud project, enable the Drive API, configure the OAuth consent screen and create an OAuth Client ID. Mobile apps use a public client, so a Client Secret is neither needed nor safe to put in the app.',
+            '如果这个版本内置了 Google 的应用密钥，直接登录即可。没有内置时（例如自己编译的版本），可以在 Google Cloud 免费创建一个自己的 OAuth Client ID，填到连接页的“使用自己的应用密钥”里。',
+            'If this version has Google’s app key built in, just sign in. If it does not (for example a build you made yourself), create your own OAuth Client ID in Google Cloud for free and enter it under “Use your own app key” on the connection page.',
           ),
           bullets: [
             syncText(
               context,
-              '将 Client ID 作为构建参数 GOOGLE_OAUTH_CLIENT_ID 传入。',
-              'Pass the Client ID as the build option GOOGLE_OAUTH_CLIENT_ID.',
+              '在 Google Cloud 项目中启用 Drive API，配置 OAuth 同意屏幕，再创建 OAuth Client ID。',
+              'In your Google Cloud project, enable the Drive API, configure the OAuth consent screen, then create an OAuth Client ID.',
             ),
             syncText(
               context,
-              '没有传入 Client ID 时，页面会显示“授权未就绪”，保存按钮不会开始授权。',
-              'Without a Client ID the page shows “Authorization not ready” and Save does not start the sign-in.',
+              '移动端是公开客户端，只需要 Client ID，不需要也不要填写 Client Secret。',
+              'Mobile apps are public clients: only the Client ID is needed, and no Client Secret should be entered.',
+            ),
+            syncText(
+              context,
+              '你自己的 Client ID 只保存在这台设备的系统安全存储中，不会上传。',
+              'Your own Client ID is kept only in this device’s system secure storage and is never uploaded.',
             ),
             syncText(
               context,
@@ -566,8 +561,8 @@ ConnectionHelpDocument _googleDriveDocument(
           title: syncText(context, '登记回调地址', 'Register the redirect address'),
           body: syncText(
             context,
-            '授权完成后，系统浏览器通过 velocksync://oauth/callback 把结果交回应用。Google Cloud 中登记的回调配置必须与构建版本使用的地址一致。',
-            'When sign-in finishes, the system browser hands the result back to the app through velocksync://oauth/callback. The redirect registered in Google Cloud must match the address your build uses.',
+            '使用自己的 Client ID 时，授权完成后系统浏览器通过 velocksync://oauth/callback 把结果交回应用，Google Cloud 中登记的回调地址必须与它一致（连接页可以直接复制）。',
+            'With your own Client ID, the system browser hands the result back to the app through velocksync://oauth/callback when sign-in finishes. The redirect registered in Google Cloud must match it exactly (you can copy it from the connection page).',
           ),
         ),
         ConnectionHelpItem(
@@ -658,11 +653,15 @@ ConnectionHelpDocument _googleDriveDocument(
       title: syncText(context, '常见问题', 'Common problems'),
       items: [
         ConnectionHelpItem(
-          title: syncText(context, '提示授权未就绪', '“Authorization not ready”'),
+          title: syncText(
+            context,
+            '连接页要求填写应用密钥',
+            'The connection page asks for an app key',
+          ),
           body: syncText(
             context,
-            '检查构建命令是否包含 --dart-define=GOOGLE_OAUTH_CLIENT_ID=你的客户端 ID，并确认使用的是正确环境的构建产物。',
-            'Check that the build command includes --dart-define=GOOGLE_OAUTH_CLIENT_ID=your client ID, and that you are running a build made for the right environment.',
+            '说明这个版本没有内置 Google 的应用密钥。按上面的步骤创建自己的 Client ID 并填入；如果 Google 提示 redirect_uri_mismatch，检查回调地址是否与连接页显示的完全一致。',
+            'This version has no built-in Google app key. Create your own Client ID as described above and enter it. If Google reports redirect_uri_mismatch, check that the redirect matches the one shown on the connection page exactly.',
           ),
         ),
         ConnectionHelpItem(
@@ -741,17 +740,21 @@ ConnectionHelpDocument _oneDriveDocument(
       title: syncText(context, '开始前准备', 'Before you start'),
       items: [
         ConnectionHelpItem(
-          title: syncText(context, '创建公开客户端应用', 'Create a public client app'),
+          title: syncText(
+            context,
+            '内置密钥或你自己的应用',
+            'The built-in key or your own app',
+          ),
           body: syncText(
             context,
-            '在 Microsoft Entra 管理中心注册应用，使用适合移动端的公开客户端配置。应用不接受 Client Secret，也不会把 Secret 编译进客户端。',
-            'Register the app in the Microsoft Entra admin center with a public client configuration for mobile. The app accepts no Client Secret and never compiles one into the client.',
+            '如果这个版本内置了 OneDrive 的应用密钥，直接登录即可。没有内置时，可以在 Microsoft Entra 管理中心免费注册一个公开客户端应用，把“应用程序（客户端）ID”填到连接页的“使用自己的应用密钥”里。应用不接受 Client Secret。',
+            'If this version has OneDrive’s app key built in, just sign in. If it does not, register a public client app in the Microsoft Entra admin center for free and enter its Application (client) ID under “Use your own app key” on the connection page. The app accepts no Client Secret.',
           ),
           bullets: [
             syncText(
               context,
-              '将 Application (client) ID 作为构建参数 ONEDRIVE_OAUTH_CLIENT_ID 传入。',
-              'Pass the Application (client) ID as the build option ONEDRIVE_OAUTH_CLIENT_ID.',
+              '填写的是 Application (client) ID，不是 Directory (tenant) ID。',
+              'Enter the Application (client) ID, not the Directory (tenant) ID.',
             ),
             syncText(
               context,
@@ -769,8 +772,8 @@ ConnectionHelpDocument _oneDriveDocument(
           title: syncText(context, '登记回调地址', 'Register the redirect address'),
           body: syncText(
             context,
-            '授权完成后，系统浏览器通过 velocksync://oauth/callback 回到应用。Entra 应用注册中的移动端回调配置必须与这个地址一致。',
-            'When sign-in finishes, the system browser returns to the app through velocksync://oauth/callback. The mobile redirect in the Entra app registration must match this address.',
+            '使用自己的应用时，授权完成后系统浏览器通过 velocksync://oauth/callback 回到应用。Entra 应用注册中的“移动和桌面应用程序”回调必须与这个地址一致（连接页可以直接复制）。',
+            'With your own app, the system browser returns to the app through velocksync://oauth/callback when sign-in finishes. The “Mobile and desktop applications” redirect in the Entra app registration must match this address (you can copy it from the connection page).',
           ),
         ),
         ConnectionHelpItem(
@@ -861,11 +864,15 @@ ConnectionHelpDocument _oneDriveDocument(
       title: syncText(context, '常见问题', 'Common problems'),
       items: [
         ConnectionHelpItem(
-          title: syncText(context, '提示授权未就绪', '“Authorization not ready”'),
+          title: syncText(
+            context,
+            '连接页要求填写应用密钥',
+            'The connection page asks for an app key',
+          ),
           body: syncText(
             context,
-            '检查构建命令是否包含 --dart-define=ONEDRIVE_OAUTH_CLIENT_ID=你的 Application (client) ID，并确认没有把 Directory (tenant) ID 填错。',
-            'Check that the build command includes --dart-define=ONEDRIVE_OAUTH_CLIENT_ID=your Application (client) ID, and that the Directory (tenant) ID was not mixed up with it.',
+            '说明这个版本没有内置 OneDrive 的应用密钥。按上面的步骤注册自己的应用并填入 Application (client) ID，注意不要填成 Directory (tenant) ID。',
+            'This version has no built-in OneDrive app key. Register your own app as described above and enter its Application (client) ID — not the Directory (tenant) ID.',
           ),
         ),
         ConnectionHelpItem(
@@ -940,345 +947,85 @@ ConnectionHelpDocument _baiduNetdiskDocument(
   title: syncText(context, '百度网盘', 'Baidu Netdisk'),
   intro: syncText(
     context,
-    '百度网盘的 OAuth 文档提供授权码、简化和设备码三种模式。当前页面可以把你已经取得的 AppKey、Token 和可选 SecretKey 保存到系统安全存储，但这不等于已经创建了可同步连接。',
-    'Baidu Netdisk documents three OAuth modes: authorization code, implicit and device code. This page can save an AppKey, token and optional SecretKey you already obtained into system secure storage, but that does not create a connection you can sync with.',
+    '用百度账号登录授权后，Sync 通过百度网盘开放平台读写文件。如果这个版本内置了百度的应用密钥，直接登录即可；否则需要先免费注册一个自己的应用。',
+    'Sign in with your Baidu account and Sync reads and writes files through the Baidu Netdisk open platform. If this version has Baidu’s app key built in, just sign in; otherwise register your own app first, for free.',
   ),
   sections: [
     ConnectionHelpSection(
-      title: syncText(context, '先说清楚当前状态', 'Where things stand'),
+      title: syncText(context, '怎么连接', 'How to connect'),
       items: [
         ConnectionHelpItem(
-          title: syncText(
-            context,
-            '“配置 Token”能做什么',
-            'What “Configure token” does',
-          ),
+          title: syncText(context, '登录并同意授权', 'Sign in and approve'),
           body: syncText(
             context,
-            '它会把百度 OAuth 凭据保存到当前设备的系统安全存储中，避免凭据进入普通偏好设置、连接 JSON、同步包或诊断日志。再次打开页面时，已保存的字段会回填到表单中。',
-            'It saves the Baidu OAuth credentials into system secure storage on this device, so they stay out of ordinary preferences, connection JSON, sync packages and diagnostic logs. Reopening the page fills the saved fields back into the form.',
+            '点击“登录并选择保存位置”后会打开百度的登录页。登录并同意后回到 Sync，再选择保存位置。',
+            'Tap “Sign in and choose a location” to open Baidu’s sign-in page. After you sign in and approve, return to Sync and choose where to save.',
           ),
         ),
         ConnectionHelpItem(
           title: syncText(
             context,
-            '为什么之前显示“暂不可用”',
-            'Why it used to say “Not available yet”',
+            '没有内置密钥时：使用自己的应用',
+            'Without a built-in key: use your own app',
           ),
           body: syncText(
             context,
-            '这不是说百度网盘账号不能授权，而是当前仓库还没有百度网盘 RemoteObjectStore 适配器，连接状态检查和实际上传/下载还没有实现。同时，百度官方设备码、授权码和刷新 Token 的请求都要求 SecretKey；把这个密钥编译进移动端并不安全。',
-            'That message did not mean a Baidu account cannot be authorized: this build has no Baidu storage adapter yet, so connection checks and real uploads or downloads are missing. On top of that, Baidu device-code, authorization-code and token-refresh requests all require the SecretKey, and compiling that key into a mobile app is not safe.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            '保存后为什么不会出现在连接列表',
-            'Why saving does not add a connection',
-          ),
-          body: syncText(
-            context,
-            '凭据配置页只保存 Token，不创建一个无法执行同步的假连接。等百度适配器和受信任的 Token Broker 完成后，才会把这组凭据接入真正的连接向导。',
-            'This page only stores tokens; it does not create a fake connection that cannot sync. Once a Baidu adapter and a trusted token broker exist, these credentials will be wired into the real connection flow.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(context, '什么时候才算真正支持', 'What real support requires'),
-          body: syncText(
-            context,
-            '至少需要百度网盘 RemoteObjectStore、统一对象存储契约测试、401/403/429 等错误映射，以及不把 SecretKey 暴露给移动端的授权或 Token Broker 流程。',
-            'At the very least: a Baidu storage adapter, the shared storage contract tests, error mapping for 401/403/429, and a sign-in or token broker flow that does not expose the SecretKey to the mobile app.',
-          ),
-        ),
-      ],
-    ),
-    ConnectionHelpSection(
-      title: syncText(
-        context,
-        '在百度官方平台准备应用',
-        'Prepare an app on the Baidu platform',
-      ),
-      items: [
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            '进入百度网盘开放平台控制台',
-            'Open the Baidu Netdisk developer console',
-          ),
-          body: syncText(
-            context,
-            '官方控制台入口：https://pan.baidu.com/union/console/applist?from=doc_header。登录百度账号后，在应用列表中创建或选择应用。',
-            'Console: https://pan.baidu.com/union/console/applist?from=doc_header. Sign in with your Baidu account, then create or pick an app in the app list.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            '记录 AppKey 和 SecretKey',
-            'Note the AppKey and SecretKey',
-          ),
-          body: syncText(
-            context,
-            'AppKey 是应用标识，SecretKey 是应用密钥。AppKey 可以作为客户端标识使用；SecretKey 属于机密信息，不要提交到代码仓库、截图、构建参数、崩溃日志或聊天记录。',
-            'The AppKey identifies your app and the SecretKey is its secret. The AppKey can act as the client identifier, but the SecretKey must never go into a repository, screenshot, build option, crash log or chat message.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(context, '申请网盘权限', 'Request Netdisk access'),
-          body: syncText(
-            context,
-            '百度官方示例使用 scope=basic,netdisk。实际 Token 返回的 scope 还会受到应用配置和用户同意结果影响；页面中的 Scope 至少要包含 netdisk，否则不能代表网盘访问授权。',
-            'Baidu examples use scope=basic,netdisk. The scope a token really returns also depends on your app configuration and what the user agreed to; the Scope field here must include netdisk, or it does not stand for Netdisk access.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            '需要回调地址时按控制台原值填写',
-            'Use the console value for the redirect address',
-          ),
-          body: syncText(
-            context,
-            '授权码模式要求 redirect_uri 与百度控制台设置完全一致。百度文档还允许无 Server 应用使用 redirect_uri=oob；不要把 Velock 的 velocksync:// 回调地址直接填给百度，除非百度控制台和当前授权流程都明确支持并登记了它。',
-            'The authorization-code mode requires redirect_uri to match the Baidu console exactly. Baidu also allows redirect_uri=oob for apps without a server; do not give Baidu the Velock velocksync:// address unless the console and the flow you use both support and register it.',
-          ),
-        ),
-      ],
-    ),
-    ConnectionHelpSection(
-      title: syncText(
-        context,
-        '官方三种授权方式怎么选',
-        'Choosing among the three sign-in modes',
-      ),
-      items: [
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            '授权码模式：适合有服务端的正式接入',
-            'Authorization code: for a server-backed setup',
-          ),
-          body: syncText(
-            context,
-            '先访问 authorize 接口取得 code，再由服务端调用 token 接口换取 access_token、expires_in 和 refresh_token。code 只能使用一次，10 分钟未使用会过期；换 Token 时需要 AppKey、SecretKey 和完全匹配的 redirect_uri。',
-            'Call the authorize endpoint for a code, then have your server call the token endpoint for access_token, expires_in and refresh_token. A code works once and expires after 10 minutes unused; exchanging it needs the AppKey, the SecretKey and an exactly matching redirect_uri.',
+            '在百度网盘开放平台登录并创建一个应用，然后把下面三项填到连接页的“使用自己的应用密钥”里。它们只保存在这台设备的系统安全存储中。',
+            'Sign in to the Baidu Netdisk open platform and create an app, then enter these three values under “Use your own app key” on the connection page. They stay only in this device’s system secure storage.',
           ),
           bullets: [
             syncText(
               context,
-              '官方授权入口示例：https://openapi.baidu.com/oauth/2.0/authorize?response_type=code&client_id=AppKey&redirect_uri=回调地址&scope=basic,netdisk。',
-              'Example authorize URL: https://openapi.baidu.com/oauth/2.0/authorize?response_type=code&client_id=AppKey&redirect_uri=<redirect uri>&scope=basic,netdisk.',
+              'AppKey 与 SecretKey：在应用详情里可以看到。SecretKey 百度每次续期登录都要用，所以会和这个连接的授权一起保存。',
+              'AppKey and SecretKey: shown on the app’s details page. Baidu needs the SecretKey every time the sign-in is renewed, so it is stored with this connection’s sign-in.',
             ),
             syncText(
               context,
-              '如果 code 已经使用过或已过期，不要重复提交，重新发起授权。',
-              'If the code was already used or has expired, do not resubmit it; start the sign-in again.',
+              '应用名称：百度只允许这个应用写入“我的应用数据”下以它命名的文件夹，所以要填写与开放平台上完全一致的名称。',
+              'App name: Baidu only lets the app write to the folder named after it under “My app data”, so enter it exactly as shown on the open platform.',
+            ),
+            syncText(
+              context,
+              '授权回调地址填写 velocksync://oauth/callback（连接页可以直接复制）。',
+              'Set the redirect address to velocksync://oauth/callback (you can copy it from the connection page).',
             ),
           ],
         ),
         ConnectionHelpItem(
-          title: syncText(
-            context,
-            '简化模式：只有短期 Access Token',
-            'Implicit: a short-lived access token only',
-          ),
+          title: syncText(context, '推荐使用 Sync 专用文件夹', 'Use Sync’s app folder'),
           body: syncText(
             context,
-            '把 response_type 设为 token，授权后直接从回调结果中取得 access_token 和 expires_in。百度 FAQ 明确说明，这种模式有效期较短且不支持刷新，过期后必须重新登录授权。',
-            'With response_type set to token, the access_token and expires_in come straight back in the redirect. Baidu FAQ states this mode is short-lived and cannot be refreshed, so signing in again is required once it expires.',
-          ),
-          bullets: [
-            syncText(
-              context,
-              '适合临时验证，不适合长期无人值守同步。',
-              'Fine for a quick check; not for long unattended syncing.',
-            ),
-            syncText(
-              context,
-              '如果你只有这一类 Token，页面可以只填写 AppKey 和 Access Token，SecretKey、Refresh Token 与过期时间可以留空。',
-              'If this is the only token you have, fill in just the AppKey and Access Token; SecretKey, Refresh Token and the expiry may stay empty.',
-            ),
-          ],
-        ),
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            '设备码模式：适合无回调或输入受限的设备',
-            'Device code: for devices without a redirect or with limited input',
-          ),
-          body: syncText(
-            context,
-            '先用 AppKey 请求 device_code、user_code、verification_url 和 qrcode_url，让用户在浏览器或手机完成授权；再用 device_code 轮询 token 接口。官方示例返回 expires_in=300 秒、interval=5 秒，轮询间隔不要低于 5 秒。',
-            'Request device_code, user_code, verification_url and qrcode_url with the AppKey so the user can approve in a browser or on a phone, then poll the token endpoint with the device_code. Baidu example returns expires_in=300 seconds and interval=5 seconds; do not poll more often than every 5 seconds.',
-          ),
-          bullets: [
-            syncText(
-              context,
-              '换 Token 的 grant_type 是 device_token，并且官方文档要求提交 SecretKey。',
-              'The exchange uses grant_type=device_token, and the official documentation requires the SecretKey with it.',
-            ),
-            syncText(
-              context,
-              '成功后通常会得到有效期 30 天的 access_token 和可刷新的 refresh_token。',
-              'On success you usually get an access_token valid for 30 days and a refreshable refresh_token.',
-            ),
-            syncText(
-              context,
-              'refresh_token 只能使用一次；刷新响应返回的新 refresh_token 必须替换旧值。',
-              'A refresh_token works once; the new refresh_token in the response must replace the old value.',
-            ),
-          ],
-        ),
-      ],
-    ),
-    ConnectionHelpSection(
-      title: syncText(
-        context,
-        'Token 配置页每个字段怎么填',
-        'What each field on the token page means',
-      ),
-      items: [
-        ConnectionHelpItem(
-          title: 'AppKey',
-          body: syncText(
-            context,
-            '必填。填写百度控制台中应用的 AppKey，不要填应用名称、AppID 或整段授权 URL。它用于标识是哪一个百度应用获得了授权。',
-            'Required. Enter the AppKey of your app in the Baidu console, not the app name, the AppID or a whole authorize URL. It identifies which Baidu app was authorized.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: 'SecretKey',
-          body: syncText(
-            context,
-            '当前为可选字段。简化模式只需要已有 Access Token 时可以留空；设备码换 Token、授权码换 Token 或刷新 Token 时，百度官方流程需要它。输入后只保存在系统安全存储中，但移动端仍不能把它当作真正不可提取的机密。',
-            'Optional here. Leave it empty in implicit mode when you already have an access token; the official Baidu flows need it for device-code exchange, authorization-code exchange and token refresh. It is saved only in system secure storage, but on a mobile device it still cannot be treated as a secret that can never be extracted.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: 'Access Token',
-          body: syncText(
-            context,
-            '必填。只粘贴 Token 值本身，不要带 Bearer 前缀、引号、换行或参数名 access_token=。它代表用户授予应用的当前访问凭证。',
-            'Required. Paste only the token value: no Bearer prefix, quotes, line breaks or access_token= parameter name. It is the current credential the user granted your app.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: 'Refresh Token',
-          body: syncText(
-            context,
-            '可选。授权码或设备码模式通常会返回它；简化模式不支持刷新。百度的 refresh_token 是一次性轮换值，每次刷新成功后必须把新值覆盖旧值，否则下次刷新会失败。',
-            'Optional. Authorization-code and device-code modes usually return one; implicit mode cannot refresh. The Baidu refresh_token rotates and works once, so each successful refresh must overwrite the old value or the next refresh fails.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(context, 'Access Token 过期时间', 'Access Token expiry'),
-          body: syncText(
-            context,
-            '可选，使用 ISO 8601 时间，例如 2026-08-07T12:00:00Z。官方返回 expires_in 时可以根据当前时间换算；不知道准确时间时留空，不要凭感觉填一个很远的日期。',
-            'Optional, in ISO 8601, for example 2026-08-07T12:00:00Z. If Baidu returns expires_in you can work it out from the current time; if you do not know it, leave it empty instead of guessing a far-off date.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: 'Scope',
-          body: syncText(
-            context,
-            '默认填写 basic,netdisk。可以用逗号或空格分隔，但必须包含 netdisk。页面中的 Scope 只是记录 Token 的授权范围，不会替你向百度申请新的权限。',
-            'Defaults to basic,netdisk. Commas or spaces both work, but it must include netdisk. The Scope here only records what the token was granted; it does not request new permissions from Baidu for you.',
+            '百度网盘通常只允许第三方应用写入“我的应用数据”下的专属文件夹：内置密钥是 $baiduNetdiskAppFolder，自己的应用是 /apps/<应用名称>。选别的文件夹时，读取可能正常，但上传会被百度拒绝。',
+            'Baidu Netdisk usually only lets third-party apps write to their own folder under “My app data”: $baiduNetdiskAppFolder with the built-in key, or /apps/<app name> with your own app. Other folders may be readable, but Baidu can refuse uploads there.',
           ),
         ),
       ],
     ),
     ConnectionHelpSection(
-      title: syncText(context, '保存和排错', 'Saving and troubleshooting'),
+      title: syncText(context, '需要知道的事', 'Good to know'),
       items: [
         ConnectionHelpItem(
-          title: syncText(context, '保存按钮做什么', 'What Save does'),
+          title: syncText(context, '登录信息', 'Sign-in details'),
           body: syncText(
             context,
-            '保存按钮只校验必填字段、Scope 和可选的日期格式，然后把凭据写入系统安全存储。它不会调用百度 API，也不会创建连接或开始同步。',
-            'Save checks the required fields, the Scope and the optional date format, then writes the credentials to system secure storage. It calls no Baidu API and creates no connection or syncing.',
+            '授权凭据只保存在系统安全存储中，不会出现在连接设置、同步内容或日志里。删除连接时一并删除。',
+            'Sign-in credentials are kept only in system secure storage, never in connection settings, synced content or logs. They are removed with the connection.',
           ),
         ),
         ConnectionHelpItem(
-          title: 'redirect_uri_mismatch',
+          title: syncText(context, '大文件', 'Large files'),
           body: syncText(
             context,
-            '百度返回这个错误时，通常是授权请求里的 redirect_uri 与控制台安全设置不完全一致。逐字符检查协议、域名、端口、路径、大小写和尾部斜杠；如果是 oob 流程，确保使用的是官方允许的 oob 值。',
-            'This error usually means the redirect_uri in the authorize request does not exactly match the console security setting. Compare scheme, domain, port, path, letter case and trailing slash character by character; for an oob flow, make sure you use the oob value Baidu allows.',
+            '文件按 4 MB 分片上传。上传中断后，下一次会从头重新上传。',
+            'Files upload in 4 MB pieces. If an upload is interrupted, the next attempt starts over.',
           ),
         ),
         ConnectionHelpItem(
-          title: syncText(
-            context,
-            'invalid_client 或 SecretKey 错误',
-            'invalid_client or a SecretKey error',
-          ),
+          title: syncText(context, '授权失效', 'When sign-in expires'),
           body: syncText(
             context,
-            '确认 AppKey 和 SecretKey 属于同一个应用，且没有把 AppID、应用名称或复制时带入的空格当成 SecretKey。不要为了排错把 SecretKey 写入日志。',
-            'Check that the AppKey and SecretKey belong to the same app, and that an AppID, an app name or a space picked up while copying was not used as the SecretKey. Never write the SecretKey to a log to troubleshoot.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            'code 或 device_code 失效',
-            'code or device_code no longer works',
-          ),
-          body: syncText(
-            context,
-            '授权码只能用一次并在 10 分钟后过期；device_code 默认只在返回的 expires_in 内有效。重新发起授权，不要重复轮询已经过期的 code。',
-            'An authorization code works once and expires after 10 minutes; a device_code is valid only for the returned expires_in. Start the sign-in again instead of polling an expired code.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            'refresh_token 刷新失败',
-            'refresh_token refresh fails',
-          ),
-          body: syncText(
-            context,
-            '先确认没有并发刷新同一值。百度要求 refresh_token 一次性使用，成功响应中的新 refresh_token 要替换旧值；如果刷新请求失败，官方建议重新发起授权，而不是循环重试旧值。',
-            'First check that the same value is not being refreshed twice at once. Baidu requires one-time use of a refresh_token, and the new refresh_token in a successful response replaces the old one; if a refresh fails, Baidu advises starting the sign-in again rather than retrying the old value in a loop.',
-          ),
-        ),
-      ],
-    ),
-    ConnectionHelpSection(
-      title: syncText(context, '安全边界', 'Security limits'),
-      items: [
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            'Token 等同于用户网盘操作凭据',
-            'A token acts as the user credential for the drive',
-          ),
-          body: syncText(
-            context,
-            '百度 FAQ 明确不推荐把 access_token 分发给多个客户端，因为泄露后他人可以操作用户网盘内容。不要把 Token 粘贴到工单、群聊、截图、同步包或公开仓库。',
-            'Baidu FAQ advises against handing one access_token to several clients, because anyone who obtains it can act on the user Netdisk content. Never paste a token into a ticket, group chat, screenshot, sync package or public repository.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(
-            context,
-            'SecretKey 不适合放进公共移动应用',
-            'A SecretKey does not belong in a public mobile app',
-          ),
-          body: syncText(
-            context,
-            '只要 SecretKey 在移动端运行时可用，就不能保证永远不被提取。个人测试可以在你信任的设备上临时配置；正式多人使用应通过独立、最小权限的 Token Broker 完成授权和刷新。',
-            'As long as a SecretKey is available at runtime on a phone, it cannot be guaranteed to stay hidden. Personal testing can set it up temporarily on a device you trust; wider use should go through a separate, least-privilege token broker for sign-in and refresh.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(context, '官方文档入口', 'Official documentation'),
-          body: syncText(
-            context,
-            '百度网盘开放平台文档：https://pan.baidu.com/union/doc/；授权介绍：https://pan.baidu.com/union/doc/使用入门/接入授权/授权介绍/；设备码模式：https://pan.baidu.com/union/doc/使用入门/接入授权/设备码模式授权/；接入 access_token FAQ：https://pan.baidu.com/union/doc/faq/接入access_token/。',
-            'Baidu Netdisk developer documentation: https://pan.baidu.com/union/doc/; authorization: https://pan.baidu.com/union/doc/使用入门/接入授权/授权介绍/; device code: https://pan.baidu.com/union/doc/使用入门/接入授权/设备码模式授权/; access_token FAQ: https://pan.baidu.com/union/doc/faq/接入access_token/.',
+            '如果提示需要重新授权，在连接列表的“更多操作”里选择“修改连接”重新登录即可，已选的保存位置不变。',
+            'If you are asked to sign in again, choose “Edit Connection” from the connection’s More menu. The chosen location stays the same.',
           ),
         ),
       ],
@@ -1292,80 +1039,68 @@ ConnectionHelpDocument _aliyunDriveDocument(
   title: syncText(context, '阿里云盘', 'Aliyun Drive'),
   intro: syncText(
     context,
-    '阿里云盘当前没有在应用中开放连接或 Token 配置入口。官方 PDS 文档描述的是 WebServer OAuth 应用，涉及应用 ID、Secret、域和回调地址，不能安全地直接塞进移动客户端。',
-    'Aliyun Drive has no connection or token setup in this app. The official PDS documentation describes WebServer OAuth apps that involve an app ID, a secret, a domain and a redirect address, which cannot safely be placed in a mobile client.',
+    '用阿里云盘账号登录授权后，Sync 通过阿里云盘开放平台读写文件。如果这个版本内置了阿里云盘的应用密钥，直接登录即可；否则需要先免费注册一个自己的应用。',
+    'Sign in with your Aliyun Drive account and Sync reads and writes files through the Aliyun Drive open platform. If this version has Aliyun Drive’s app key built in, just sign in; otherwise register your own app first, for free.',
   ),
   sections: [
     ConnectionHelpSection(
-      title: syncText(context, '当前状态', 'Current status'),
+      title: syncText(context, '怎么连接', 'How to connect'),
       items: [
         ConnectionHelpItem(
-          title: syncText(
-            context,
-            '为什么没有 Token 输入框',
-            'Why there is no token form',
-          ),
+          title: syncText(context, '登录并同意授权', 'Sign in and approve'),
           body: syncText(
             context,
-            '项目当前没有阿里云盘 RemoteObjectStore，也没有经过审核的 Token Broker。直接让移动端保存 App Secret 并宣称可以同步，会绕过官方应用安全边界，因此暂不开放配置。',
-            'This project has no Aliyun Drive storage adapter and no reviewed token broker. Letting a phone store the App Secret and claiming syncing works would step around the official app security boundary, so setup stays closed for now.',
+            '点击“登录并选择保存位置”后会打开阿里云盘的授权页。同意后回到 Sync，再选择一个文件夹保存。',
+            'Tap “Sign in and choose a location” to open Aliyun Drive’s approval page. After you approve, return to Sync and choose a folder.',
           ),
         ),
         ConnectionHelpItem(
           title: syncText(
             context,
-            '正式开放前需要什么',
-            'What it needs before it can open',
+            '没有内置密钥时：使用自己的应用',
+            'Without a built-in key: use your own app',
           ),
           body: syncText(
             context,
-            '需要完成 PDS 对象存储适配器、统一契约测试、权限和错误映射，并通过只接收短期授权材料的独立 Token Broker 处理授权码、刷新和撤销。',
-            'It needs a PDS storage adapter, the shared contract tests, permission and error mapping, and a separate token broker that accepts only short-lived sign-in material for code exchange, refresh and revocation.',
+            '在阿里云盘开放平台创建一个应用，把 App ID 填到连接页的“使用自己的应用密钥”里；App Secret 可以不填。授权回调地址填写 velocksync://oauth/callback（连接页可以直接复制）。这些信息只保存在这台设备的系统安全存储中。',
+            'Create an app on the Aliyun Drive open platform and enter its App ID under “Use your own app key” on the connection page; the App Secret is optional. Set the redirect address to velocksync://oauth/callback (you can copy it from the connection page). These values stay only in this device’s system secure storage.',
+          ),
+        ),
+        ConnectionHelpItem(
+          title: syncText(context, '选一个单独的文件夹', 'Pick a dedicated folder'),
+          body: syncText(
+            context,
+            '建议新建一个空文件夹专门给 Sync 使用，不要直接选网盘根目录。',
+            'Create an empty folder just for Sync rather than using the drive’s top level.',
           ),
         ),
       ],
     ),
     ConnectionHelpSection(
-      title: syncText(context, '官方流程要点', 'Key points of the official flow'),
+      title: syncText(context, '需要知道的事', 'Good to know'),
       items: [
         ConnectionHelpItem(
-          title: syncText(
-            context,
-            '创建开发者版域和应用',
-            'Create a developer-edition domain and app',
-          ),
+          title: syncText(context, '登录信息', 'Sign-in details'),
           body: syncText(
             context,
-            '阿里云官方文档要求在网盘与相册服务（开发者版）的域列表中创建 WebServer 应用，并在应用列表中取得 client_id 和 client_secret。Secret 必须保密。',
-            'Aliyun documentation has you create a WebServer app in the domain list of Drive and Photo Service (developer edition), then take the client_id and client_secret from the app list. The secret must stay confidential.',
+            '授权凭据只保存在系统安全存储中，不会出现在连接设置、同步内容或日志里。删除连接时一并删除。',
+            'Sign-in credentials are kept only in system secure storage, never in connection settings, synced content or logs. They are removed with the connection.',
           ),
         ),
         ConnectionHelpItem(
-          title: syncText(
-            context,
-            '回调地址必须完全匹配',
-            'The redirect address must match exactly',
-          ),
+          title: syncText(context, '大文件', 'Large files'),
           body: syncText(
             context,
-            '授权请求和换 Token 请求都需要 redirect_uri，且必须与创建应用时配置的 OAuth2.0 回调 URL 一致。授权码只能使用一次，文档说明其有效期为 10 分钟。',
-            'Both the authorize request and the token exchange need a redirect_uri, and it must match the OAuth 2.0 callback URL set when the app was created. The code works once and, per the documentation, is valid for 10 minutes.',
+            '文件按 8 MB 分片上传。上传中断后，下一次会从头重新上传。',
+            'Files upload in 8 MB pieces. If an upload is interrupted, the next attempt starts over.',
           ),
         ),
         ConnectionHelpItem(
-          title: syncText(context, 'Token 生命周期', 'Token lifetime'),
+          title: syncText(context, '授权失效', 'When sign-in expires'),
           body: syncText(
             context,
-            '官方 WebServer 文档示例中 access_token 默认有效期为 2 小时，refresh_token 有效期更长；刷新请求仍然需要 client_secret。',
-            'In the official WebServer examples an access_token is valid for 2 hours by default and a refresh_token for longer; refreshing still requires the client_secret.',
-          ),
-        ),
-        ConnectionHelpItem(
-          title: syncText(context, '官方文档', 'Official documentation'),
-          body: syncText(
-            context,
-            '阿里云 PDS OAuth WebServer 接入流程：https://help.aliyun.com/zh/pds/drive-and-photo-service-dev/user-guide/oauth-2-0-access-process-for-web-server-applications。',
-            'Aliyun PDS OAuth WebServer access process: https://help.aliyun.com/zh/pds/drive-and-photo-service-dev/user-guide/oauth-2-0-access-process-for-web-server-applications.',
+            '如果提示需要重新授权，在连接列表的“更多操作”里选择“修改连接”重新登录即可，已选的保存位置不变。',
+            'If you are asked to sign in again, choose “Edit Connection” from the connection’s More menu. The chosen location stays the same.',
           ),
         ),
       ],

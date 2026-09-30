@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../appearance/design_tokens.dart';
 import 'adaptive_dialogs.dart';
+import 'automation_id.dart';
 import 'app_components.dart';
 import 'common_widgets.dart';
 
@@ -596,19 +597,22 @@ class AdaptiveListTile extends StatelessWidget {
     final tapHandler = _rowTapHandler(onTap);
 
     if (isApplePlatform(context)) {
-      return Opacity(
-        opacity: enabled ? 1 : 0.45,
-        child: CupertinoListTile(
-          key: widgetKey,
-          title: title,
-          subtitle: subtitle,
-          leading: leading,
-          trailing: trailing ?? chevron,
-          additionalInfo: additionalInfo,
-          padding: contentPadding,
-          leadingSize: leadingSize,
-          leadingToTitle: leadingToTitle,
-          onTap: enabled ? tapHandler : null,
+      return withAutomationId(
+        widgetKey,
+        Opacity(
+          opacity: enabled ? 1 : 0.45,
+          child: CupertinoListTile(
+            key: widgetKey,
+            title: title,
+            subtitle: subtitle,
+            leading: leading,
+            trailing: trailing ?? chevron,
+            additionalInfo: additionalInfo,
+            padding: contentPadding,
+            leadingSize: leadingSize,
+            leadingToTitle: leadingToTitle,
+            onTap: enabled ? tapHandler : null,
+          ),
         ),
       );
     }
@@ -627,18 +631,21 @@ class AdaptiveListTile extends StatelessWidget {
                 ],
               ));
 
-    return ListTile(
-      key: widgetKey,
-      title: title,
-      subtitle: subtitle,
-      leading: leading,
-      trailing: materialTrailing,
-      enabled: enabled,
-      onTap: tapHandler,
-      isThreeLine: isThreeLine,
-      contentPadding: contentPadding,
-      minVerticalPadding: 0,
-      horizontalTitleGap: leadingToTitle,
+    return withAutomationId(
+      widgetKey,
+      ListTile(
+        key: widgetKey,
+        title: title,
+        subtitle: subtitle,
+        leading: leading,
+        trailing: materialTrailing,
+        enabled: enabled,
+        onTap: tapHandler,
+        isThreeLine: isThreeLine,
+        contentPadding: contentPadding,
+        minVerticalPadding: 0,
+        horizontalTitleGap: leadingToTitle,
+      ),
     );
   }
 }
@@ -662,33 +669,39 @@ class AdaptiveSwitchListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isApplePlatform(context)) {
-      return CupertinoListTile(
+      return withAutomationId(
+        widgetKey,
+        CupertinoListTile(
+          key: widgetKey,
+          title: title,
+          subtitle: subtitle,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.rowHorizontal,
+            vertical: AppSpacing.rowVertical,
+          ),
+          leadingSize: AppSizes.listLeading,
+          leadingToTitle: AppSpacing.rowLeadingGap,
+          onTap: _rowTapHandler(
+            onChanged == null ? null : () => onChanged!(!value),
+          ),
+          trailing: CupertinoSwitch(value: value, onChanged: onChanged),
+        ),
+      );
+    }
+    return withAutomationId(
+      widgetKey,
+      SwitchListTile.adaptive(
         key: widgetKey,
         title: title,
         subtitle: subtitle,
-        padding: const EdgeInsets.symmetric(
+        value: value,
+        onChanged: onChanged,
+        contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.rowHorizontal,
           vertical: AppSpacing.rowVertical,
         ),
-        leadingSize: AppSizes.listLeading,
-        leadingToTitle: AppSpacing.rowLeadingGap,
-        onTap: _rowTapHandler(
-          onChanged == null ? null : () => onChanged!(!value),
-        ),
-        trailing: CupertinoSwitch(value: value, onChanged: onChanged),
-      );
-    }
-    return SwitchListTile.adaptive(
-      key: widgetKey,
-      title: title,
-      subtitle: subtitle,
-      value: value,
-      onChanged: onChanged,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.rowHorizontal,
-        vertical: AppSpacing.rowVertical,
+        minVerticalPadding: 0,
       ),
-      minVerticalPadding: 0,
     );
   }
 }
@@ -713,7 +726,9 @@ class AdaptiveIconButton extends StatelessWidget {
   final String? semanticLabel;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withAutomationId(key, _build(context));
+
+  Widget _build(BuildContext context) {
     if (isApplePlatform(context)) {
       // A disabled CupertinoButton repaints its child with
       // `CupertinoColors.quaternaryLabel`, which strips the icon's own colour
@@ -1376,7 +1391,9 @@ class AdaptiveTextButton extends StatelessWidget {
   final FontWeight? fontWeight;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withAutomationId(key, _build(context));
+
+  Widget _build(BuildContext context) {
     // The label may be a Text or a composed row (icon + label); render it as it
     // is and only change colour/opacity, so nothing is re-laid out.
     final label = DefaultTextStyle.merge(
@@ -1424,7 +1441,9 @@ class AdaptiveElevatedButton extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withAutomationId(key, _build(context));
+
+  Widget _build(BuildContext context) {
     if (isApplePlatform(context)) {
       return CupertinoButton.filled(
         padding: padding,
@@ -1458,7 +1477,9 @@ class AdaptiveSwitch extends StatelessWidget {
   final Color? activeColor;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withAutomationId(key, _build(context));
+
+  Widget _build(BuildContext context) {
     if (isApplePlatform(context)) {
       return CupertinoSwitch(
         value: value,
@@ -1529,7 +1550,9 @@ class AdaptiveTextFormField extends StatelessWidget {
   final FocusNode? focusNode;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withAutomationId(key, _build(context));
+
+  Widget _build(BuildContext context) {
     if (isApplePlatform(context)) {
       return CupertinoTextFormFieldRow(
         controller: controller,

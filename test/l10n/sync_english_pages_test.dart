@@ -26,15 +26,12 @@ import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/files_provider.dart';
 import 'package:velock_sync/features/connection/ui/connection.dart';
 import 'package:velock_sync/features/connection/ui/connection_guidance.dart';
-import 'package:velock_sync/features/connection/ui/new_baidu_token.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_providers.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_settings.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
-import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/infrastructure/staging/staging_space_manager.dart';
 import 'package:velock_sync/l10n/sync_language.dart';
 import 'package:velock_sync/l10n/sync_language_setting.dart';
-import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_credentials.dart';
 import 'package:velock_sync/sync_core/conflicts/conflict_resolution_service.dart';
 import 'package:velock_sync/sync_core/conflicts/conflict_resolution_strategy.dart';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
@@ -299,22 +296,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the Baidu token page paints no Chinese', (tester) async {
-    await _pump(
-      tester,
-      ProviderContainer(
-        overrides: [
-          credentialStoreProvider.overrideWithValue(_NoCredentials()),
-        ],
-      ),
-      const NewBaiduToken(),
-    );
-    await _checkWholePage(tester, where: 'the Baidu token page');
-    expect(find.text('Configure Baidu Netdisk token'), findsOneWidget);
-    expect(find.text('No credentials are set up yet.'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
   // This used to be a known gap: the capability rows came from
   // `lib/providers/provider_capability_summary.dart`, which held raw CJK
   // literals, so an English sheet painted Chinese. The file is localized now,
@@ -550,15 +531,6 @@ class _UnusedConflictResolution implements ConflictResolutionService {
     required String conflictId,
     required ConflictResolutionStrategy strategy,
   }) async => const ConflictResolutionResult.completed();
-}
-
-class _NoCredentials implements CredentialStore {
-  @override
-  Future<BaiduNetdiskCredentialBundle?> readBaiduNetdiskCredentials() async =>
-      null;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _FakeSettingsService implements SyncSettingsService {

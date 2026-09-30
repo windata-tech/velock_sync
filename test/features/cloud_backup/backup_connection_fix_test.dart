@@ -171,9 +171,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('backup-primary-action')));
     await tester.pumpAndSettle();
-    final navigator = tester.state<NavigatorState>(
-      find.byType(Navigator).last,
-    );
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator).last);
     navigator.pop();
     await tester.pumpAndSettle();
     expect(find.text('连接已更新'), findsNothing);

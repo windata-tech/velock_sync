@@ -117,10 +117,18 @@ class ConnectionRepository {
         :final clientId,
         :final credentialRef,
       ):
-        final config = OAuthPublicClientConfiguration.fromClientId(
-          providerType: providerType,
-          clientId: clientId,
-        );
+        final OAuthAuthorizationConfig config;
+        try {
+          config = OAuthPublicClientConfiguration.fromClientId(
+            providerType: providerType,
+            clientId: clientId,
+          );
+        } on OAuthClientRegistrationMissingException {
+          // Nothing can be revoked without the registration (for example a
+          // build without the Baidu SecretKey); the local grant still goes.
+          await deleteCredential(credentialRef);
+          return;
+        }
         await OAuthAuthorizationService(
           session: OAuthAuthorizationSession(
             stateStore: SecureOAuthAuthorizationStateStore(),

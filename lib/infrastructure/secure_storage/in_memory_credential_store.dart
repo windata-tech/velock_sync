@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_credentials.dart';
+import 'package:velock_sync/providers/oauth/oauth_client_registration.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_bundle.dart';
+import 'package:velock_sync/sync_core/model/sync_models.dart';
 
 /// Test-only credential store. Production code must use [SecureCredentialStore].
 class InMemoryCredentialStore implements CredentialStore {
@@ -12,6 +14,7 @@ class InMemoryCredentialStore implements CredentialStore {
   final Uuid _uuid;
   final Map<String, String> _values = {};
   BaiduNetdiskCredentialBundle? _baiduNetdiskCredentials;
+  final Map<RemoteProviderType, OAuthClientRegistration> _registrations = {};
 
   @override
   Future<void> delete(String credentialRef) async {
@@ -62,20 +65,23 @@ class InMemoryCredentialStore implements CredentialStore {
   }
 
   @override
-  Future<String> writeOAuthTokens(OAuthTokenBundle tokens) async {
+  Future<String> writeOAuthTokens(
+    OAuthTokenBundle tokens, {
+    String? clientSecret,
+  }) async {
     if (tokens.accessToken.isEmpty || tokens.refreshToken.isEmpty) {
       throw ArgumentError('OAuth access and refresh tokens must not be empty.');
     }
     final ref = 'velock-sync/oauth/${_uuid.v4()}';
-    _values[ref] = jsonEncode({
-      'accessToken': tokens.accessToken,
-      'refreshToken': tokens.refreshToken,
-      'expiresAt': tokens.expiresAt.toUtc().toIso8601String(),
-      'tokenType': tokens.tokenType,
-      'scopes': tokens.scopes.toList(growable: false),
-    });
+    _values[ref] = encodeOAuthGrant(tokens, clientSecret: clientSecret);
     return ref;
   }
+
+  @override
+  Future<String?> readOAuthClientSecret(String credentialRef) async =>
+      credentialRef.startsWith('velock-sync/oauth/')
+      ? decodeOAuthGrantSecret(_values[credentialRef])
+      : null;
 
   @override
   Future<void> updateOAuthTokens(
@@ -88,13 +94,28 @@ class InMemoryCredentialStore implements CredentialStore {
     if (!_values.containsKey(credentialRef)) {
       throw StateError('OAuth credential reference does not exist.');
     }
-    _values[credentialRef] = jsonEncode({
-      'accessToken': tokens.accessToken,
-      'refreshToken': tokens.refreshToken,
-      'expiresAt': tokens.expiresAt.toUtc().toIso8601String(),
-      'tokenType': tokens.tokenType,
-      'scopes': tokens.scopes.toList(growable: false),
-    });
+    _values[credentialRef] = encodeOAuthGrant(
+      tokens,
+      clientSecret: decodeOAuthGrantSecret(_values[credentialRef]),
+    );
+  }
+
+  @override
+  Future<void> writeOAuthClientRegistration(
+    RemoteProviderType type,
+    OAuthClientRegistration registration,
+  ) async {
+    _registrations[type] = registration;
+  }
+
+  @override
+  Future<OAuthClientRegistration?> readOAuthClientRegistration(
+    RemoteProviderType type,
+  ) async => _registrations[type];
+
+  @override
+  Future<void> deleteOAuthClientRegistration(RemoteProviderType type) async {
+    _registrations.remove(type);
   }
 
   @override

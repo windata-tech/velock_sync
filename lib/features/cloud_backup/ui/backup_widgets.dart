@@ -7,6 +7,7 @@ import 'package:velock_sync/features/cloud_backup/ui/velock_companion_gate.dart'
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/app_format.dart';
+import 'package:velock_sync/widgets/automation_id.dart';
 
 /// Spacious native surfaces with one next action, not a technical dashboard.
 class BackupCard extends StatelessWidget {
@@ -52,55 +53,58 @@ class BackupActionButton extends StatelessWidget {
     final color = secondary
         ? context.appPrimary.withValues(alpha: .09)
         : context.appPrimary;
-    return SizedBox(
-      width: double.infinity,
-      child: CupertinoButton(
-        color: color,
-        borderRadius: BorderRadius.circular(14),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        onPressed: busy ? null : onPressed,
-        // The idle button keeps its original single-Text layout: wrapping it in
-        // a Row unconditionally shifted the surrounding lists by a hair and
-        // broke hit tests on sibling rows.
-        child: busy
-            ? Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        secondary ? context.appPrimary : Colors.white,
+    return withAutomationId(
+      key,
+      SizedBox(
+        width: double.infinity,
+        child: CupertinoButton(
+          color: color,
+          borderRadius: BorderRadius.circular(14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          onPressed: busy ? null : onPressed,
+          // The idle button keeps its original single-Text layout: wrapping it in
+          // a Row unconditionally shifted the surrounding lists by a hair and
+          // broke hit tests on sibling rows.
+          child: busy
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          secondary ? context.appPrimary : Colors.white,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
-                  Flexible(
-                    child: Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: secondary ? context.appPrimary : Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: AppSpacing.xs),
+                    Flexible(
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: secondary ? context.appPrimary : Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
+                  ],
+                )
+              : Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: secondary ? context.appPrimary : Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
-              )
-            : Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: secondary ? context.appPrimary : Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
                 ),
-              ),
+        ),
       ),
     );
   }
@@ -423,6 +427,8 @@ class BackupStatusCard extends StatelessWidget {
           const SizedBox(height: 22),
           Semantics(
             liveRegion: true,
+            container: true,
+            identifier: 'backup-status-title',
             child: Text(
               title,
               key: const Key('backup-status-title'),

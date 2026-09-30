@@ -10,8 +10,10 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
+import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/features/connection/ui/connection_info_sheet.dart';
+import 'package:velock_sync/features/connection/ui/remote_provider_icon.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
@@ -25,10 +27,10 @@ class Connections extends HookConsumerWidget {
 
     void createConnection() {
       // Prepare the draft from the user action, before pushing the route.
-      // Updating a Riverpod notifier from NewConnection.build/useEffect causes
-      // Riverpod 3 to throw "Tried to modify a provider while the widget tree
-      // was building", which leaves the iOS page showing a red error overlay
-      // and makes every button appear unresponsive.
+      // Updating a Riverpod notifier during a build causes Riverpod 3 to throw
+      // "Tried to modify a provider while the widget tree was building".
+      // A connection is shared by Velock backups and file sync, so there is
+      // no "local side" to pick here: go straight to the storage type.
       ref
           .read(connectionCreationProvider.notifier)
           .prepareNewConnection(
@@ -36,7 +38,7 @@ class Connections extends HookConsumerWidget {
             source: syncText(context, '格间', 'Velock'),
             target: null,
           );
-      context.pushNamed(AppRoutes.newConnection.name);
+      context.pushNamed(AppRoutes.protocols.name);
     }
 
     Future<void> refreshConnections() async {
@@ -262,20 +264,17 @@ class _ConnectionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOAuth = connection.protocol is OAuthProtocolModel;
+    final protocol = connection.protocol;
     final tone = _connectionStatusTone(connection.status);
     final statusLabel = _connectionStatusLabel(context, connection.status);
     final target = connection.target.trim();
     return AdaptiveListTile(
-      leading: AdaptiveIconBadge(
-        icon: adaptiveIcon(
-          context,
-          material: isOAuth ? Icons.cloud_outlined : Icons.dns_outlined,
-          cupertino: isOAuth
-              ? CupertinoIcons.cloud
-              : CupertinoIcons.rectangle_stack,
-        ),
-        color: tone.color(context),
+      // The service colour identifies the storage; the status pill beside
+      // the name carries the connection state.
+      leading: RemoteProviderBadge(
+        protocol is OAuthProtocolModel
+            ? protocol.providerType
+            : RemoteProviderType.webDav,
       ),
       title: Text(
         connection.name,

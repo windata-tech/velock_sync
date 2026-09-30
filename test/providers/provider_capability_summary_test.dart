@@ -106,15 +106,18 @@ void main() {
       );
     });
 
-    test('a cloud drive without an official component promises nothing', () {
-      final summary = providerCapabilitySummary(
-        _oauth(RemoteProviderType.aliyunDrive),
-        context: null,
-      );
-      expect(summary.providerName, 'aliyunDrive');
-      expect(summary.features, isEmpty);
-      expect(summary.limitations.single, contains('还不能使用'));
-      expect(summary.credentials, contains('不保存'));
+    test('Baidu Netdisk and Aliyun Drive describe what the app does', () {
+      for (final (type, name) in [
+        (RemoteProviderType.baiduNetdisk, '百度网盘'),
+        (RemoteProviderType.aliyunDrive, '阿里云盘'),
+      ]) {
+        final summary = providerCapabilitySummary(_oauth(type), context: null);
+        expect(summary.providerName, name);
+        expect(summary.features, isNotEmpty);
+        // Neither store keeps an upload session, so no resume is promised.
+        expect(summary.limitations.join(), contains('重新开始'));
+        expect(summary.features.join(), isNot(contains('还不能使用')));
+      }
     });
 
     testWidgets('every row is localized, so an English sheet stays English', (
@@ -142,6 +145,10 @@ void main() {
                 ),
                 providerCapabilitySummary(
                   _oauth(RemoteProviderType.aliyunDrive),
+                  context: context,
+                ),
+                providerCapabilitySummary(
+                  _oauth(RemoteProviderType.baiduNetdisk),
                   context: context,
                 ),
               ]);

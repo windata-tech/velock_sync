@@ -164,18 +164,17 @@ void main() {
     });
     tearDown(() => root.delete(recursive: true));
 
-    Future<VelockWizardReadiness> inspect({
-      _ProbePairingControl? control,
-    }) => PlatformVelockWizardReadinessService(
-      appleRoot: AppleExchangeRootLocator(
-        channel: _AppleRootChannel(root.path),
-        isApplePlatform: () => true,
-      ),
-      applePairingControl: control ?? _ProbePairingControl(),
-      appleCompanionProbe: _ProbeCompanionInstalled(() async => true),
-      isAndroid: () => false,
-      isApple: () => true,
-    ).inspect(syncAppInstanceId: 'sync-instance-1');
+    Future<VelockWizardReadiness> inspect({_ProbePairingControl? control}) =>
+        PlatformVelockWizardReadinessService(
+          appleRoot: AppleExchangeRootLocator(
+            channel: _AppleRootChannel(root.path),
+            isApplePlatform: () => true,
+          ),
+          applePairingControl: control ?? _ProbePairingControl(),
+          appleCompanionProbe: _ProbeCompanionInstalled(() async => true),
+          isAndroid: () => false,
+          isApple: () => true,
+        ).inspect(syncAppInstanceId: 'sync-instance-1');
 
     test(
       'Velock 2.0.6 (pairing descriptor but no capabilities) needs an update',
@@ -290,9 +289,7 @@ void main() {
             return true;
           });
       addTearDown(
-        () => TestDefaultBinaryMessengerBinding
-            .instance
-            .defaultBinaryMessenger
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, null),
       );
       expect(await androidVelockExchangeConfigured(channel: channel), isTrue);
@@ -355,27 +352,26 @@ class _ProbePairingControl implements AndroidPairingControlChannel {
     return _descriptor();
   }
 
-  VelockPairingDescriptor _descriptor() =>
-      VelockPairingDescriptor.parse(
-        Uint8List.fromList(
-          utf8.encode(
-            jsonEncode({
-              'controlVersion': 1,
-              'exchangeBindingId': 'binding-1',
-              'exchangeVersion': 1,
-              'producerId': 'producer-1',
-              'producerPublicKeyId': 'key-1',
-              'producerSigningPublicKey': base64UrlEncode(
-                Uint8List.fromList(List.filled(32, 1)),
-              ),
-              'protocol': 'velock-sync',
-              'protocolVersion': 1,
-              'publishedAt': '2026-07-18T08:00:00.000Z',
-              'signatureAlgorithm': 'Ed25519',
-            }),
+  VelockPairingDescriptor _descriptor() => VelockPairingDescriptor.parse(
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'controlVersion': 1,
+          'exchangeBindingId': 'binding-1',
+          'exchangeVersion': 1,
+          'producerId': 'producer-1',
+          'producerPublicKeyId': 'key-1',
+          'producerSigningPublicKey': base64UrlEncode(
+            Uint8List.fromList(List.filled(32, 1)),
           ),
-        ),
-      );
+          'protocol': 'velock-sync',
+          'protocolVersion': 1,
+          'publishedAt': '2026-07-18T08:00:00.000Z',
+          'signatureAlgorithm': 'Ed25519',
+        }),
+      ),
+    ),
+  );
 
   @override
   Future<VelockDeviceAuthorizationStatus> queryAuthorizationStatus(

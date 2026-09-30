@@ -216,9 +216,9 @@ void main() {
         await _readyPackage(root, 'batch-2', sequence: 2);
         final claimed = Directory('${root.path}/Outbox/Claimed/batch-1');
         await claimed.parent.create(recursive: true);
-        await Directory('${root.path}/Outbox/Ready/batch-1').rename(
-          claimed.path,
-        );
+        await Directory(
+          '${root.path}/Outbox/Ready/batch-1',
+        ).rename(claimed.path);
         // Killed mid-way through the atomic lease write.
         await File('${claimed.path}/lease.json.tmp').writeAsString('{"exp');
 
@@ -269,9 +269,7 @@ void main() {
       await _readyPackage(root, 'batch-1', sequence: 1);
       final claimed = Directory('${root.path}/Outbox/Claimed/batch-1');
       await claimed.parent.create(recursive: true);
-      await Directory('${root.path}/Outbox/Ready/batch-1').rename(
-        claimed.path,
-      );
+      await Directory('${root.path}/Outbox/Ready/batch-1').rename(claimed.path);
       await File('${claimed.path}/lease.json').writeAsString('not json');
 
       await store.reclaimExpiredClaims();
@@ -371,8 +369,8 @@ Future<void> _readyPackage(
     }),
   );
   if (ready) {
-    await File('${package.path}/READY').writeAsString(
-      jsonEncode({'batchId': batchId}),
-    );
+    await File(
+      '${package.path}/READY',
+    ).writeAsString(jsonEncode({'batchId': batchId}));
   }
 }

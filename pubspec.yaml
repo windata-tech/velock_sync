@@ -140,6 +140,9 @@ flutter:
     # `velock_mark_flat.png` is the single-colour silhouette used for the
     # bottom tab, where Flutter tints it with the bar's own colours.
     - assets/branding/
+    # Third-party storage logos, used unmodified only where the owner allows
+    # it (see NOTICE). Google Drive: developers.google.com/drive/branding.
+    - assets/providers/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

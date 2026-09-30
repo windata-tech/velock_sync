@@ -170,9 +170,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('toggling HTTPS before any save shows no errors', (
-    tester,
-  ) async {
+  testWidgets('toggling HTTPS before any save shows no errors', (tester) async {
     await _pump(tester, TargetPlatform.iOS);
     await tester.tap(find.byType(AdaptiveSwitch));
     await tester.pumpAndSettle();

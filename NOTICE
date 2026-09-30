@@ -1,0 +1,20 @@
+Velock Sync
+Copyright the Velock Sync authors. Licensed under the Apache License 2.0
+(see LICENSE).
+
+Third-party trademarks
+----------------------
+
+The Apache License above does not grant any right to use the trademarks,
+logos or service names of other companies that appear in this repository or
+in the app. They belong to their respective owners and are used only to
+identify the storage service a user connects to. Velock Sync is not
+affiliated with, sponsored by or endorsed by any of them.
+
+- assets/providers/google_drive.png — the Google Drive product logo, as
+  published unmodified at https://developers.google.com/drive/branding.
+  Google Drive is a trademark of Google LLC. Use of this trademark is subject
+  to Google Permissions.
+
+WebDAV, OneDrive, Baidu Netdisk (百度网盘) and Aliyun Drive (阿里云盘) are
+shown with the project's own drawn icons, not their owners' logos.

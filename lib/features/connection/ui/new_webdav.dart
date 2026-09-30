@@ -126,6 +126,7 @@ class NewWebDav extends HookConsumerWidget {
         ),
         confirmLabel: syncText(context, '仍然使用 HTTP', 'Use HTTP Anyway'),
         cancelLabel: syncText(context, '保持 HTTPS', 'Keep HTTPS'),
+        confirmKey: const Key('webdav-allow-http'),
         isDestructive: true,
       );
       if (confirmed == true && context.mounted) {
@@ -173,6 +174,7 @@ class NewWebDav extends HookConsumerWidget {
             ),
           ),
           AdaptiveTextButton(
+            key: const Key('webdav-save'),
             padding: EdgeInsets.zero,
             onPressed: isLoading.value
                 ? null

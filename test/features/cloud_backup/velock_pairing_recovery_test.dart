@@ -1,6 +1,7 @@
 // ignore_for_file: depend_on_referenced_packages
 import 'dart:convert';
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
 import 'dart:typed_data';
 
@@ -19,6 +20,7 @@ import 'package:velock_sync/infrastructure/staging/staging_space_manager.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_global_settings.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_settings_service.dart';
+import 'package:velock_sync/sync_profiles/wizard/velock_pending_pairing_store.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_pairing_session.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_profile_finalizer.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
@@ -356,6 +358,43 @@ void main() {
         expect(async.pendingTimers, isEmpty);
       });
     });
+    test('the sent request is persisted until the flow ends', () async {
+      final store = InMemoryVelockPendingPairingStore();
+      final container = _controllerContainer(
+        clock: () => fixture.base,
+        pendingStore: store,
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(velockWizardSessionProvider.notifier);
+
+      final first = fixture.session(requestId: 'persisted-request');
+      controller.sessionStarted(
+        first,
+        restoring: true,
+        replacingProfileId: 'profile-1',
+      );
+      await pumpEventQueue();
+      final saved = await store.load(now: fixture.base);
+      expect(saved?.request.requestId, 'persisted-request');
+      expect(saved?.request.challenge, first.request.challenge);
+      expect(saved?.restoring, isTrue);
+      expect(saved?.replacingProfileId, 'profile-1');
+
+      controller.reset();
+      await pumpEventQueue();
+      expect(store.raw, isNull);
+
+      final second = fixture.session(requestId: 'invalidated-request');
+      controller.sessionStarted(second);
+      await pumpEventQueue();
+      expect(store.raw, isNotNull);
+      controller.authorizationInvalidated(
+        second,
+        VelockWizardAuthorizationProblem.expired,
+      );
+      await pumpEventQueue();
+      expect(store.raw, isNull);
+    });
   });
 
   group('VelockDatasetWizard pairing recovery', () {
@@ -368,6 +407,135 @@ void main() {
     tearDown(() {
       harness.dispose();
     });
+
+    testWidgets(
+      'a request sent before Sync was terminated resumes after approval',
+      (tester) async {
+        try {
+          harness.connections
+            ..clear()
+            ..add(_connection('connection-a'));
+          final session = harness.fixture.session(requestId: 'killed-request');
+          harness.controller.sessionStarted(session);
+          await tester.pump();
+          // iOS terminates Sync while the user approves in Velock.
+          harness.container.invalidate(velockWizardSessionProvider);
+          expect(harness.state.session, isNull);
+          await harness.control.approve(session);
+
+          await _pumpWizard(tester, harness);
+
+          expect(harness.readiness.inspectCount, 1);
+          expect(harness.control.submitted, isEmpty);
+          expect(harness.state.approval?.requestId, 'killed-request');
+          expect(
+            harness.state.session?.request.challenge,
+            session.request.challenge,
+          );
+          expect(find.byKey(const Key('use-backup-folder')), findsOneWidget);
+        } finally {
+          harness.controller.reset();
+        }
+      },
+    );
+
+    testWidgets('an expired stored request starts pairing over', (
+      tester,
+    ) async {
+      try {
+        final session = harness.fixture.session(requestId: 'stale-request');
+        harness.controller.sessionStarted(session);
+        await tester.pump();
+        harness.container.invalidate(velockWizardSessionProvider);
+        await harness.control.approve(session);
+        harness.clock.value = session.request.expiresAt;
+
+        await _pumpWizard(tester, harness);
+
+        expect(harness.state.session, isNull);
+        expect(harness.state.approval, isNull);
+        expect(harness.readiness.inspectCount, 0);
+        expect(
+          find.byKey(const Key('inspect-velock-readiness')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('格间已允许连接'), findsNothing);
+      } finally {
+        harness.controller.reset();
+      }
+    });
+
+    testWidgets('a stored request for another Velock identity is dropped', (
+      tester,
+    ) async {
+      try {
+        final descriptor = harness.fixture.descriptor;
+        await harness.pendingStore.save(
+          VelockPendingPairing(
+            request: VelockPairingControlRequest(
+              requestId: 'foreign-request',
+              challenge: 'foreign-challenge',
+              producerId: 'another-producer',
+              producerPublicKeyId: descriptor.producerPublicKeyId,
+              exchangeBindingId: descriptor.exchangeBindingId,
+              syncAppInstanceId: 'sync-instance-1',
+              createdAt: harness.fixture.base,
+              expiresAt: harness.fixture.base.add(const Duration(minutes: 5)),
+            ),
+          ),
+        );
+
+        await _pumpWizard(tester, harness);
+
+        expect(harness.readiness.inspectCount, 1);
+        expect(harness.state.session, isNull);
+        expect(harness.pendingStore.raw, isNull);
+        expect(harness.control.queryCount, 0);
+      } finally {
+        harness.controller.reset();
+      }
+    });
+
+    testWidgets('a stored restore request is not reused to set up a backup', (
+      tester,
+    ) async {
+      try {
+        final session = harness.fixture.session(requestId: 'restore-request');
+        harness.controller.sessionStarted(session, restoring: true);
+        await tester.pump();
+        harness.container.invalidate(velockWizardSessionProvider);
+
+        await _pumpWizard(tester, harness);
+
+        expect(harness.state.session, isNull);
+        expect(harness.readiness.inspectCount, 0);
+        // Kept for the restore entry it belongs to.
+        expect(harness.pendingStore.raw, isNotNull);
+      } finally {
+        harness.controller.reset();
+      }
+    });
+
+    testWidgets(
+      'without a saved connection the approved flow leads to adding one',
+      (tester) async {
+        try {
+          harness.connections.clear();
+          await harness.seedApproved(requestId: 'no-connection');
+
+          await _pumpWizard(tester, harness);
+
+          expect(find.textContaining('格间已允许连接'), findsOneWidget);
+          expect(find.byKey(const Key('continue-velock-setup')), findsNothing);
+          final add = find.byKey(const Key('go-create-connection'));
+          expect(add, findsOneWidget);
+          expect(tester.widget<BackupActionButton>(add).secondary, isFalse);
+          expect(harness.destination.checkCount, 0);
+        } finally {
+          harness.controller.reset();
+        }
+      },
+    );
 
     testWidgets(
       'an approved request expires into renewal without showing success',
@@ -727,10 +895,17 @@ void main() {
   });
 }
 
-ProviderContainer _controllerContainer({required DateTime Function() clock}) =>
-    ProviderContainer(
-      overrides: [velockWizardClockProvider.overrideWithValue(clock)],
-    );
+ProviderContainer _controllerContainer({
+  required DateTime Function() clock,
+  VelockPendingPairingStore? pendingStore,
+}) => ProviderContainer(
+  overrides: [
+    velockWizardClockProvider.overrideWithValue(clock),
+    velockPendingPairingStoreProvider.overrideWithValue(
+      pendingStore ?? InMemoryVelockPendingPairingStore(),
+    ),
+  ],
+);
 
 Future<void> _pumpWizard(
   WidgetTester tester,
@@ -852,6 +1027,7 @@ class _WidgetHarness {
     required this.destination,
     required this.connections,
     required this.existingProfiles,
+    required this.pendingStore,
   });
 
   final _SignedFixture fixture;
@@ -864,6 +1040,7 @@ class _WidgetHarness {
   final _RecordingDestination destination;
   final List<ConnectionModel> connections;
   final List<SyncProfileSummary> existingProfiles;
+  final InMemoryVelockPendingPairingStore pendingStore;
 
   static Future<_WidgetHarness> create() async {
     final fixture = await _SignedFixture.create();
@@ -890,9 +1067,11 @@ class _WidgetHarness {
       _connection('connection-restore'),
     ];
     final existingProfiles = <SyncProfileSummary>[];
+    final pendingStore = InMemoryVelockPendingPairingStore();
     final container = ProviderContainer(
       overrides: [
         velockWizardClockProvider.overrideWithValue(clock.call),
+        velockPendingPairingStoreProvider.overrideWithValue(pendingStore),
         velockExistingProfilesProvider.overrideWith(
           (ref) async => existingProfiles,
         ),
@@ -928,6 +1107,7 @@ class _WidgetHarness {
       destination: destination,
       connections: connections,
       existingProfiles: existingProfiles,
+      pendingStore: pendingStore,
     );
   }
 

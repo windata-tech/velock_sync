@@ -5,6 +5,7 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../appearance/design_tokens.dart';
+import 'automation_id.dart';
 
 /// Platform-adaptive dialogs.
 ///
@@ -115,11 +116,17 @@ Future<T?> showAdaptiveActionSheet<T>({
         message: message == null ? null : Text(message),
         actions: [
           for (final action in actions)
-            CupertinoActionSheetAction(
-              key: action.key,
-              isDestructiveAction: action.isDestructive,
-              onPressed: () => Navigator.of(sheetContext).pop(action.value),
-              child: _SheetLabel(label: action.label, caption: action.caption),
+            withAutomationId(
+              action.key,
+              CupertinoActionSheetAction(
+                key: action.key,
+                isDestructiveAction: action.isDestructive,
+                onPressed: () => Navigator.of(sheetContext).pop(action.value),
+                child: _SheetLabel(
+                  label: action.label,
+                  caption: action.caption,
+                ),
+              ),
             ),
         ],
         cancelButton: CupertinoActionSheetAction(
@@ -150,10 +157,16 @@ Future<T?> showAdaptiveActionSheet<T>({
               ),
             ),
           for (final action in actions)
-            SimpleDialogOption(
-              key: action.key,
-              onPressed: () => Navigator.of(dialogContext).pop(action.value),
-              child: _SheetLabel(label: action.label, caption: action.caption),
+            withAutomationId(
+              action.key,
+              SimpleDialogOption(
+                key: action.key,
+                onPressed: () => Navigator.of(dialogContext).pop(action.value),
+                child: _SheetLabel(
+                  label: action.label,
+                  caption: action.caption,
+                ),
+              ),
             ),
         ],
       );
@@ -205,14 +218,17 @@ Future<T?> showAdaptiveAlert<T>({
         content: _AlertBody(message: message, details: details, icon: icon),
         actions: [
           for (final action in actions)
-            CupertinoDialogAction(
-              key: action.key,
-              isDefaultAction: action.isDefault,
-              isDestructiveAction: action.isDestructive,
-              onPressed: action.enabled
-                  ? () => Navigator.of(dialogContext).pop(action.value)
-                  : null,
-              child: Text(action.label),
+            withAutomationId(
+              action.key,
+              CupertinoDialogAction(
+                key: action.key,
+                isDefaultAction: action.isDefault,
+                isDestructiveAction: action.isDestructive,
+                onPressed: action.enabled
+                    ? () => Navigator.of(dialogContext).pop(action.value)
+                    : null,
+                child: Text(action.label),
+              ),
             ),
         ],
       ),
@@ -231,29 +247,35 @@ Future<T?> showAdaptiveAlert<T>({
         actions: [
           for (final action in actions)
             if (action.emphasized)
-              FilledButton(
-                key: action.key,
-                onPressed: action.enabled
-                    ? () => Navigator.of(dialogContext).pop(action.value)
-                    : null,
-                style: action.isDestructive
-                    ? FilledButton.styleFrom(
-                        backgroundColor: scheme.error,
-                        foregroundColor: scheme.onError,
-                      )
-                    : null,
-                child: Text(action.label),
+              withAutomationId(
+                action.key,
+                FilledButton(
+                  key: action.key,
+                  onPressed: action.enabled
+                      ? () => Navigator.of(dialogContext).pop(action.value)
+                      : null,
+                  style: action.isDestructive
+                      ? FilledButton.styleFrom(
+                          backgroundColor: scheme.error,
+                          foregroundColor: scheme.onError,
+                        )
+                      : null,
+                  child: Text(action.label),
+                ),
               )
             else
-              TextButton(
-                key: action.key,
-                onPressed: action.enabled
-                    ? () => Navigator.of(dialogContext).pop(action.value)
-                    : null,
-                style: action.isDestructive
-                    ? TextButton.styleFrom(foregroundColor: scheme.error)
-                    : null,
-                child: Text(action.label),
+              withAutomationId(
+                action.key,
+                TextButton(
+                  key: action.key,
+                  onPressed: action.enabled
+                      ? () => Navigator.of(dialogContext).pop(action.value)
+                      : null,
+                  style: action.isDestructive
+                      ? TextButton.styleFrom(foregroundColor: scheme.error)
+                      : null,
+                  child: Text(action.label),
+                ),
               ),
         ],
       );
@@ -358,14 +380,17 @@ Future<T?> showAdaptiveForm<T>({
           content: spec.content,
           actions: [
             for (final action in spec.actions)
-              CupertinoDialogAction(
-                key: action.key,
-                isDefaultAction: action.isDefault,
-                isDestructiveAction: action.isDestructive,
-                onPressed: action.enabled
-                    ? () => Navigator.of(context).pop(action.value)
-                    : null,
-                child: Text(action.label),
+              withAutomationId(
+                action.key,
+                CupertinoDialogAction(
+                  key: action.key,
+                  isDefaultAction: action.isDefault,
+                  isDestructiveAction: action.isDestructive,
+                  onPressed: action.enabled
+                      ? () => Navigator.of(context).pop(action.value)
+                      : null,
+                  child: Text(action.label),
+                ),
               ),
           ],
         );
@@ -377,29 +402,35 @@ Future<T?> showAdaptiveForm<T>({
         actions: [
           for (final action in spec.actions)
             if (action.emphasized)
-              FilledButton(
-                key: action.key,
-                onPressed: action.enabled
-                    ? () => Navigator.of(context).pop(action.value)
-                    : null,
-                style: action.isDestructive
-                    ? FilledButton.styleFrom(
-                        backgroundColor: scheme.error,
-                        foregroundColor: scheme.onError,
-                      )
-                    : null,
-                child: Text(action.label),
+              withAutomationId(
+                action.key,
+                FilledButton(
+                  key: action.key,
+                  onPressed: action.enabled
+                      ? () => Navigator.of(context).pop(action.value)
+                      : null,
+                  style: action.isDestructive
+                      ? FilledButton.styleFrom(
+                          backgroundColor: scheme.error,
+                          foregroundColor: scheme.onError,
+                        )
+                      : null,
+                  child: Text(action.label),
+                ),
               )
             else
-              TextButton(
-                key: action.key,
-                onPressed: action.enabled
-                    ? () => Navigator.of(context).pop(action.value)
-                    : null,
-                style: action.isDestructive
-                    ? TextButton.styleFrom(foregroundColor: scheme.error)
-                    : null,
-                child: Text(action.label),
+              withAutomationId(
+                action.key,
+                TextButton(
+                  key: action.key,
+                  onPressed: action.enabled
+                      ? () => Navigator.of(context).pop(action.value)
+                      : null,
+                  style: action.isDestructive
+                      ? TextButton.styleFrom(foregroundColor: scheme.error)
+                      : null,
+                  child: Text(action.label),
+                ),
               ),
         ],
       );

@@ -7,7 +7,6 @@ import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart'
     as state;
 import 'package:velock_sync/features/connection/ui/connections.dart';
-import 'package:velock_sync/features/connection/ui/new_connection.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
@@ -52,11 +51,6 @@ void main() {
         routes: [
           GoRoute(path: '/', builder: (_, _) => const Connections()),
           GoRoute(
-            name: 'newConnection',
-            path: '/new',
-            builder: (_, _) => const NewConnection(),
-          ),
-          GoRoute(
             name: 'protocols',
             path: '/protocols',
             builder: (_, _) => const Protocols(),
@@ -89,14 +83,18 @@ void main() {
         container.read(state.connectionCreationProvider)?.name,
         'New Connection',
       );
-      expect(find.text('Velock'), findsOneWidget);
-      await tester.tap(find.text('Choose Remote Protocol'));
-      await tester.pumpAndSettle();
+      // A connection is shared by backups and file sync, so adding one goes
+      // straight to the storage type without a fixed "local data" step.
       expect(find.text('Where to save'), findsOneWidget);
-      // Baidu Netdisk and Aliyun Drive have no adapter in this build, so the
-      // picker does not offer them (remote_provider_availability_test.dart).
+      expect(find.text('Choose Remote Protocol'), findsNothing);
+      // Drives without a built-in key (none in tests) are folded under
+      // "More cloud drives" and open the own-key form.
       expect(find.text('Other Services'), findsNothing);
-      expect(find.text('Baidu Netdisk'), findsNothing);
+      expect(find.text('More cloud drives'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('protocols-more-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('Baidu Netdisk'), findsOneWidget);
+      expect(find.text('Aliyun Drive'), findsOneWidget);
       await tester.tap(find.text('WebDAV'));
       await tester.pumpAndSettle();
       expect(find.text('New WebDAV Connection'), findsOneWidget);

@@ -1,5 +1,6 @@
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
+import 'package:velock_sync/widgets/common_widgets.dart';
 import 'package:velock_sync/features/cloud_backup/ui/velock_recovery_guide.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_ui/material_ui.dart';
@@ -10,8 +11,6 @@ import 'package:velock_sync/widgets/velock_brand_mark.dart';
 import 'package:velock_sync/features/connection/ui/connection.dart';
 import 'package:velock_sync/features/connection/ui/connections.dart';
 import 'package:velock_sync/features/connection/ui/connection_guidance.dart';
-import 'package:velock_sync/features/connection/ui/new_connection.dart';
-import 'package:velock_sync/features/connection/ui/new_baidu_token.dart';
 import 'package:velock_sync/features/connection/ui/new_oauth.dart';
 import 'package:velock_sync/features/connection/ui/new_webdav.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
@@ -101,10 +100,6 @@ class AppRoutes {
     path: '/about',
   );
 
-  static const ({String name, String path}) newConnection = (
-    name: 'newConnection',
-    path: '/connection/new',
-  );
   static const ({String name, String path}) protocols = (
     name: 'protocols',
     path: '/protocols',
@@ -120,10 +115,6 @@ class AppRoutes {
   static const ({String name, String path}) newOAuth = (
     name: 'newOAuth',
     path: '/protocol/oauth/:provider',
-  );
-  static const ({String name, String path}) newBaiduToken = (
-    name: 'newBaiduToken',
-    path: '/protocol/baidu-netdisk/token',
   );
   static const ({String name, String path}) connection = (
     name: 'connectionDetail',
@@ -270,11 +261,6 @@ GoRouter createAppRouter({
       builder: (context, state) => Container(),
     ),
     WdRoute(
-      name: AppRoutes.newConnection.name,
-      path: AppRoutes.newConnection.path,
-      builder: (context, state) => NewConnection(),
-    ),
-    WdRoute(
       name: AppRoutes.protocols.name,
       path: AppRoutes.protocols.path,
       builder: (context, state) => Protocols(returnTo: _setupReturnTo(state)),
@@ -311,10 +297,25 @@ GoRouter createAppRouter({
         final provider = RemoteProviderType.values.where(
           (value) => value.name == providerName,
         );
+        // Every storage type except WebDAV signs in through OAuth.
         if (provider.length != 1 ||
-            (provider.single != RemoteProviderType.googleDrive &&
-                provider.single != RemoteProviderType.oneDrive)) {
-          return const Center(child: Text('Unsupported OAuth provider.'));
+            provider.single == RemoteProviderType.webDav) {
+          return AdaptivePageScaffold(
+            appBar: const WDAppBar(),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  syncText(
+                    context,
+                    '无法打开这种连接方式，请返回后重新选择。',
+                    'This connection type can’t be opened. Go back and choose again.',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
         }
         return NewOAuthConnection(
           providerType: provider.single,
@@ -322,11 +323,6 @@ GoRouter createAppRouter({
           returnTo: _setupReturnTo(state),
         );
       },
-    ),
-    WdRoute(
-      name: AppRoutes.newBaiduToken.name,
-      path: AppRoutes.newBaiduToken.path,
-      builder: (context, state) => const NewBaiduToken(),
     ),
     WdRoute(
       name: AppRoutes.connection.name,

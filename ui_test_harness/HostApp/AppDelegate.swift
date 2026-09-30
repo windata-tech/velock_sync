@@ -10,6 +10,25 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        true
+    }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(
+            name: nil,
+            sessionRole: connectingSceneSession.role
+        )
+        configuration.delegateClass = SceneDelegate.self
+        return configuration
+    }
+
+    /// iOS 27 terminates apps that create their window without adopting the
+    /// scene lifecycle, so the fixture UI is built for the connecting scene.
+    func makeRootController() -> UIViewController {
         let fixture = prepareFixture()
         let controller = UIViewController()
         controller.view.backgroundColor = .systemBackground
@@ -50,14 +69,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             stack.centerYAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.centerYAnchor),
         ])
 
-        let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
-        self.window = window
-        return true
+        return controller
     }
-
-    var window: UIWindow?
 
     private func prepareFixture() -> (
         sourceSHA256: String,
@@ -113,5 +126,22 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
     private func sha256(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        guard let windowScene = scene as? UIWindowScene,
+              let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+        let window = UIWindow(windowScene: windowScene)
+        window.rootViewController = appDelegate.makeRootController()
+        window.makeKeyAndVisible()
+        self.window = window
     }
 }

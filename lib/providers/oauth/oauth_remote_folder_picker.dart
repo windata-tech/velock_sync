@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'package:velock_sync/providers/aliyun_drive/aliyun_drive_object_store.dart';
+import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_object_store.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/providers/oauth/oauth_access_token_provider.dart';
 import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
@@ -64,10 +66,66 @@ class OAuthRemoteFolderPicker {
         parentId: parentId,
         cursor: cursor,
       ),
+      RemoteProviderType.baiduNetdisk => _listBaidu(
+        tokens: tokens,
+        parentId: parentId,
+        cursor: cursor,
+      ),
+      RemoteProviderType.aliyunDrive => _listAliyun(
+        tokens: tokens,
+        parentId: parentId,
+        cursor: cursor,
+      ),
       _ => throw UnsupportedError(
         '${target.providerType.name} does not support public folder picking.',
       ),
     };
+  }
+
+  /// Baidu folder IDs are absolute paths (`/` is the drive root).
+  Future<OAuthRemoteFolderPage> _listBaidu({
+    required OAuthAccessTokenProvider tokens,
+    required String? parentId,
+    required String? cursor,
+  }) async {
+    final page =
+        await BaiduNetdiskObjectStore(
+          accessTokenProvider: tokens,
+          rootPath: '',
+          dio: _dio,
+          rateLimitRetry: _rateLimitRetry,
+        ).listChildFolders(
+          parentPath: parentId == null || parentId == 'root' ? null : parentId,
+          cursor: cursor,
+        );
+    return OAuthRemoteFolderPage(
+      items: [
+        for (final folder in page.folders)
+          OAuthRemoteFolder(id: folder.path, name: folder.name),
+      ],
+      nextCursor: page.nextCursor,
+    );
+  }
+
+  /// Aliyun folder IDs are `driveId:fileId`, since file IDs are per drive.
+  Future<OAuthRemoteFolderPage> _listAliyun({
+    required OAuthAccessTokenProvider tokens,
+    required String? parentId,
+    required String? cursor,
+  }) async {
+    final page = await AliyunDriveObjectStore(
+      accessTokenProvider: tokens,
+      rootId: 'root',
+      dio: _dio,
+      rateLimitRetry: _rateLimitRetry,
+    ).listChildFolders(parentId: parentId, cursor: cursor);
+    return OAuthRemoteFolderPage(
+      items: [
+        for (final folder in page.folders)
+          OAuthRemoteFolder(id: folder.id, name: folder.name),
+      ],
+      nextCursor: page.nextCursor,
+    );
   }
 
   /// Loads every page for a folder selection view. Listing folders is
@@ -222,25 +280,10 @@ class OAuthRemoteFolderPicker {
     if (target.clientId.isEmpty || target.credentialRef.isEmpty) {
       throw ArgumentError('OAuth remote target configuration is incomplete.');
     }
-    final tokenEndpoint = switch (target.providerType) {
-      RemoteProviderType.googleDrive => Uri.https(
-        'oauth2.googleapis.com',
-        '/token',
-      ),
-      RemoteProviderType.oneDrive => Uri.https(
-        'login.microsoftonline.com',
-        '/common/oauth2/v2.0/token',
-      ),
-      _ => throw UnsupportedError(
-        'Provider has no public OAuth token endpoint.',
-      ),
-    };
-    return OAuthAccessTokenProvider(
+    return oauthAccessTokensFor(
+      target,
       credentialStore: _credentialStore,
       tokenClient: _tokenClient,
-      credentialRef: target.credentialRef,
-      clientId: target.clientId,
-      tokenEndpoint: tokenEndpoint,
     );
   }
 

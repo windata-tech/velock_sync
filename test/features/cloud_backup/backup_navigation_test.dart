@@ -18,7 +18,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:velock_sync/core/app_router.dart';
-import 'package:velock_sync/core/app_repository.dart';
 import 'package:velock_sync/core/local_data_manager.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_pairing_control_plane.dart';
@@ -36,11 +35,24 @@ import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace.dar
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/infrastructure/staging/staging_space_manager.dart';
+import 'package:velock_sync/providers/oauth/oauth_client_registration.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_global_settings.dart';
 import 'package:velock_sync/sync_profiles/settings/sync_settings_service.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_pairing_session.dart';
+
+final _oauthProviders = RemoteProviderType.values
+    .where((type) => type != RemoteProviderType.webDav)
+    .toList();
+
+/// Titles the protocol list shows in the Chinese UI.
+const _zhTileTitle = {
+  RemoteProviderType.googleDrive: 'Google Drive',
+  RemoteProviderType.oneDrive: 'OneDrive',
+  RemoteProviderType.baiduNetdisk: '百度网盘',
+  RemoteProviderType.aliyunDrive: '阿里云盘',
+};
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -48,6 +60,7 @@ void main() {
   late ProviderContainer container;
   late List<ProtocolModel> probes;
   late DateTime wizardNow;
+  late _RegistrationCredentials credentials;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -56,6 +69,7 @@ void main() {
     await LocalDataManager.instance.init();
     database = await SyncStateDatabase.inMemory();
     probes = [];
+    credentials = _RegistrationCredentials();
     wizardNow = DateTime.now().toUtc();
     container = ProviderContainer(
       overrides: [
@@ -64,7 +78,7 @@ void main() {
         ),
         syncStateDatabaseProvider.overrideWithValue(database),
         velockWizardClockProvider.overrideWithValue(() => wizardNow),
-        credentialStoreProvider.overrideWithValue(_UnusedCredentials()),
+        credentialStoreProvider.overrideWithValue(credentials),
         syncSettingsServiceProvider.overrideWithValue(_Settings()),
         protocolConnectionProbeProvider.overrideWithValue(({
           required credentials,
@@ -506,10 +520,43 @@ void main() {
     }
   });
 
-  for (final provider in [
-    RemoteProviderType.googleDrive,
-    RemoteProviderType.oneDrive,
-  ]) {
+  /// The own-key form is a lazy ListView; the longer Baidu form keeps its
+  /// buttons unbuilt until scrolled to.
+  Future<void> revealInOwnKeyForm(WidgetTester tester, Key key) async {
+    await tester.scrollUntilVisible(
+      find.byKey(key),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('oauth-own-key-form')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+  }
+
+  /// Opens [provider] from the protocol list. Without a built-in key (as in
+  /// tests) every cloud drive sits in the folded "更多云盘" section.
+  Future<void> openFromProtocols(
+    WidgetTester tester,
+    RemoteProviderType provider,
+  ) async {
+    await tester.tap(find.byKey(const Key('protocols-more-toggle')));
+    await tester.pumpAndSettle();
+    final tile = find.byKey(Key('protocol-${provider.name}'));
+    await tester.ensureVisible(tile);
+    expect(
+      find.descendant(of: tile, matching: find.text(_zhTileTitle[provider]!)),
+      findsOneWidget,
+    );
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+  }
+
+  // Every storage type except WebDAV is an OAuth drive; each must reach
+  // the real authorization page, not the router's fallback.
+  for (final provider in _oauthProviders) {
     testWidgets('$provider receives the original restore return target', (
       tester,
     ) async {
@@ -518,14 +565,7 @@ void main() {
         tester,
         location: '/protocols?returnTo=${Uri.encodeQueryComponent(target)}',
       );
-      await tester.tap(
-        find.text(
-          provider == RemoteProviderType.googleDrive
-              ? 'Google Drive'
-              : 'OneDrive',
-        ),
-      );
-      await tester.pumpAndSettle();
+      await openFromProtocols(tester, provider);
       final page = tester.widget<NewOAuthConnection>(
         find.byType(NewOAuthConnection),
       );
@@ -537,14 +577,9 @@ void main() {
       ); // No real authorization or cloud access in this test.
       expect(tester.takeException(), isNull);
     });
-  }
 
-  for (final provider in [
-    RemoteProviderType.googleDrive,
-    RemoteProviderType.oneDrive,
-  ]) {
     testWidgets(
-      '$provider setup problems do not expose developer fields by default',
+      '$provider without a key offers the own-key form, not build settings',
       (tester) async {
         const target = '/sync-profiles/new/velock?intent=restore';
         final router = await mount(
@@ -552,11 +587,20 @@ void main() {
           location:
               '/protocol/oauth/${provider.name}?returnTo=${Uri.encodeQueryComponent(target)}',
         );
-        expect(find.textContaining('此版本暂未开通'), findsOneWidget);
-        expect(find.byKey(const Key('oauth-choose-another')), findsOneWidget);
-        expect(find.byKey(const Key('oauth-client-id-field')), findsNothing);
-        expect(find.textContaining('Client ID'), findsNothing);
+        expect(find.byKey(const Key('oauth-own-key-form')), findsOneWidget);
+        expect(find.byKey(const Key('oauth-sign-in')), findsNothing);
+        expect(find.textContaining('此版本暂未开通'), findsNothing);
+        // Build-time defines are a maintainer concern, never user-facing.
+        expect(find.textContaining('dart-define'), findsNothing);
+        expect(find.textContaining('BAIDU_NETDISK'), findsNothing);
         expect(find.textContaining('Refresh Token'), findsNothing);
+        expect(
+          find.byKey(const Key('oauth-own-secret')),
+          OAuthClientRegistration.acceptsSecret(provider)
+              ? findsOneWidget
+              : findsNothing,
+        );
+        await revealInOwnKeyForm(tester, const Key('oauth-choose-another'));
         await tester.tap(find.byKey(const Key('oauth-choose-another')));
         await tester.pumpAndSettle();
         expect(router.routeInformationProvider.value.uri.path, '/protocols');
@@ -564,6 +608,7 @@ void main() {
           tester.widget<Protocols>(find.byType(Protocols)).returnTo,
           target,
         );
+        expect(credentials.registrations, isEmpty);
         expect(probes, isEmpty);
         expect(tester.takeException(), isNull);
       },
@@ -576,14 +621,8 @@ void main() {
         final router = await mount(tester);
         router.push('/protocols?returnTo=${Uri.encodeQueryComponent(target)}');
         await tester.pumpAndSettle();
-        await tester.tap(
-          find.text(
-            provider == RemoteProviderType.googleDrive
-                ? 'Google Drive'
-                : 'OneDrive',
-          ),
-        );
-        await tester.pumpAndSettle();
+        await openFromProtocols(tester, provider);
+        await revealInOwnKeyForm(tester, const Key('oauth-choose-another'));
         await tester.tap(find.byKey(const Key('oauth-choose-another')));
         await tester.pumpAndSettle();
 
@@ -602,47 +641,47 @@ void main() {
       },
     );
 
-    testWidgets('$provider optional developer form waits for explicit save', (
+    testWidgets('$provider own app key waits for an explicit save', (
       tester,
     ) async {
       await mount(tester, location: '/protocol/oauth/${provider.name}');
-      await tester.ensureVisible(
-        find.byKey(const Key('oauth-developer-settings')),
-      );
-      await tester.tap(find.text('开发者配置'));
-      await tester.pumpAndSettle();
-      final input = find.byKey(const Key('oauth-client-id-field'));
+      final input = find.byKey(const Key('oauth-own-client-id'));
       await tester.ensureVisible(input);
       await tester.enterText(input, 't');
       await tester.pumpAndSettle();
-      // The old implementation replaced this form after the very first
-      // keystroke, before the user could finish or persist the configuration.
+      // Typing alone must neither persist anything nor swap the form away.
       expect(input, findsOneWidget);
       expect(find.byKey(const Key('oauth-sign-in')), findsNothing);
+      expect(credentials.registrations, isEmpty);
       const publicId = 'test-public-client.apps.example';
       await tester.enterText(input, publicId);
-      await tester.ensureVisible(find.byKey(const Key('oauth-save-client-id')));
-      await tester.tap(find.byKey(const Key('oauth-save-client-id')));
+      if (OAuthClientRegistration.requiresSecret(provider)) {
+        await tester.enterText(
+          find.byKey(const Key('oauth-own-secret')),
+          'test-secret',
+        );
+      }
+      if (OAuthClientRegistration.acceptsAppFolderName(provider)) {
+        await tester.enterText(
+          find.byKey(const Key('oauth-own-app-folder')),
+          'Test Sync',
+        );
+      }
+      await revealInOwnKeyForm(tester, const Key('oauth-own-save'));
+      await tester.tap(find.byKey(const Key('oauth-own-save')));
       await tester.pumpAndSettle();
-      expect(
-        await LocalDataManager.instance.getStringAsync(
-          provider == RemoteProviderType.googleDrive
-              ? AppKeys.googleOAuthClientId
-              : AppKeys.oneDriveOAuthClientId,
-        ),
-        publicId,
-      );
+      expect(credentials.registrations[provider]?.clientId, publicId);
       expect(find.byKey(const Key('oauth-sign-in')), findsOneWidget);
       expect(find.text('登录并选择保存位置'), findsOneWidget);
       expect(find.byKey(const Key('oauth-root-id')), findsNothing);
       expect(find.textContaining('Refresh Token'), findsNothing);
-      expect(find.textContaining('Client ID'), findsNothing);
       await tester.ensureVisible(
         find.byKey(const Key('oauth-advanced-location')),
       );
       await tester.tap(find.text('更多设置（可选）'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('oauth-root-id')), findsOneWidget);
+      expect(find.byKey(const Key('oauth-own-key-summary')), findsOneWidget);
       expect(probes, isEmpty); // No cloud sign-in is executed by a UI test.
       expect(tester.takeException(), isNull);
     });
@@ -682,7 +721,26 @@ void main() {
 
 /// No credentials are required for this isolated test service. Any accidental
 /// platform credential access fails instead of falling back to real storage.
-class _UnusedCredentials implements CredentialStore {
+/// Only the user's own OAuth app registrations may be touched; any other
+/// credential access in these navigation tests is a bug.
+class _RegistrationCredentials implements CredentialStore {
+  final registrations = <RemoteProviderType, OAuthClientRegistration>{};
+
+  @override
+  Future<void> writeOAuthClientRegistration(
+    RemoteProviderType type,
+    OAuthClientRegistration registration,
+  ) async => registrations[type] = registration;
+
+  @override
+  Future<OAuthClientRegistration?> readOAuthClientRegistration(
+    RemoteProviderType type,
+  ) async => registrations[type];
+
+  @override
+  Future<void> deleteOAuthClientRegistration(RemoteProviderType type) async =>
+      registrations.remove(type);
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

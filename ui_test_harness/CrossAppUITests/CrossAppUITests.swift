@@ -186,7 +186,7 @@ final class CrossAppUITests: XCTestCase {
         tutorialUnlock()
         let settings = tutorialContains(velockApp, ["设置", "Setting", "Settings"])
         tutorialTap(settings, "settings")
-        let sync = tutorialContains(velockApp, ["实验性 - 数据同步", "Experimental - Data Sync", "Experimental – Data Sync", "Experimental - Data Synchronization"])
+        let sync = tutorialContains(velockApp, ["云备份", "Cloud backup", "实验性 - 数据同步", "Experimental - Data Sync", "Experimental – Data Sync", "Experimental - Data Synchronization"])
         for _ in 0..<4 {
             if sync.exists && sync.isHittable { break }
             velockApp.swipeUp()
@@ -302,7 +302,7 @@ final class CrossAppUITests: XCTestCase {
 
     private func tutorialReturnToDashboard() {
         let credentials = velockApp.buttons.matching(NSPredicate(format: "label CONTAINS '凭证' OR label CONTAINS 'Credentials'")).firstMatch
-        let syncTitle = tutorialNode(velockApp, ["实验性 - 数据同步", "Experimental - Data Sync"])
+        let syncTitle = tutorialNode(velockApp, ["云备份", "Cloud backup", "实验性 - 数据同步", "Experimental - Data Sync"])
         // The pairing deep link can stack a second sync-settings route above
         // the original. Pop actual routes, not a fixed number of blind taps.
         for _ in 0..<3 {
@@ -958,10 +958,7 @@ final class CrossAppUITests: XCTestCase {
         launchSyncFresh()
         tapHomeTab("连接", normalizedX: 0.375, screenshotName: "page-connections")
         tapFirstContaining("新建连接")
-        waitForAnyText("选择协议")
-        attachScreenshot("page-new-connection")
-        tapFirstContaining("选择协议")
-        waitForAnyText("可用协议")
+        waitForAnyText("保存到哪里")
         attachScreenshot("page-protocols")
         tapFirstContaining("详细配置说明")
         waitForAnyText("远端服务配置说明")
@@ -1001,8 +998,12 @@ final class CrossAppUITests: XCTestCase {
 
         launchSyncFresh()
         tapHomeTab("连接", normalizedX: 0.375, screenshotName: "page-connections-detail-entry")
+        // The audited connection's host comes from the environment so no real
+        // server address has to live in this public repository.
+        let connectionHost =
+            ProcessInfo.processInfo.environment["E2E_AUDIT_CONNECTION_HOST"] ?? "nas.example.com"
         let connection = syncApp.buttons.matching(
-            NSPredicate(format: "label CONTAINS 'dav.yibogame.com'")
+            NSPredicate(format: "label CONTAINS %@", connectionHost)
         ).firstMatch
         XCTAssertTrue(connection.waitForExistence(timeout: 10))
         connection.tap()
@@ -1039,9 +1040,7 @@ final class CrossAppUITests: XCTestCase {
     private func openNewConnectionProtocols() {
         tapHomeTab("连接", normalizedX: 0.375, screenshotName: "page-connections-entry")
         tapFirstContaining("新建连接")
-        waitForAnyText("选择协议")
-        tapFirstContaining("选择协议")
-        waitForAnyText("可用协议")
+        waitForAnyText("保存到哪里")
     }
 
     private func openConnectionHelp(marker: String) {
@@ -1670,7 +1669,7 @@ final class CrossAppUITests: XCTestCase {
             account.tap(); velockApp.typeText("e2e-user")
             password.tap(); velockApp.typeText("e2e-secret")
             velockApp.buttons["保存"].firstMatch.tap()
-            XCTAssertTrue(velockApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'E2E Password'" )).firstMatch.waitForExistence(timeout: 45), "Password credential was not saved")
+            requireInVelock(velockApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'E2E Password'" )).firstMatch, "Password credential was not saved", timeout: 45)
         }
 
         // Ordinary bank-card regressions retain their fixture. The full
@@ -1698,7 +1697,7 @@ final class CrossAppUITests: XCTestCase {
             velockApp.coordinate(withNormalizedOffset: CGVector(dx: 0.60, dy: 0.28)).tap()
             velockApp.typeText(cardDigits)
             velockApp.buttons["保存"].firstMatch.tap()
-            XCTAssertTrue(velockApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", cardTitle)).firstMatch.waitForExistence(timeout: 10), "Card editor did not return to credentials")
+            requireInVelock(velockApp.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", cardTitle)).firstMatch, "Card editor did not return to credentials")
         }
 
         // Note credential. The iOS 26 simulator's software keyboard exposes
@@ -1745,6 +1744,187 @@ final class CrossAppUITests: XCTestCase {
     func testEnableVelockPairingOnly() {
         ensureVelockInitializedAndPairingEnabled(refreshRecoveryCard: false)
         attachScreenshot("velock-pairing-enabled")
+    }
+
+    /// Redesigned backup entry (格间 tab → 开始备份 → 1 · 连接格间): starts the
+    /// pairing from Sync, unlocks 格间 and allows the request in one go so the
+    /// companion never backgrounds (and relocks) in between. Stops once Sync
+    /// is back in the foreground; cloud location and first backup are driven
+    /// separately. Does not reset either app.
+    /// Backup smoke test driven only by accessibility identifiers (Flutter
+    /// widget keys published through `withAutomationId`), so copy edits and
+    /// the language setting do not break it.
+    ///
+    /// With an existing backup it runs “立即备份”. Otherwise it pairs with 格间
+    /// (unlocking with VELOCK_RUNTIME_PASSWORD when needed), adds an HTTP
+    /// WebDAV connection at 127.0.0.1:E2E_WEBDAV_PORT, uses the connection
+    /// root and starts the first backup. Either way it passes only when the
+    /// status card reports a completed backup.
+    ///
+    /// Run through `tool/ios_ui_test/sim/backup_smoke.sh`, which starts the
+    /// local WebDAV server and checks the uploaded objects afterwards.
+    func testBackupSmoke() {
+        syncApp.launch()
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 15))
+
+        let existing = element(syncApp, "backup-primary-action")
+        let enable = element(syncApp, "velock-backup-enable")
+        let deadline = Date().addingTimeInterval(20)
+        while !existing.exists && !enable.exists && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        if existing.exists {
+            if !backupIsRunning() { existing.tap() }
+        } else {
+            guard enable.exists else {
+                failWithTree("Home shows neither a backup nor the setup entry")
+                return
+            }
+            enable.tap()
+            smokePairWithVelock()
+            smokeChooseDestination()
+        }
+        waitForCompletedBackup(timeout: 240)
+        attachScreenshot("backup-smoke-done")
+        let hold = Double(ProcessInfo.processInfo.environment["E2E_HOLD_SECONDS"] ?? "") ?? 0
+        if hold > 0 { RunLoop.current.run(until: Date().addingTimeInterval(hold)) }
+    }
+
+    private func element(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+
+    private func tapWhenReady(_ app: XCUIApplication, _ id: String, timeout: TimeInterval = 15) {
+        let target = element(app, id)
+        guard target.waitForExistence(timeout: timeout) else {
+            failWithTree("\(id) did not appear", app: app)
+            return
+        }
+        target.tap()
+    }
+
+    /// Prints only nodes that have an identifier or a label; the full
+    /// debugDescription is thousands of lines.
+    private func failWithTree(_ message: String, app: XCUIApplication? = nil) {
+        let target = app ?? syncApp!
+        let lines = target.debugDescription
+            .split(separator: "\n")
+            .filter { $0.contains("identifier:") || $0.contains("label:") }
+            .prefix(120)
+            .joined(separator: "\n")
+        attachScreenshot("backup-smoke-failure")
+        XCTFail("\(message)\nSMOKE_TREE_BEGIN\n\(lines)\nSMOKE_TREE_END")
+    }
+
+    /// Waits for [element]; on timeout fails with the filtered 格间 tree so a
+    /// broken step is diagnosable from run_test.sh output alone.
+    @discardableResult
+    private func requireInVelock(_ element: XCUIElement, _ message: String, timeout: TimeInterval = 10) -> Bool {
+        if element.waitForExistence(timeout: timeout) { return true }
+        failWithTree(message, app: velockApp)
+        return false
+    }
+
+    private func backupIsRunning() -> Bool {
+        let title = element(syncApp, "backup-status-title")
+        return title.exists && ["正在传输，请稍候", "Transferring your data"].contains(title.label)
+    }
+
+    private func smokePairWithVelock() {
+        let inspect = element(syncApp, "inspect-velock-readiness")
+        let renew = element(syncApp, "renew-velock-authorization")
+        let folder = element(syncApp, "use-backup-folder")
+        let addStorage = element(syncApp, "go-create-connection")
+        let deadline = Date().addingTimeInterval(20)
+        // A request sent before Sync was terminated resumes on its own and
+        // may already be approved.
+        while Date() < deadline {
+            if inspect.exists { inspect.tap(); break }
+            if renew.exists { renew.tap(); break }
+            if folder.exists || addStorage.exists { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        for _ in 0..<30 {
+            if velockApp.state == .runningForeground { break }
+            for owner in [syncApp!, springboard] {
+                let open = owner.alerts.buttons.matching(
+                    NSPredicate(format: "label IN %@", ["打开", "Open"])
+                ).firstMatch
+                if open.exists && open.isHittable { open.tap(); break }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        guard velockApp.wait(for: .runningForeground, timeout: 10) else {
+            failWithTree("Sync did not open 格间")
+            return
+        }
+        unlockVelockIfNeeded()
+        tapWhenReady(velockApp, "approve-sync-request", timeout: 30)
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        syncApp.activate()
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 15))
+    }
+
+    private func smokeChooseDestination() {
+        let folder = element(syncApp, "use-backup-folder")
+        let addStorage = element(syncApp, "go-create-connection")
+        let chooseExisting = element(syncApp, "continue-velock-setup")
+        let portConnection = syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'velock-connection-' AND label CONTAINS %@", ":\(webDAVPort)")
+        ).firstMatch
+        var addedConnection = false
+        let deadline = Date().addingTimeInterval(90)
+        while !folder.exists && Date() < deadline {
+            if portConnection.exists {
+                portConnection.tap()
+            } else if chooseExisting.exists && chooseExisting.isHittable && addedConnection {
+                chooseExisting.tap()
+            } else if addStorage.exists && addStorage.isHittable && !addedConnection {
+                // Add our own server even when other connections exist, so
+                // the run never writes to a real NAS.
+                addStorage.tap()
+                addLocalWebDAVConnection()
+                addedConnection = true
+            } else if chooseExisting.exists && chooseExisting.isHittable {
+                chooseExisting.tap()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        }
+        guard folder.exists else {
+            failWithTree("The backup folder picker did not open")
+            return
+        }
+        folder.tap()
+        tapWhenReady(syncApp, "finalize-velock-profile")
+    }
+
+    private func addLocalWebDAVConnection() {
+        tapWhenReady(syncApp, "protocol-webDav")
+        tapWhenReady(syncApp, "webdav_https")
+        tapWhenReady(syncApp, "webdav-allow-http", timeout: 5)
+        // Turning HTTPS off rewrites the scheme to http://; type after it.
+        tapWhenReady(syncApp, "webdav_address")
+        syncApp.typeText("127.0.0.1")
+        tapWhenReady(syncApp, "webdav_port")
+        syncApp.typeText(webDAVPort)
+        tapWhenReady(syncApp, "webdav-save")
+    }
+
+    private func waitForCompletedBackup(timeout: TimeInterval) {
+        let done = ["上次备份已完成", "Last backup completed"]
+        let title = element(syncApp, "backup-status-title")
+        let deadline = Date().addingTimeInterval(timeout)
+        var last = ""
+        while Date() < deadline {
+            if title.exists {
+                last = title.label
+                if done.contains(last) { return }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        }
+        failWithTree("Backup did not complete; last status: \(last.isEmpty ? "<none>" : last)")
     }
 
     func testSeedVelockBusinessData() {
@@ -2555,7 +2735,11 @@ final class CrossAppUITests: XCTestCase {
     }
 
     func testProbeVelockMediaImport() {
-        velockApp.resetAuthorizationStatus(for: .photos)
+        // iOS 27 hosts the Photos permission prompt outside both SpringBoard
+        // and the app's AX tree; callers can pre-grant with `simctl privacy`.
+        if ProcessInfo.processInfo.environment["E2E_PHOTOS_PREGRANTED"] != "1" {
+            velockApp.resetAuthorizationStatus(for: .photos)
+        }
         velockApp.launch()
         XCTAssertTrue(velockApp.wait(for: .runningForeground, timeout: 20))
         unlockVelockIfNeeded()
@@ -3235,7 +3419,7 @@ final class CrossAppUITests: XCTestCase {
         }
         let syncSettings = velockApp.descendants(matching: .any).matching(
             NSPredicate(
-                format: "label CONTAINS '实验性 - 数据同步' OR label CONTAINS 'Velock Sync' OR label CONTAINS '数据同步'"
+                format: "label CONTAINS '云备份' OR label CONTAINS 'Cloud backup' OR label CONTAINS '实验性 - 数据同步' OR label CONTAINS 'Velock Sync' OR label CONTAINS '数据同步'"
             )
         ).firstMatch
         if !syncSettings.waitForExistence(timeout: 10) {
@@ -3297,7 +3481,7 @@ final class CrossAppUITests: XCTestCase {
             XCTAssertTrue(joinPrompt.waitForNonExistence(timeout: 15))
         }
         let pairingStatus = velockApp.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS '允许新的配对' OR label CONTAINS 'Allow new pairings'")
+            NSPredicate(format: "label CONTAINS '允许 Sync 连接' OR label CONTAINS 'Allow Sync' OR label CONTAINS '允许新的配对' OR label CONTAINS 'Allow new pairings'")
         ).firstMatch
         for _ in 0..<5 {
             if pairingStatus.waitForExistence(timeout: 1) && pairingStatus.isHittable { break }
@@ -3305,7 +3489,25 @@ final class CrossAppUITests: XCTestCase {
         }
         XCTAssertTrue(pairingStatus.waitForExistence(timeout: 5),
                       "Pairing control missing after navigation: \(velockApp.debugDescription)")
-        if pairingStatus.label.contains("未启用") {
+        // The cloud-backup page exposes the control as a real switch whose
+        // value, not its label, says whether Sync connections are allowed.
+        let enabledBefore = pairingStatus.elementType == .switch
+            ? (pairingStatus.value as? String) == "1"
+            : (!pairingStatus.label.contains("未启用") ||
+               velockApp.descendants(matching: .any)["cloud-backup-status"].label.contains("已开启"))
+        if pairingStatus.elementType == .switch && !enabledBefore {
+            // The switch's accessibility frame also covers the status card
+            // above it; the actual toggle sits at the trailing edge of the
+            // bottom list row.
+            pairingStatus.coordinate(withNormalizedOffset: CGVector(
+                dx: 0.87,
+                dy: 1 - 28 / max(pairingStatus.frame.height, 56)
+            )).tap()
+            let confirm = velockApp.buttons["确认"].firstMatch
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5),
+                          "Enable confirmation missing: \(velockApp.debugDescription)")
+            confirm.tap()
+        } else if pairingStatus.elementType != .switch && !enabledBefore {
             pairingStatus.coordinate(
                 withNormalizedOffset: CGVector(dx: 0.90, dy: 0.50)
             ).tap()
@@ -3340,18 +3542,28 @@ final class CrossAppUITests: XCTestCase {
             saveRecoveryCard.tap()
             allowPhotoAdditionIfRequested()
             XCTAssertTrue(
-                velockApp.descendants(matching: .any).matching(
-                    NSPredicate(format: "label CONTAINS '独立应用连接'")
-                ).firstMatch.waitForExistence(timeout: 30),
+                saveRecoveryCard.waitForNonExistence(timeout: 30),
                 "Velock did not return from the replacement-device recovery card"
             )
         }
+        // After the card route, Velock offers to jump to Sync. The harness
+        // drives Sync itself, so stay in Velock.
+        let later = velockApp.buttons["稍后"].firstMatch
+        if later.waitForExistence(timeout: 10) {
+            later.tap()
+        }
 
+        // Once on, the status card reads 「已开启连接功能」 and the switch is
+        // exposed on its own without the row label.
+        let enabledSwitch = velockApp.switches.matching(
+            NSPredicate(format: "value == '1'")
+        ).firstMatch
+        let enabledLabel = velockApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS '已开启连接功能' OR label CONTAINS '已启用'")
+        ).firstMatch
         XCTAssertTrue(
-            velockApp.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS '已启用'")
-            ).firstMatch.waitForExistence(timeout: 30),
-            "Velock did not publish its pairing descriptor"
+            enabledSwitch.waitForExistence(timeout: 30) || enabledLabel.exists,
+            "Velock did not publish its pairing descriptor: \(velockApp.debugDescription)"
         )
     }
 
@@ -3542,6 +3754,8 @@ final class CrossAppUITests: XCTestCase {
     }
 
     /// Fills and saves the WebDAV connection form on the current screen.
+    /// 选择云端位置 → 添加云端位置 → WebDAV, filled with this run's anonymous
+    /// local WsgiDAV endpoint over HTTP.
     private func fillWebDAVConnectionForm() {
         let httpsSwitch = syncApp.switches.firstMatch
         XCTAssertTrue(httpsSwitch.waitForExistence(timeout: 5))

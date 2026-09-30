@@ -114,6 +114,8 @@ class _TokenClient extends OAuthTokenClient {
     required Uri redirectUri,
     required String code,
     required String codeVerifier,
+    String? clientSecret,
+    OAuthTokenRequestFormat format = OAuthTokenRequestFormat.form,
   }) async => OAuthTokenBundle(
     accessToken: 'access-token',
     refreshToken: 'refresh-token',

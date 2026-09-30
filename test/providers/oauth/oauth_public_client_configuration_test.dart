@@ -26,6 +26,14 @@ void main() {
     expect(
       () => OAuthPublicClientConfiguration.fromClientId(
         providerType: RemoteProviderType.baiduNetdisk,
+        clientId: 'app-key',
+      ),
+      // Baidu also needs its SecretKey, which tests never define.
+      throwsA(isA<OAuthClientRegistrationMissingException>()),
+    );
+    expect(
+      () => OAuthPublicClientConfiguration.fromClientId(
+        providerType: RemoteProviderType.webDav,
         clientId: 'not-used',
       ),
       throwsUnsupportedError,

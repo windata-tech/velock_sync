@@ -161,6 +161,16 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
   bool _pairingProblemDialogVisible = false;
   String? _destinationError;
 
+  /// Null until checked. With no cloud storage yet, adding one is the only
+  /// way forward, so it becomes the main action instead of a dead-end choice.
+  bool? _hasConnections;
+
+  void _noteConnections(List<ConnectionModel> connections) {
+    if (mounted && _hasConnections != connections.isNotEmpty) {
+      setState(() => _hasConnections = connections.isNotEmpty);
+    }
+  }
+
   String? get _replacingProfileId =>
       widget.replacingProfileId ??
       ref.read(velockWizardSessionProvider).replacingProfileId;
@@ -227,12 +237,73 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       // re-pairing (or vice versa). Only unsaved pairing state is dropped.
       ref.read(velockWizardSessionProvider.notifier).reset();
     }
-    final wizard = ref.read(velockWizardSessionProvider);
+    var wizard = ref.read(velockWizardSessionProvider);
+    if (wizard.session == null &&
+        wizard.finalization == null &&
+        wizard.authorizationProblem == null) {
+      await _restorePendingPairing();
+      if (!mounted) return;
+      wizard = ref.read(velockWizardSessionProvider);
+    }
     if (wizard.session != null && wizard.approval == null) {
       await _inspectPendingVelockPairing(wizard.session!);
       return;
     }
     await _autoResumeVelockWizard();
+  }
+
+  /// Picks up a request sent before Sync was terminated, typically while the
+  /// user was approving it in Velock. The request is only reused for the same
+  /// purpose and the same Velock identity; its approval is then fetched and
+  /// verified exactly as if Sync had kept running.
+  Future<void> _restorePendingPairing() async {
+    final store = ref.read(velockPendingPairingStoreProvider);
+    final pending = await store.load(
+      now: ref.read(velockWizardClockProvider)(),
+    );
+    if (pending == null ||
+        !mounted ||
+        pending.restoring != widget.restoring ||
+        pending.replacingProfileId != widget.replacingProfileId) {
+      return;
+    }
+    VelockWizardReadiness readiness;
+    try {
+      readiness = await ref
+          .read(velockWizardReadinessServiceProvider)
+          .inspect()
+          .timeout(
+            const Duration(seconds: 8),
+            onTimeout: () => const VelockWizardReadiness(
+              VelockWizardAvailability.temporarilyUnavailable,
+            ),
+          );
+    } on Object {
+      return;
+    }
+    if (!mounted || !readiness.canCreate) return;
+    final descriptor = readiness.descriptor!;
+    final request = pending.request;
+    if (descriptor.producerId != request.producerId ||
+        descriptor.producerPublicKeyId != request.producerPublicKeyId ||
+        descriptor.exchangeBindingId != request.exchangeBindingId) {
+      // Velock has another identity now; this request can never be approved.
+      await store.clear();
+      return;
+    }
+    final wizard = ref.read(velockWizardSessionProvider);
+    if (wizard.session != null ||
+        wizard.finalization != null ||
+        wizard.authorizationProblem != null) {
+      return;
+    }
+    ref
+        .read(velockWizardSessionProvider.notifier)
+        .sessionStarted(
+          VelockPairingSession(descriptor: descriptor, request: request),
+          replacingProfileId: pending.replacingProfileId,
+          restoring: pending.restoring,
+        );
   }
 
   Future<void> _autoResumeVelockWizard() async {
@@ -244,14 +315,13 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
     if (session == null || approval == null || wizard.finalization != null) {
       return;
     }
-    if (!await _verifyCurrentApproval(session, approval) ||
-        !wizard.connectionNeeded) {
-      return;
-    }
+    if (!await _verifyCurrentApproval(session, approval)) return;
     final connections = (await ref.read(velockWizardConnectionsProvider)())
         .where((connection) => connection.status == ConnectionStatus.active)
         .toList(growable: false);
+    _noteConnections(connections);
     if (!mounted ||
+        !wizard.connectionNeeded ||
         connections.isEmpty ||
         !_authorizationIsCurrent(session, approval) ||
         ModalRoute.of(context)?.isCurrent != true) {
@@ -371,7 +441,11 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       setState(() => _checkingVelock = false);
       ref
           .read(velockWizardSessionProvider.notifier)
-          .sessionStarted(session, replacingProfileId: _replacingProfileId);
+          .sessionStarted(
+            session,
+            replacingProfileId: _replacingProfileId,
+            restoring: widget.restoring,
+          );
       await _reopenVelockPairing(session);
     } on Object {
       if (!mounted) return;
@@ -553,6 +627,22 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
     if (retry == true && mounted) await _inspectVelock();
   }
 
+  void _addCloudStorage() {
+    ref
+        .read(connectionCreationProvider.notifier)
+        .prepareNewConnection(
+          name: syncText(context, '我的云端', 'My cloud'),
+          source: syncText(context, '格间', 'Velock'),
+          target: null,
+        );
+    ref.read(velockWizardSessionProvider.notifier).connectionMissing();
+    final returnTo =
+        '${AppRoutes.velockDatasetWizard.path}${widget.restoring ? '?intent=restore' : ''}';
+    context.push(
+      '${AppRoutes.protocols.path}?returnTo=${Uri.encodeQueryComponent(returnTo)}',
+    );
+  }
+
   Future<void> _continueVelockProfile(
     VelockPairingSession session,
     VelockPairingControlResponse approval, {
@@ -566,16 +656,12 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
           .where((connection) => connection.status == ConnectionStatus.active)
           .toList(growable: false);
       if (!mounted || !_authorizationIsCurrent(session, approval)) return;
+      _noteConnections(connections);
       if (connections.isEmpty) {
         ref.read(velockWizardSessionProvider.notifier).connectionMissing();
-        showMessage(
-          context,
-          syncText(
-            context,
-            '接下来选择你的云端位置。如果授权过期，可直接重新授权，无需重新添加位置。',
-            'Choose cloud storage next. If access expires, authorize again without adding your storage again.',
-          ),
-        );
+        // Arriving here on its own (approval just came back) only shows the
+        // add action; a tap asking to choose goes straight to adding one.
+        if (!reuseSelection) _addCloudStorage();
         return;
       }
       // A connection is available: the approved pairing can proceed, so the
@@ -1333,57 +1419,37 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                         ),
                         const SizedBox(height: 14),
                       ],
-                      BackupActionButton(
-                        key: const Key('continue-velock-setup'),
-                        label: syncText(
-                          context,
-                          _checkingVelock
-                              ? '正在检查云端…'
-                              : _destinationError != null
-                              ? '重新选择文件夹'
-                              : '选择已添加的位置',
-                          _checkingVelock
-                              ? 'Checking storage…'
-                              : _destinationError != null
-                              ? 'Choose another folder'
-                              : 'Choose an existing location',
+                      if (_hasConnections != false) ...[
+                        BackupActionButton(
+                          key: const Key('continue-velock-setup'),
+                          label: syncText(
+                            context,
+                            _checkingVelock
+                                ? '正在检查云端…'
+                                : _destinationError != null
+                                ? '重新选择文件夹'
+                                : '选择已添加的位置',
+                            _checkingVelock
+                                ? 'Checking storage…'
+                                : _destinationError != null
+                                ? 'Choose another folder'
+                                : 'Choose an existing location',
+                          ),
+                          busy: _checkingVelock,
+                          onPressed: _checkingVelock
+                              ? null
+                              : () => _continueVelockProfile(
+                                  wizard.session!,
+                                  wizard.approval!,
+                                ),
                         ),
-                        busy: _checkingVelock,
-                        onPressed: _checkingVelock
-                            ? null
-                            : () => _continueVelockProfile(
-                                wizard.session!,
-                                wizard.approval!,
-                              ),
-                      ),
-                      const SizedBox(height: 10),
+                        const SizedBox(height: 10),
+                      ],
                       BackupActionButton(
                         key: const Key('go-create-connection'),
-                        secondary: true,
+                        secondary: _hasConnections != false,
                         label: syncText(context, '添加云端位置', 'Add cloud storage'),
-                        onPressed: _checkingVelock
-                            ? null
-                            : () {
-                                ref
-                                    .read(connectionCreationProvider.notifier)
-                                    .prepareNewConnection(
-                                      name: syncText(
-                                        context,
-                                        '我的云端',
-                                        'My cloud',
-                                      ),
-                                      source: syncText(context, '格间', 'Velock'),
-                                      target: null,
-                                    );
-                                ref
-                                    .read(velockWizardSessionProvider.notifier)
-                                    .connectionMissing();
-                                final returnTo =
-                                    '${AppRoutes.velockDatasetWizard.path}${widget.restoring ? '?intent=restore' : ''}';
-                                context.push(
-                                  '${AppRoutes.protocols.path}?returnTo=${Uri.encodeQueryComponent(returnTo)}',
-                                );
-                              },
+                        onPressed: _checkingVelock ? null : _addCloudStorage,
                       ),
                       TextButton(
                         key: const Key('abandon-velock-pairing'),

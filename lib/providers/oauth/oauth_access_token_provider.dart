@@ -9,6 +9,8 @@ class OAuthAccessTokenProvider {
     required this.credentialRef,
     required this.clientId,
     required this.tokenEndpoint,
+    this.clientSecret,
+    this.tokenRequestFormat = OAuthTokenRequestFormat.form,
     this.refreshMargin = const Duration(minutes: 2),
     DateTime Function()? clock,
   }) : _credentialStore = credentialStore,
@@ -20,6 +22,11 @@ class OAuthAccessTokenProvider {
   final String credentialRef;
   final String clientId;
   final Uri tokenEndpoint;
+
+  /// The build's secret, used only when the grant carries none of its own
+  /// (a grant made with the user's registration always does).
+  final String? clientSecret;
+  final OAuthTokenRequestFormat tokenRequestFormat;
   final Duration refreshMargin;
   final DateTime Function() _clock;
 
@@ -34,6 +41,10 @@ class OAuthAccessTokenProvider {
       tokenEndpoint: tokenEndpoint,
       clientId: clientId,
       current: current,
+      clientSecret:
+          await _credentialStore.readOAuthClientSecret(credentialRef) ??
+          clientSecret,
+      format: tokenRequestFormat,
     );
     await _credentialStore.updateOAuthTokens(credentialRef, refreshed);
     return refreshed.accessToken;

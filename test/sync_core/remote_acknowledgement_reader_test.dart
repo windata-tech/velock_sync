@@ -77,8 +77,11 @@ void main() {
       final result = await const RemoteAcknowledgementReader().read(
         vaultId: 'vault-1',
         remote: remote,
-        trustedDeviceKeys: {'consumer-1': await Ed25519().newKeyPair()
-            .then((pair) => pair.extractPublicKey())},
+        trustedDeviceKeys: {
+          'consumer-1': await Ed25519().newKeyPair().then(
+            (pair) => pair.extractPublicKey(),
+          ),
+        },
       );
 
       expect(result, isEmpty);

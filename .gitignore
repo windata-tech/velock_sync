@@ -132,3 +132,13 @@ tool/local_webdav/*.local.env
 
 # Tutorial host configuration and demo credentials
 /tool/ios_ui_test/tutorial/*.local.json
+
+# Xcode test results can embed server addresses; keep them out of the public repo.
+*.xcresult/
+
+# Built-in cloud drive app keys for official builds (see docs/OAUTH_SETUP.md).
+/oauth_keys.json
+*.oauth_keys.json
+
+# Private settings for tool/ios_ui_test/sim (password, simulator UDID)
+/tool/ios_ui_test/sim/local.env

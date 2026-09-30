@@ -1,9 +1,11 @@
-/// Only location types this build can finish setting up are offered when
-/// adding a connection. Google Drive / OneDrive come back as soon as a public
-/// client ID is built in; Baidu Netdisk and Aliyun Drive have no adapter.
+/// Cloud drives with a built-in app key are offered directly when adding a
+/// connection. The rest are folded into “更多云盘”: the repository ships no
+/// keys, so a user can register their own app and enter it on the connection
+/// page — in release builds too. Once they have, that provider joins the main
+/// list.
 ///
-/// Saved connections of a hidden type must still be listed (and therefore
-/// editable/deletable), and the developer Client ID form is debug-only.
+/// Saved connections of any type must still be listed (and therefore
+/// editable/deletable).
 library;
 
 import 'package:cupertino_ui/cupertino_ui.dart';
@@ -11,32 +13,29 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
-import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
-import 'package:velock_sync/core/app_repository.dart';
-import 'package:velock_sync/core/local_data_manager.dart';
+import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/connection_provider.dart'
     as state;
 import 'package:velock_sync/features/connection/ui/connection_guidance.dart';
 import 'package:velock_sync/features/connection/ui/connections.dart';
-import 'package:velock_sync/features/connection/ui/new_connection.dart';
 import 'package:velock_sync/features/connection/ui/new_oauth.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
+import 'package:velock_sync/features/connection/ui/remote_provider_icon.dart';
+import 'package:velock_sync/infrastructure/secure_storage/in_memory_credential_store.dart';
+import 'package:velock_sync/providers/oauth/oauth_client_registration.dart';
 import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
 /// A release build without any OAuth client ID.
 final _releaseUnconfigured = RemoteProviderAvailability.forBuild(
-  developerMode: false,
   hasBuiltInClientId: (_) => false,
 );
 
 /// A release build with both public client IDs built in.
 final _releaseConfigured = RemoteProviderAvailability.forBuild(
-  developerMode: false,
   hasBuiltInClientId: (type) =>
       type == RemoteProviderType.googleDrive ||
       type == RemoteProviderType.oneDrive,
@@ -72,12 +71,16 @@ Future<void> _pump(
   required RemoteProviderAvailability availability,
   List<Override> overrides = const [],
   Locale locale = const Locale('zh'),
+  InMemoryCredentialStore? credentials,
 }) async {
   await tester.binding.setSurfaceSize(const Size(390, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final container = ProviderContainer(
     overrides: [
       remoteProviderAvailabilityProvider.overrideWithValue(availability),
+      credentialStoreProvider.overrideWithValue(
+        credentials ?? InMemoryCredentialStore(),
+      ),
       ...overrides,
     ],
   );
@@ -101,14 +104,16 @@ void main() {
   group('RemoteProviderAvailability.forBuild', () {
     test('a release build without client IDs offers only WebDAV', () {
       expect(_releaseUnconfigured.ordered, [RemoteProviderType.webDav]);
-      expect(_releaseUnconfigured.allowsDeveloperClientId, isFalse);
+      expect(
+        _releaseUnconfigured.needsOwnRegistration,
+        RemoteProviderAvailability.oauthProviderTypes,
+      );
       expect(_releaseUnconfigured.describe(chinese: true), 'WebDAV');
       expect(_releaseUnconfigured.describe(chinese: false), 'WebDAV');
     });
 
     test('built-in client IDs re-enable only the configured provider', () {
       final googleOnly = RemoteProviderAvailability.forBuild(
-        developerMode: false,
         hasBuiltInClientId: (type) => type == RemoteProviderType.googleDrive,
       );
       expect(googleOnly.ordered, [
@@ -126,41 +131,50 @@ void main() {
       );
     });
 
-    test('Baidu Netdisk and Aliyun Drive are never offered', () {
-      for (final developerMode in [false, true]) {
-        final availability = RemoteProviderAvailability.forBuild(
-          developerMode: developerMode,
-          hasBuiltInClientId: (_) => true,
-        );
-        expect(
-          availability.canCreate(RemoteProviderType.baiduNetdisk),
-          isFalse,
-        );
-        expect(availability.canCreate(RemoteProviderType.aliyunDrive), isFalse);
-      }
-    });
-
-    test('debug builds keep the OAuth providers for developers', () {
-      final debug = RemoteProviderAvailability.forBuild(
-        developerMode: true,
+    test('Baidu Netdisk and Aliyun Drive follow their registration', () {
+      final configured = RemoteProviderAvailability.forBuild(
+        hasBuiltInClientId: (_) => true,
+      );
+      expect(configured.canCreate(RemoteProviderType.baiduNetdisk), isTrue);
+      expect(configured.canCreate(RemoteProviderType.aliyunDrive), isTrue);
+      final missing = RemoteProviderAvailability.forBuild(
         hasBuiltInClientId: (_) => false,
       );
-      expect(debug.canCreate(RemoteProviderType.googleDrive), isTrue);
-      expect(debug.canCreate(RemoteProviderType.oneDrive), isTrue);
-      expect(debug.allowsDeveloperClientId, isTrue);
+      expect(missing.canCreate(RemoteProviderType.baiduNetdisk), isFalse);
+      expect(missing.canCreate(RemoteProviderType.aliyunDrive), isFalse);
+    });
+
+    test('only providers without a built-in key need the user’s own', () {
+      expect(_releaseConfigured.needsOwnRegistration, [
+        RemoteProviderType.baiduNetdisk,
+        RemoteProviderType.aliyunDrive,
+      ]);
+      final all = RemoteProviderAvailability.forBuild(
+        hasBuiltInClientId: (_) => true,
+      );
+      expect(all.needsOwnRegistration, isEmpty);
     });
   });
 
-  testWidgets('the picker hides every provider this build cannot set up', (
+  testWidgets('providers without a key are folded under “更多云盘”', (
     tester,
   ) async {
     await _pump(tester, const Protocols(), availability: _releaseUnconfigured);
     expect(find.text('WebDAV'), findsOneWidget);
-    expect(find.text('Google Drive'), findsNothing);
-    expect(find.text('OneDrive'), findsNothing);
-    expect(find.text('百度网盘'), findsNothing);
-    expect(find.text('阿里云盘'), findsNothing);
+    expect(find.byKey(const Key('protocol-googleDrive')), findsNothing);
+    expect(find.byKey(const Key('protocol-baiduNetdisk')), findsNothing);
+    expect(find.text('更多云盘'), findsOneWidget);
     expect(find.text('其他服务'), findsNothing);
+    // No build options or environment variables are shown to users.
+    expect(find.textContaining('dart-define'), findsNothing);
+    expect(find.textContaining('此版本暂未开通'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('protocols-more-toggle')));
+    await tester.pumpAndSettle();
+    for (final type in RemoteProviderAvailability.oauthProviderTypes) {
+      expect(find.byKey(Key('protocol-${type.name}')), findsOneWidget);
+    }
+    expect(find.textContaining('需要先在百度网盘开放平台注册'), findsOneWidget);
     // The header no longer claims every location is encrypted.
     expect(find.textContaining('加密对象'), findsNothing);
     expect(find.textContaining('文件同步写入的是普通文件'), findsOneWidget);
@@ -174,8 +188,99 @@ void main() {
     expect(find.text('WebDAV'), findsOneWidget);
     expect(find.text('Google Drive'), findsOneWidget);
     expect(find.text('OneDrive'), findsOneWidget);
-    expect(find.text('百度网盘'), findsNothing);
-    expect(find.text('阿里云盘'), findsNothing);
+    expect(find.byKey(const Key('protocol-baiduNetdisk')), findsNothing);
+    expect(find.byKey(const Key('protocols-more-toggle')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a provider with the user’s own key joins the main list', (
+    tester,
+  ) async {
+    final credentials = InMemoryCredentialStore();
+    await credentials.writeOAuthClientRegistration(
+      RemoteProviderType.baiduNetdisk,
+      OAuthClientRegistration.normalized(
+        type: RemoteProviderType.baiduNetdisk,
+        clientId: 'user-app-key',
+        clientSecret: 'user-secret',
+        appFolderName: 'My Sync',
+      ),
+    );
+    await _pump(
+      tester,
+      const Protocols(),
+      availability: _releaseUnconfigured,
+      credentials: credentials,
+    );
+    expect(find.byKey(const Key('protocol-baiduNetdisk')), findsOneWidget);
+    expect(find.textContaining('使用你自己的应用密钥登录'), findsOneWidget);
+    // The others still wait behind the folded section.
+    expect(find.byKey(const Key('protocol-googleDrive')), findsNothing);
+    expect(find.byKey(const Key('protocols-more-toggle')), findsOneWidget);
+  });
+
+  testWidgets('each storage type has its own icon and colour', (tester) async {
+    await _pump(
+      tester,
+      const Protocols(),
+      availability: RemoteProviderAvailability.forBuild(
+        hasBuiltInClientId: (_) => true,
+      ),
+    );
+    final drawn = RemoteProviderType.values
+        .where((type) => remoteProviderOfficialLogo(type) == null)
+        .toList();
+    final badges = tester
+        .widgetList<AdaptiveIconBadge>(find.byType(AdaptiveIconBadge))
+        .toList();
+    expect(badges, hasLength(drawn.length));
+    expect(badges.map((b) => b.icon).toSet(), hasLength(badges.length));
+    expect(badges.map((b) => b.color).toSet(), hasLength(badges.length));
+  });
+
+  testWidgets('Google Drive shows its published logo, unmodified', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      const Protocols(),
+      availability: RemoteProviderAvailability.forBuild(
+        hasBuiltInClientId: (_) => true,
+      ),
+    );
+    final logo = find.byWidgetPredicate(
+      (widget) =>
+          widget is Image &&
+          widget.image is AssetImage &&
+          (widget.image as AssetImage).assetName ==
+              'assets/providers/google_drive.png',
+    );
+    expect(logo, findsOneWidget);
+    final image = tester.widget<Image>(logo);
+    // Resizing is allowed; recolouring or a tinted tile is not.
+    expect(image.color, isNull);
+    expect(image.colorBlendMode, isNull);
+    expect(
+      find.ancestor(of: logo, matching: find.byType(AdaptiveIconBadge)),
+      findsNothing,
+    );
+    // Brand rules: OneDrive stays on the drawn icon.
+    expect(remoteProviderOfficialLogo(RemoteProviderType.oneDrive), isNull);
+  });
+
+  testWidgets('every cloud service sits in one group with the same wording', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      const Protocols(),
+      availability: RemoteProviderAvailability.forBuild(
+        hasBuiltInClientId: (_) => true,
+      ),
+    );
+    expect(find.byType(AdaptiveListSection), findsOneWidget);
+    expect(find.text('其他服务'), findsNothing);
+    expect(find.textContaining('然后选择同步所用的云端目录。'), findsNWidgets(4));
     expect(tester.takeException(), isNull);
   });
 
@@ -198,21 +303,7 @@ void main() {
     }
   });
 
-  testWidgets('the new-connection summary names only available types', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      const NewConnection(),
-      availability: _releaseUnconfigured,
-    );
-    expect(find.text('WebDAV'), findsOneWidget);
-    expect(find.textContaining('Google Drive'), findsNothing);
-    expect(find.textContaining('OneDrive'), findsNothing);
-    expect(find.textContaining('只有加密后的同步对象'), findsNothing);
-  });
-
-  testWidgets('the help overview documents only available types', (
+  testWidgets('the help overview documents every type, without build flags', (
     tester,
   ) async {
     await _pump(
@@ -220,11 +311,22 @@ void main() {
       const ConnectionHelpPage(),
       availability: _releaseUnconfigured,
     );
-    expect(find.text('WebDAV'), findsWidgets);
-    expect(find.text('Google Drive'), findsNothing);
-    expect(find.text('OneDrive'), findsNothing);
-    expect(find.text('百度网盘'), findsNothing);
-    expect(find.text('阿里云盘'), findsNothing);
+    for (final title in [
+      'WebDAV',
+      'Google Drive',
+      'OneDrive',
+      '百度网盘',
+      '阿里云盘',
+    ]) {
+      await tester.scrollUntilVisible(
+        find.text(title),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text(title), findsWidgets);
+    }
+    expect(find.textContaining('dart-define'), findsNothing);
+    expect(find.textContaining('不需要填写任何密钥'), findsNothing);
   });
 
   testWidgets('a saved connection of a hidden type is still listed', (
@@ -247,32 +349,87 @@ void main() {
     expect(find.text('修改连接'), findsOneWidget);
   });
 
-  group('release OAuth page without a built-in client ID', () {
-    setUp(() async {
-      SharedPreferences.setMockInitialValues({});
-      SharedPreferencesAsyncPlatform.instance =
-          InMemorySharedPreferencesAsync.empty();
-      await LocalDataManager.instance.init();
-    });
-
-    testWidgets('shows no developer form and ignores a saved Client ID', (
+  group('release OAuth page without a built-in key', () {
+    testWidgets('offers the own-key form instead of a dead end', (
       tester,
     ) async {
-      // A Client ID left behind by a debug build must not unlock sign-in.
-      await LocalDataManager.instance.setStringAsync(
-        AppKeys.googleOAuthClientId,
-        'left-over.apps.example',
-      );
       await _pump(
         tester,
         const NewOAuthConnection(providerType: RemoteProviderType.googleDrive),
         availability: _releaseUnconfigured,
       );
-      expect(find.textContaining('此版本暂未开通'), findsOneWidget);
+      expect(find.textContaining('此版本暂未开通'), findsNothing);
+      expect(find.byKey(const Key('oauth-own-key-form')), findsOneWidget);
+      expect(find.byKey(const Key('oauth-own-client-id')), findsOneWidget);
+      // Google and Microsoft are public clients: no secret field.
+      expect(find.byKey(const Key('oauth-own-secret')), findsNothing);
+      expect(find.text('velocksync://oauth/callback'), findsOneWidget);
       expect(find.byKey(const Key('oauth-choose-another')), findsOneWidget);
-      expect(find.byKey(const Key('oauth-developer-settings')), findsNothing);
-      expect(find.byKey(const Key('oauth-client-id-field')), findsNothing);
       expect(find.byKey(const Key('oauth-sign-in')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Baidu asks for the SecretKey and app name', (tester) async {
+      final credentials = InMemoryCredentialStore();
+      await _pump(
+        tester,
+        const NewOAuthConnection(providerType: RemoteProviderType.baiduNetdisk),
+        availability: _releaseUnconfigured,
+        credentials: credentials,
+      );
+      expect(find.byKey(const Key('oauth-own-secret')), findsOneWidget);
+      expect(find.byKey(const Key('oauth-own-app-folder')), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const Key('oauth-own-client-id')),
+        'user-app-key',
+      );
+      await tester.tap(find.byKey(const Key('oauth-own-save')));
+      await tester.pumpAndSettle();
+      // Nothing is stored until the registration is complete.
+      expect(find.byKey(const Key('oauth-own-error')), findsOneWidget);
+      expect(
+        await credentials.readOAuthClientRegistration(
+          RemoteProviderType.baiduNetdisk,
+        ),
+        isNull,
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('oauth-own-secret')),
+        'user-secret',
+      );
+      await tester.enterText(
+        find.byKey(const Key('oauth-own-app-folder')),
+        'My Sync',
+      );
+      await tester.tap(find.byKey(const Key('oauth-own-save')));
+      await tester.pumpAndSettle();
+
+      final saved = await credentials.readOAuthClientRegistration(
+        RemoteProviderType.baiduNetdisk,
+      );
+      expect(saved?.clientId, 'user-app-key');
+      expect(saved?.clientSecret, 'user-secret');
+      expect(saved?.appFolderName, 'My Sync');
+      // The sign-in page now runs on the user's app, rooted in its folder.
+      expect(find.byKey(const Key('oauth-own-key-form')), findsNothing);
+      expect(find.byKey(const Key('oauth-sign-in')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('oauth-advanced-location')));
+      await tester.pumpAndSettle();
+      expect(find.text('正在使用你自己的应用密钥'), findsOneWidget);
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(
+                of: find.byKey(const Key('oauth-root-id')),
+                matching: find.byType(EditableText),
+              ),
+            )
+            .controller
+            .text,
+        '/apps/My Sync',
+      );
       expect(tester.takeException(), isNull);
     });
   });
