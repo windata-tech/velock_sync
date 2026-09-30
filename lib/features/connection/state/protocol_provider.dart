@@ -5,6 +5,7 @@ import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
+import 'package:velock_sync/providers/webdav/webdav_auth_race_guard.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
 part '../../../generated/features/connection/state/protocol_provider.g.dart';
@@ -71,7 +72,15 @@ Future<bool> probeProtocolConnection({
             url: '${protocol.address}:${protocol.port}',
           );
         }
-        await client.ping();
+        final guard = WebDavAuthRaceGuard.forEndpoint(
+          Uri.parse('${protocol.address}:${protocol.port}'),
+          username: protocol.username,
+          password: password,
+        );
+        await guard.retryUnauthorized(
+          () => guard.paced(client.ping),
+          replayable: true,
+        );
         return true;
       } catch (e) {
         logw('WebDAV connection check failed with ${e.runtimeType}: $e');

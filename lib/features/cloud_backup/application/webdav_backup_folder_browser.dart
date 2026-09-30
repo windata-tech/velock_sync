@@ -6,6 +6,7 @@ import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
+import 'package:velock_sync/providers/webdav/webdav_auth_race_guard.dart';
 import 'package:xml/xml.dart';
 
 class WebDavBackupFolder {
@@ -32,8 +33,10 @@ class WebDavBackupFolderBrowser {
     required ConnectionRepository connections,
     Dio? dio,
     Duration timeout = const Duration(seconds: 20),
+    WebDavAuthRaceGuard? authRaceGuard,
   }) : _connections = connections,
        _dio = dio ?? Dio(),
+       _authRaceGuard = authRaceGuard,
        _timeout = timeout {
     if (timeout <= Duration.zero) {
       throw ArgumentError('timeout must be positive');
@@ -50,6 +53,7 @@ class WebDavBackupFolderBrowser {
   final ConnectionRepository _connections;
   final Dio _dio;
   final Duration _timeout;
+  final WebDavAuthRaceGuard? _authRaceGuard;
 
   /// Returns a stable validation code for a new collection name.
   static String? folderNameError(String name) {
@@ -114,23 +118,28 @@ class WebDavBackupFolderBrowser {
 
     final Response<String> response;
     try {
-      response = await _dio
-          .requestUri<String>(
-            target,
-            data: _propfindBody,
-            options: Options(
-              method: 'PROPFIND',
-              responseType: ResponseType.plain,
-              headers: headers,
-              connectTimeout: _timeout,
-              sendTimeout: _timeout,
-              receiveTimeout: _timeout,
-              followRedirects: false,
-              maxRedirects: 0,
-              validateStatus: (_) => true,
-            ),
-          )
-          .timeout(_timeout);
+      response = await _guarded(
+        target,
+        username: username,
+        password: password,
+        send: () => _dio
+            .requestUri<String>(
+              target,
+              data: _propfindBody,
+              options: Options(
+                method: 'PROPFIND',
+                responseType: ResponseType.plain,
+                headers: headers,
+                connectTimeout: _timeout,
+                sendTimeout: _timeout,
+                receiveTimeout: _timeout,
+                followRedirects: false,
+                maxRedirects: 0,
+                validateStatus: (_) => true,
+              ),
+            )
+            .timeout(_timeout),
+      );
     } on TimeoutException {
       throw const WebDavBackupFolderException('provider.webdav.browse_timeout');
     } on ProviderRequestException {
@@ -235,22 +244,29 @@ class WebDavBackupFolderBrowser {
 
     final Response<String> response;
     try {
-      response = await _dio
-          .requestUri<String>(
-            target,
-            options: Options(
-              method: 'MKCOL',
-              responseType: ResponseType.plain,
-              headers: headers,
-              connectTimeout: _timeout,
-              sendTimeout: _timeout,
-              receiveTimeout: _timeout,
-              followRedirects: false,
-              maxRedirects: 0,
-              validateStatus: (_) => true,
-            ),
-          )
-          .timeout(_timeout);
+      // A 401 from the relay is issued before the request is forwarded, so a
+      // retried MKCOL cannot find a folder created by the rejected attempt.
+      response = await _guarded(
+        target,
+        username: username,
+        password: password,
+        send: () => _dio
+            .requestUri<String>(
+              target,
+              options: Options(
+                method: 'MKCOL',
+                responseType: ResponseType.plain,
+                headers: headers,
+                connectTimeout: _timeout,
+                sendTimeout: _timeout,
+                receiveTimeout: _timeout,
+                followRedirects: false,
+                maxRedirects: 0,
+                validateStatus: (_) => true,
+              ),
+            )
+            .timeout(_timeout),
+      );
     } on TimeoutException {
       throw const WebDavBackupFolderException(
         'provider.webdav.create_outcome_unknown',
@@ -292,6 +308,36 @@ class WebDavBackupFolderBrowser {
       throw ProviderRequestException.fromStatus(statusCode);
     }
     throw ProviderRequestException.fromStatus(statusCode);
+  }
+
+  /// Paces the request and retries a spurious 401 (see
+  /// [WebDavAuthRaceGuard]); a 401 that persists is returned as a response.
+  Future<Response<String>> _guarded(
+    Uri target, {
+    required String? username,
+    required String? password,
+    required Future<Response<String>> Function() send,
+  }) async {
+    final guard =
+        _authRaceGuard ??
+        WebDavAuthRaceGuard.forEndpoint(
+          target,
+          username: username,
+          password: password,
+        );
+    try {
+      return await guard.retryUnauthorized(
+        () => guard.paced(() async {
+          final response = await send();
+          if (response.statusCode == 401) throw _Unauthorized(response);
+          return response;
+        }),
+        replayable: true,
+        isUnauthorized: (error) => error is _Unauthorized,
+      );
+    } on _Unauthorized catch (error) {
+      return error.response;
+    }
   }
 
   static bool _isUnknownCreateStatus(int statusCode) =>
@@ -498,4 +544,10 @@ class WebDavBackupFolderBrowser {
     }
     return null;
   }
+}
+
+class _Unauthorized implements Exception {
+  const _Unauthorized(this.response);
+
+  final Response<String> response;
 }

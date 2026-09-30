@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:velock_sync/providers/provider_cancellation.dart';
 import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
+import 'package:velock_sync/providers/webdav/webdav_auth_race_guard.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/providers/upload_idle_watchdog.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
@@ -26,6 +27,7 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     required this.username,
     required this.password,
     ProviderRateLimitRetry? rateLimitRetry,
+    WebDavAuthRaceGuard? authRaceGuard,
     this.uploadIdleTimeout = const Duration(minutes: 2),
     this.capabilities = const RemoteCapabilities(
       supportsConditionalCreate: true,
@@ -39,11 +41,19 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     ),
   }) : _dio = dio,
        _rateLimitRetry = rateLimitRetry ?? ProviderRateLimitRetry(),
+       _authRaceGuard =
+           authRaceGuard ??
+           WebDavAuthRaceGuard.forEndpoint(
+             baseUri,
+             username: username,
+             password: password,
+           ),
        _baseUri = _normaliseBaseUri(baseUri);
 
   final Dio _dio;
   final Uri _baseUri;
   final ProviderRateLimitRetry _rateLimitRetry;
+  final WebDavAuthRaceGuard _authRaceGuard;
   final String? username;
   final String? password;
 
@@ -683,6 +693,8 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
           ),
         ),
         cancellation: cancellation,
+        // The caller's stream is consumed by the first attempt.
+        replayable: false,
       );
     } on RemoteOperationCancelledException {
       if (!watchdog.timedOut) rethrow;
@@ -722,13 +734,22 @@ class WebDavObjectStore implements RemoteObjectStore, RemoteCollectionCreator {
     );
   }
 
+  /// Every request is paced and, when [replayable], retried after a spurious
+  /// 401 (see [WebDavAuthRaceGuard]). Only pass `replayable: false` for bodies
+  /// that cannot be produced again; a closure that rebuilds its body (such as
+  /// `Stream.value`) is replayable.
   Future<Response<T>> _request<T>(
     Future<Response<T>> Function() send, {
     RemoteOperationCancellation? cancellation,
+    bool replayable = true,
   }) async {
     try {
-      return await _rateLimitRetry.execute(
-        send,
+      return await _authRaceGuard.retryUnauthorized(
+        () => _rateLimitRetry.execute(
+          () => _authRaceGuard.paced(send),
+          whenCancelled: cancellation?.whenCancelled,
+        ),
+        replayable: replayable,
         whenCancelled: cancellation?.whenCancelled,
       );
     } on DioException catch (error) {

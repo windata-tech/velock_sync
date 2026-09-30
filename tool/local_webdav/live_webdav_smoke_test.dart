@@ -40,6 +40,23 @@ void main() {
       final namespace = 'velock-auto-test-$token';
       final testUri = base.resolve('$namespace/');
       final requests = <String, int>{};
+      // Method, status, timing and the last path segment only: no host, share
+      // name, headers, credentials or bodies.
+      void trace(RequestOptions options, int? status, DioException? error) {
+        final start = options.extra['traceStart'] as DateTime?;
+        final ms = start == null
+            ? -1
+            : DateTime.now().difference(start).inMilliseconds;
+        final segments = options.uri.pathSegments.where((s) => s.isNotEmpty);
+        final leaf = segments.isEmpty ? '/' : segments.last;
+        final auth = error?.response?.headers.value('www-authenticate');
+        stdout.writeln(
+          'WEBDAV_TRACE ${options.method} $leaf status=${status ?? '-'} '
+          'ms=$ms${error == null ? '' : ' error=${error.type.name}'}'
+          '${auth == null ? '' : ' challenge=${auth.split(' ').first}'}',
+        );
+      }
+
       final dio = Dio(
         BaseOptions(
           connectTimeout: const Duration(seconds: 10),
@@ -56,7 +73,16 @@ void main() {
               (value) => value + 1,
               ifAbsent: () => 1,
             );
+            options.extra['traceStart'] = DateTime.now();
             handler.next(options);
+          },
+          onResponse: (response, handler) {
+            trace(response.requestOptions, response.statusCode, null);
+            handler.next(response);
+          },
+          onError: (error, handler) {
+            trace(error.requestOptions, error.response?.statusCode, error);
+            handler.next(error);
           },
         ),
       );

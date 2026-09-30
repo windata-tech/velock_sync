@@ -23,6 +23,7 @@
 - 界面自动化只按 widget key 发布的 accessibility identifier 定位，不再用中文标签；改界面时同一次改动里补 key / 更新 `testBackupSmoke`。
 - 只改 Sync 时增量：重建安装 Sync、复用模拟器与格间状态，只跑受影响的测试。
 - **用户说“测试”= 运行 `tool/ios_ui_test/sim/e2e.sh`**（构建→重装两 App→格间六类造数→数据库校验→Sync 配对备份→远端无明文），约 5–7 分钟；失败按提示 `--from <阶段>` 续跑，不要重新探索界面。重装只允许 `local.env` 的 `E2E_RESET_ALLOWED_UDID`。
+- 真实 NAS 联调（仅用户要求时）：`E2E_NAS=1 e2e.sh`，由 `tool/local_webdav/nas_relay_proxy.py` 在匿名 `127.0.0.1:18991` 转发到 NAS 每轮新建的 `e2e-<时间>/`（凭据/`WEBDAV_RELAY_URL` 只在 gitignore env）；验收后 `mirror` 留证、`remove` 删掉 NAS 文件夹。replica 恢复流程与 identifiers 见 `docs/testing/sync-e2e.md`；恢复配置停在「等待格间恢复」时必须在详情点 `backup-check-restore`，「刷新状态」不推进。中止 e2e 杀 `xcodebuild` 让 trap 收尾，直接 TaskStop 会遗留录屏进程（`Host recording is already in progress`→ `simctl shutdown`+`boot`）。
 
 ## 教程录制与验收（跨会话入口）
 
@@ -101,6 +102,7 @@
 - 真实 FN Connect 根入口可 PROPFIND207 列共享目录，但 MKCOL405；必须选择实际可写文件夹。MKCOL405/409 现在分类 `provider.webdav.collection_not_writable`，不再误报原子防覆盖不支持，也不得取得/删除非自有探针目录。
 - 同服务 MOVE 的 Destination 使用 RFC4918 允许的编码绝对路径，避免 FN Connect 转发下外部 absolute-URI 返回502；保留 Unicode/空格/转义/base 子路径/query。Overwrite:F、碰撞412与字节校验、发布201/源消失不放宽，禁止普通PUT回退。
 - Sync432、格间32项相关回归通过，改动范围分析无问题。但真实FN Connect生产适配器仅1MiB不可变创建/内容校验通过，四并发阶段401，整组live test未通过；401后停止重试，已请用户解锁Mac并确认账号，不能宣称NAS或完整跨App同步已验收。详细证据 `docs/verification/cloud-backup-follow-up.md`。
+- **2026-09-30 已查明并解决**：FN Connect 转发层对约 50 ms 内近同时到达、前一个尚未应答的请求返回伪 `401 Basic`（转发前拒绝，无副作用）；局域网直连无此问题。`WebDavAuthRaceGuard`（`lib/providers/webdav/webdav_auth_race_guard.dart`，按 origin+sha256(账号) 进程内共享）：前一请求未应答时起始间隔 200 ms；仅可重放请求有界重试 401（账号本进程未成功过时 1 次、成功过后 3 次，带抖动），上传流不重放，403 不重试，`Overwrite: F`/412/回读门禁不变。live test FN Connect 3/3 通过、401=0；去掉守卫的对照稳定复现 401×3。真实 NAS 备份→replica 恢复端到端已通过（经本机转发代理、Debug 模拟器）。详见 `docs/verification/2026-09-30-fnconnect-concurrent-401.md`。
 
 ## 临时授权恢复（2026-09-26）
 
@@ -114,7 +116,7 @@
 
 - 已有云连接不等于实际备份文件夹。格间向导选择 WebDAV 连接后必须提供目录浏览（读取只用 PROPFIND；备份模式可由用户明确确认新建空文件夹），再由用户确认完整目录；不能只提示用户进入共享文件夹却不给入口。
 - `VelockSyncProfile.remoteRootSegments` 是相对于原连接的 decoded 路径段；旧配置默认空列表。不得全局改写原连接，否则普通同步与其他备份会被重定向。预检、恢复扫描、runner、inventory、join profile 重建必须保持同一 scope。
-- 浏览仅 Depth:1 PROPFIND，拒绝外源/越界 href，不自动重试401/403，不把读取失败当空目录；除备份模式用户明确点击“创建并进入”后仅新建一个空文件夹外，尚未明确选择及最终确认时不得写入或创建配置；恢复模式保持只读。授权过期仍需重授权，不因选文件夹放宽签名/期限门禁。
+- 浏览仅 Depth:1 PROPFIND，拒绝外源/越界 href，不自动重试403（401 仅按 2026-09-30 `WebDavAuthRaceGuard` 有界重试，未证实账号只 1 次），不把读取失败当空目录；除备份模式用户明确点击“创建并进入”后仅新建一个空文件夹外，尚未明确选择及最终确认时不得写入或创建配置；恢复模式保持只读。授权过期仍需重授权，不因选文件夹放宽签名/期限门禁。
 - 331 项回归通过，改动范围 analyze 无问题；已安装新版 Sync Debug 模拟器。安装后模拟器界面停在连接格间，等待用户自行批准才能继续真实 NAS 列表/预检。本轮没有真实 NAS 备份恢复成功结论，先前并发401边界保留。详见 `docs/verification/2026-09-26-backup-folder-selection.md`。
 
 ## 备份目录内新建文件夹（2026-09-26）

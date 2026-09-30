@@ -11,6 +11,7 @@ import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/core/local_data_manager.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
+import 'package:velock_sync/providers/webdav/webdav_auth_race_guard.dart';
 
 void main() {
   late SyncStateDatabase database;
@@ -19,6 +20,7 @@ void main() {
   late String credentialRef;
 
   setUp(() async {
+    WebDavAuthRaceGuard.resetForTesting();
     database = await SyncStateDatabase.inMemory();
     credentials = _Credentials('secret');
     connections = ConnectionRepository(
@@ -450,7 +452,9 @@ void main() {
   });
 
   for (final status in <int>[401, 403, 409]) {
-    test('maps MKCOL HTTP $status without retrying', () async {
+    // A relay can reject valid credentials under concurrency, so an unproven
+    // account gets exactly one retry on 401; other statuses are never retried.
+    test('maps MKCOL HTTP $status with at most one 401 retry', () async {
       final adapter = _Adapter((_) async => _response(status, ''));
       final browser = WebDavBackupFolderBrowser(
         connections: connections,
@@ -469,8 +473,8 @@ void main() {
               ),
         ),
       );
-      expect(adapter.requests, hasLength(1));
-      expect(adapter.requests.single.method, 'MKCOL');
+      expect(adapter.requests, hasLength(status == 401 ? 2 : 1));
+      expect(adapter.requests.map((r) => r.method), everyElement('MKCOL'));
     });
   }
 
@@ -564,27 +568,30 @@ void main() {
   }
 
   for (final status in <int>[401, 403, 405, 500]) {
-    test('maps HTTP $status to a stable error without retrying', () async {
-      final adapter = _Adapter((_) async => _response(status, ''));
-      final browser = WebDavBackupFolderBrowser(
-        connections: connections,
-        dio: Dio()..httpClientAdapter = adapter,
-      );
+    test(
+      'maps HTTP $status to a stable error, one retry only for 401',
+      () async {
+        final adapter = _Adapter((_) async => _response(status, ''));
+        final browser = WebDavBackupFolderBrowser(
+          connections: connections,
+          dio: Dio()..httpClientAdapter = adapter,
+        );
 
-      await expectLater(
-        browser.list(protocol: protocol()),
-        throwsA(
-          isA<ProviderRequestException>()
-              .having(
-                (error) => error.errorCode,
-                'errorCode',
-                'provider.http.$status',
-              )
-              .having((error) => error.statusCode, 'statusCode', status),
-        ),
-      );
-      expect(adapter.requests, hasLength(1));
-    });
+        await expectLater(
+          browser.list(protocol: protocol()),
+          throwsA(
+            isA<ProviderRequestException>()
+                .having(
+                  (error) => error.errorCode,
+                  'errorCode',
+                  'provider.http.$status',
+                )
+                .having((error) => error.statusCode, 'statusCode', status),
+          ),
+        );
+        expect(adapter.requests, hasLength(status == 401 ? 2 : 1));
+      },
+    );
   }
 
   test('sanitizes malformed XML responses', () async {

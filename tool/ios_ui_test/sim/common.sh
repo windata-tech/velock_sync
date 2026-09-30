@@ -4,7 +4,11 @@
 # this file. It is gitignored; see local.env.example.
 SIM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SIM_DIR/../../.." && pwd)"
+# A simulator given on the command line (e.g. a second, restore device) wins
+# over local.env; reset stays limited to E2E_RESET_ALLOWED_UDID either way.
+_caller_udid="${E2E_SIMULATOR_UDID:-}"
 [[ -f "$SIM_DIR/local.env" ]] && { set -a; source "$SIM_DIR/local.env"; set +a; }
+[[ -n "$_caller_udid" ]] && E2E_SIMULATOR_UDID="$_caller_udid"
 
 AXE="${AXE:-/opt/homebrew/lib/node_modules/xcodebuildmcp/bundled/axe}"
 XCODEBUILDMCP_BIN="${XCODEBUILDMCP_BIN:-/opt/homebrew/bin/xcodebuildmcp}"

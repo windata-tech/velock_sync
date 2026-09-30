@@ -23,7 +23,9 @@
 # backup profile on the device points at its WebDAV root.
 #
 # Private values come from local.env (see local.env.example). Uses the local
-# anonymous WsgiDAV only, never the user's NAS.
+# anonymous WsgiDAV by default; E2E_NAS=1 backs up to a fresh folder on the
+# user's real NAS through tool/local_webdav/nas_relay_proxy.py instead (see
+# backup_smoke.sh). The recovery card screenshot goes to <run>/recovery-card.png.
 set -euo pipefail
 SIM="$(cd "$(dirname "$0")" && pwd)"
 source "$SIM/common.sh"
@@ -55,6 +57,7 @@ else
 fi
 export E2E_LOG_DIR="$run_dir"
 export E2E_WEBDAV_ROOT="$run_dir/webdav-root"
+export E2E_RECOVERY_CARD_IMAGE="${E2E_RECOVERY_CARD_IMAGE:-$run_dir/recovery-card.png}"
 echo "Run: $run_dir  simulator: $E2E_SIMULATOR_UDID"
 
 wants() {

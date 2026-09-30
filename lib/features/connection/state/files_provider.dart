@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:velock_sync/core/logger.dart';
 import 'package:velock_sync/core/state/common.dart';
+import 'package:velock_sync/providers/webdav/webdav_auth_race_guard.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
 import '../model/connection_model.dart';
@@ -31,7 +32,7 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
 
   final List<FileBrowserState> _unstableStack = List.empty(growable: true);
 
-  Future<WebdavClient> _client() async {
+  Future<(WebdavClient, WebDavAuthRaceGuard)> _client() async {
     final protocol = connectionModel.protocol;
     if (protocol is! WebDavProtocolModel) {
       throw UnsupportedError('Remote file browsing is currently WebDAV-only.');
@@ -39,14 +40,23 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     final password = await ref
         .read(connectionRepositoryProvider)
         .readWebDavPassword(protocol.credentialRef);
+    final endpoint = '${protocol.address}:${protocol.port}';
+    final guard = WebDavAuthRaceGuard.forEndpoint(
+      Uri.parse(endpoint),
+      username: protocol.username,
+      password: password,
+    );
     if (protocol.username?.isNotEmpty == true && password?.isNotEmpty == true) {
-      return WebdavClient.basicAuth(
-        url: '${protocol.address}:${protocol.port}',
-        user: protocol.username!,
-        pwd: password!,
+      return (
+        WebdavClient.basicAuth(
+          url: endpoint,
+          user: protocol.username!,
+          pwd: password!,
+        ),
+        guard,
       );
     }
-    return WebdavClient.noAuth(url: '${protocol.address}:${protocol.port}');
+    return (WebdavClient.noAuth(url: endpoint), guard);
   }
 
   @override
@@ -70,7 +80,12 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
   Future<FileBrowserState> _fetchState(String path) async {
     // 规范化输入路径
     path = _normalisePath(path);
-    final files = await (await _client()).readDir(path);
+    final (client, guard) = await _client();
+    // PROPFIND is read-only, so a spurious relay 401 can be retried.
+    final files = await guard.retryUnauthorized(
+      () => guard.paced(() => client.readDir(path)),
+      replayable: true,
+    );
     final fileBrowserState = FileBrowserState(
       path: path,
       rootPath: _currentRootPath,
@@ -137,11 +152,19 @@ class RemoteFileBrowser extends _$RemoteFileBrowser {
     File tempFile = await createTempFile(fileExtension: ext);
     cancelToken?.cancel();
     cancelToken = CancelToken();
-    await (await _client()).readFile(
-      path,
-      tempFile.path,
-      onProgress: onProgress,
-      cancelToken: cancelToken,
+    final (client, guard) = await _client();
+    final token = cancelToken;
+    // A GET into a fresh temp file is replayable (the file is rewritten).
+    await guard.retryUnauthorized(
+      () => guard.paced(
+        () => client.readFile(
+          path,
+          tempFile.path,
+          onProgress: onProgress,
+          cancelToken: token,
+        ),
+      ),
+      replayable: true,
     );
     if (tempFile.existsSync()) {
       return tempFile;
