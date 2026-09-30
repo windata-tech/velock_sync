@@ -1,9 +1,9 @@
-import 'package:dio/dio.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
 import 'package:velock_sync/providers/webdav/webdav_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// Builds the provider-neutral remote store for one connection.
 ///
@@ -21,13 +21,7 @@ abstract final class RemoteObjectStoreFactory {
         // Real timeouts: a connection that stalls without an RST (Wi-Fi drops
         // into a black hole, a NAS powers off, a VPN hangs) must fail the run
         // instead of hanging it for ever.
-        dio: Dio(
-          BaseOptions(
-            connectTimeout: const Duration(seconds: 30),
-            receiveTimeout: const Duration(minutes: 5),
-            sendTimeout: const Duration(minutes: 5),
-          ),
-        ),
+        dio: newSyncDio(),
         baseUri: webDavUri(scopedProtocol),
         username: scopedProtocol.username,
         password: await connections.readWebDavPassword(credentialRef),

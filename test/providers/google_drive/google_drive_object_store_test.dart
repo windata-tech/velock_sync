@@ -375,6 +375,44 @@ void main() {
     },
   );
 
+  test(
+    'reads and deletes inside appDataFolder, which Drive only searches when asked',
+    () async {
+      final credentials = await _store();
+      final drive = _AppDataDrive();
+      final dio = Dio()..httpClientAdapter = drive;
+      final remote = GoogleDriveObjectStore(
+        accessTokenProvider: _provider(credentials, dio),
+        parentId: 'appDataFolder',
+        dio: dio,
+      );
+      final bytes = utf8.encode('hello drive');
+
+      await remote.put(
+        'blobs/a',
+        Stream.value(bytes),
+        contentLength: bytes.length,
+        ifAbsent: true,
+      );
+      expect((await remote.stat('blobs/a'))?.size, bytes.length);
+      expect(
+        await remote.read('blobs/a').expand((chunk) => chunk).toList(),
+        bytes,
+      );
+      expect((await remote.list()).items.map((item) => item.logicalKey), [
+        'blobs/a',
+      ]);
+
+      await remote.delete('blobs/a');
+      expect(drive.files, isEmpty);
+      expect(await remote.stat('blobs/a'), isNull);
+      await expectLater(
+        remote.read('blobs/a').drain<void>(),
+        throwsA(isA<RemoteObjectNotFoundException>()),
+      );
+    },
+  );
+
   test('backs off a Drive 429 response before retrying', () async {
     final credentials = await _store();
     var calls = 0;
@@ -488,3 +526,67 @@ Future<ResponseBody> _json(
     Headers.contentTypeHeader: [Headers.jsonContentType],
   },
 );
+
+/// A small stateful Drive that, like the real one, only returns files from the
+/// hidden app-data space when a query asks for `spaces=appDataFolder`.
+class _AppDataDrive implements HttpClientAdapter {
+  final files = <String, ({String name, List<int> bytes})>{};
+  var _nextId = 0;
+  String? _pendingName;
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? stream,
+    Future<void>? cancelFuture,
+  ) async {
+    final uri = options.uri;
+    Map<String, dynamic> meta(String id) => {
+      'id': id,
+      'name': files[id]!.name,
+      'size': '${files[id]!.bytes.length}',
+      'modifiedTime': '2030-01-01T00:00:00Z',
+    };
+    if (uri.path == '/drive/v3/files' && options.method == 'GET') {
+      if (uri.queryParameters['spaces'] != 'appDataFolder') {
+        return _json(options, {'files': []});
+      }
+      final q = uri.queryParameters['q']!;
+      final name = RegExp(r"name = '([^']*)'").firstMatch(q)?.group(1);
+      return _json(options, {
+        'files': [
+          for (final id in files.keys)
+            if (name == null || files[id]!.name == name) meta(id),
+        ],
+      });
+    }
+    if (uri.path == '/upload/drive/v3/files') {
+      _pendingName = (jsonDecode(options.data as String) as Map)['name'];
+      return ResponseBody.fromString(
+        '',
+        200,
+        headers: {
+          'location': ['https://upload.example.test/session'],
+        },
+      );
+    }
+    if (uri.host == 'upload.example.test') {
+      final id = 'id-${_nextId++}';
+      files[id] = (name: _pendingName!, bytes: options.data as Uint8List);
+      return _json(options, meta(id), status: 201);
+    }
+    final id = uri.pathSegments.last;
+    if (!files.containsKey(id)) return ResponseBody.fromString('', 404);
+    if (options.method == 'DELETE') {
+      files.remove(id);
+      return ResponseBody.fromString('', 204);
+    }
+    if (uri.queryParameters['alt'] == 'media') {
+      return ResponseBody.fromBytes(files[id]!.bytes, 200);
+    }
+    throw StateError('Unexpected Drive request: $uri');
+  }
+}

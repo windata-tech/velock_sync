@@ -9,6 +9,7 @@ import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// Google Drive V3 implementation whose Drive IDs never leave this adapter.
 ///
@@ -21,7 +22,7 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
     Dio? dio,
     ProviderRateLimitRetry? rateLimitRetry,
   }) : _accessTokenProvider = accessTokenProvider,
-       _dio = dio ?? Dio(),
+       _dio = dio ?? newSyncDio(),
        _rateLimitRetry = rateLimitRetry ?? ProviderRateLimitRetry();
 
   static final _filesUri = Uri.https('www.googleapis.com', '/drive/v3/files');
@@ -54,6 +55,17 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
     String logicalKey, {
     RemoteOperationCancellation? cancellation,
   }) async {
+    final file = await _find(logicalKey, cancellation: cancellation);
+    return file == null ? null : _metadata(logicalKey, file.data);
+  }
+
+  /// The one lookup by name. It must carry the same `spaces` as [list]: Drive
+  /// only searches `appDataFolder` when asked to, so a lookup without it finds
+  /// nothing there and reads report "not found" while deletes silently skip.
+  Future<_DriveFile?> _find(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async {
     cancellation?.throwIfCancelled();
     _validateKey(logicalKey);
     final response = await _request<Map<String, dynamic>>(
@@ -62,7 +74,7 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
           queryParameters: {
             'q':
                 "'${_escapeQuery(parentId)}' in parents and name = '${_escapeQuery(_name(logicalKey))}' and trashed = false",
-            'spaces': parentId == 'appDataFolder' ? 'appDataFolder' : 'drive',
+            'spaces': _spaces,
             'pageSize': '2',
             'fields': 'files(id,name,size,modifiedTime,md5Checksum)',
           },
@@ -79,8 +91,11 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
     if (files is! List || files.isEmpty) return null;
     final file = files.first;
     if (file is! Map<String, dynamic>) return null;
-    return _metadata(logicalKey, file);
+    final id = file['id'];
+    return id is String && id.isNotEmpty ? _DriveFile(id, file) : null;
   }
+
+  String get _spaces => parentId == 'appDataFolder' ? 'appDataFolder' : 'drive';
 
   @override
   Future<RemoteObjectPage> list({
@@ -96,7 +111,7 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
         _filesUri.replace(
           queryParameters: {
             'q': "'${_escapeQuery(parentId)}' in parents and trashed = false",
-            'spaces': parentId == 'appDataFolder' ? 'appDataFolder' : 'drive',
+            'spaces': _spaces,
             'pageSize': '$limit',
             'pageToken': ?cursor,
             'fields':
@@ -140,7 +155,7 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
     RemoteOperationCancellation? cancellation,
   }) async* {
     cancellation?.throwIfCancelled();
-    final metadata = await _lookup(logicalKey, cancellation: cancellation);
+    final metadata = await _find(logicalKey, cancellation: cancellation);
     if (metadata == null) throw RemoteObjectNotFoundException(logicalKey);
     final response = await _request<ResponseBody>(
       (headers) => _dio.getUri(
@@ -305,7 +320,7 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
     RemoteOperationCancellation? cancellation,
   }) async {
     cancellation?.throwIfCancelled();
-    final file = await _lookup(logicalKey, cancellation: cancellation);
+    final file = await _find(logicalKey, cancellation: cancellation);
     if (file == null) return;
     await _request<void>(
       (headers) => _dio.deleteUri(
@@ -320,36 +335,6 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
       cancellation: cancellation,
     );
     // Deleting a previously removed immutable object is a successful no-op.
-  }
-
-  Future<_DriveFile?> _lookup(
-    String logicalKey, {
-    RemoteOperationCancellation? cancellation,
-  }) async {
-    final metadata = await stat(logicalKey, cancellation: cancellation);
-    if (metadata == null) return null;
-    final response = await _request<Map<String, dynamic>>(
-      (headers) => _dio.getUri(
-        _filesUri.replace(
-          queryParameters: {
-            'q':
-                "'${_escapeQuery(parentId)}' in parents and name = '${_escapeQuery(_name(logicalKey))}' and trashed = false",
-            'pageSize': '1',
-            'fields': 'files(id)',
-          },
-        ),
-        options: _options(
-          headers,
-          (status) => status == 200 || status == 401 || status == 429,
-        ),
-        cancelToken: dioCancelTokenFor(cancellation),
-      ),
-    );
-    final files = response.data?['files'];
-    final id = files is List && files.isNotEmpty && files.first is Map
-        ? (files.first as Map)['id']
-        : null;
-    return id is String ? _DriveFile(id) : null;
   }
 
   Future<Response<T>> _request<T>(
@@ -477,8 +462,9 @@ class GoogleDriveObjectStore implements RemoteObjectStore {
 }
 
 class _DriveFile {
-  const _DriveFile(this.id);
+  const _DriveFile(this.id, this.data);
   final String id;
+  final Map<String, dynamic> data;
 }
 
 class GoogleDriveException implements Exception {

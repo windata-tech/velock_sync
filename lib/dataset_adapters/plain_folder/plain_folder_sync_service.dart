@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
-import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
@@ -20,6 +19,7 @@ import 'package:velock_sync/providers/webdav/webdav_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// Stable failure of a plain folder mirror run.
 class PlainFolderSyncException implements SyncFailureException {
@@ -1335,13 +1335,7 @@ class PlainFolderSyncService {
     required String? password,
   }) => WebDavObjectStore(
     // A stalled socket must fail the run, not hang it: see the shared factory.
-    dio: Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(minutes: 5),
-        sendTimeout: const Duration(minutes: 5),
-      ),
-    ),
+    dio: newSyncDio(),
     baseUri: _webDavUri(protocol),
     username: protocol.username,
     password: password,

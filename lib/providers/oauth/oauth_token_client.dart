@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_bundle.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// How a provider expects token requests to be encoded.
 enum OAuthTokenRequestFormat {
@@ -20,7 +21,13 @@ enum OAuthTokenRequestFormat {
 /// requires one, and it is never written to storage or included in errors.
 class OAuthTokenClient {
   OAuthTokenClient({Dio? dio, DateTime Function()? clock})
-    : _dio = dio ?? Dio(),
+    : _dio =
+          dio ??
+          newSyncDio(
+            connectTimeout: const Duration(seconds: 20),
+            receiveTimeout: const Duration(seconds: 60),
+            sendTimeout: const Duration(seconds: 60),
+          ),
       _clock = clock ?? DateTime.now;
 
   final Dio _dio;

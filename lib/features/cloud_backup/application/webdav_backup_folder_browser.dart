@@ -8,6 +8,7 @@ import 'package:velock_sync/features/connection/repository/connection_repository
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/providers/webdav/webdav_auth_race_guard.dart';
 import 'package:xml/xml.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 class WebDavBackupFolder {
   const WebDavBackupFolder({required this.name});
@@ -35,7 +36,7 @@ class WebDavBackupFolderBrowser {
     Duration timeout = const Duration(seconds: 20),
     WebDavAuthRaceGuard? authRaceGuard,
   }) : _connections = connections,
-       _dio = dio ?? Dio(),
+       _dio = dio ?? newSyncDio(),
        _authRaceGuard = authRaceGuard,
        _timeout = timeout {
     if (timeout <= Duration.zero) {

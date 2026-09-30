@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 part '../../generated/core/state/download.g.dart';
 
@@ -8,7 +9,7 @@ part '../../generated/core/state/download.g.dart';
 class DownloadManager extends _$DownloadManager {
   // 内部变量：用于控制网络请求的取消令牌，不属于UI状态的一部分
   final Map<String, CancelToken> _cancelTokens = {};
-  final Dio _dio = Dio();
+  final Dio _dio = newSyncDio();
 
   @override
   FutureOr<List<DownloadTask>> build() async {

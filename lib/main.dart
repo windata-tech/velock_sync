@@ -26,6 +26,7 @@ import 'package:velock_sync/providers/oauth/oauth_callback_link_receiver.dart';
 import 'core/app_router.dart';
 import 'package:velock_sync/core/app_repository.dart';
 import 'package:velock_sync/l10n/sync_language.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// Starts at bootstrap so a custom-scheme OAuth callback is retained even if
 /// the system launches the app from the browser.
@@ -36,6 +37,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerTrademarkNotices();
   oauthCallbackLinkReceiver = OAuthCallbackLinkReceiver.system();
+  await SystemProxy.instance.refresh();
   await LocalDataManager.instance.init();
   await SyncStateDatabase.initialize();
   // A run row is marked `running` before its transfer starts and closed when it
@@ -151,7 +153,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(_foregroundSync.onAppResumed());
+      // The proxy may have been switched while the app was away; refresh it
+      // before the foreground sync opens new connections.
+      unawaited(
+        SystemProxy.instance.refresh().whenComplete(
+          _foregroundSync.onAppResumed,
+        ),
+      );
     }
   }
 

@@ -100,6 +100,42 @@ import workmanager_apple
     }
   }
 
+  /// The manual HTTP(S) proxy the system uses, so Dart's own HTTP client can
+  /// follow it like native networking does. Only the fields Dart needs.
+  private func registerSystemProxyChannel(_ messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "tech.windata.velock.sync/system_proxy",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "current" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard
+        let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue()
+          as? [String: Any]
+      else {
+        result(nil)
+        return
+      }
+      func number(_ key: String) -> Int? { (settings[key] as? NSNumber)?.intValue }
+      var map: [String: Any] = [
+        "exceptions": settings["ExceptionsList"] as? [String] ?? [],
+        "excludeSimpleHostnames": number("ExcludeSimpleHostnames") == 1,
+      ]
+      for (dart, native) in [("http", "HTTP"), ("https", "HTTPS")] {
+        // iOS keeps one manual proxy for both schemes and may omit the HTTPS
+        // keys; an explicit HTTPSEnable = 0 is still respected.
+        let source = settings["\(native)Enable"] == nil ? "HTTP" : native
+        map["\(dart)Enable"] = number("\(source)Enable") == 1
+        map["\(dart)Host"] = settings["\(source)Proxy"] as? String
+        map["\(dart)Port"] = number("\(source)Port")
+      }
+      result(map)
+    }
+  }
+
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     let messenger = engineBridge.applicationRegistrar.messenger()
@@ -107,6 +143,7 @@ import workmanager_apple
     registerCompanionInstalledChannel(messenger)
     registerDiskSpaceChannel(messenger)
     registerPowerStateChannel(messenger)
+    registerSystemProxyChannel(messenger)
     selectedFolderAccess = SelectedFolderAccessController(messenger: messenger)
     webAuthentication = WebAuthenticationController(messenger: messenger)
   }

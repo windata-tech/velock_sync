@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/android_document_tree_access.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/apple_security_scoped_folder_access.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_access_authorizer.dart';
@@ -33,6 +32,7 @@ import 'package:velock_sync/sync_core/engine/initial_sync_assessment.dart';
 import 'package:velock_sync/sync_core/engine/sync_profile_runner.dart';
 import 'package:velock_sync/sync_core/engine/sync_download_engine.dart';
 import 'package:velock_sync/sync_core/engine/vault_protocol.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 typedef SelectedFolderRemoteFactory =
     RemoteObjectStore Function({
@@ -285,7 +285,7 @@ class SelectedFolderSyncService {
     required WebDavProtocolModel protocol,
     required String? password,
   }) => WebDavObjectStore(
-    dio: Dio(),
+    dio: newSyncDio(),
     baseUri: _webDavUri(protocol),
     username: protocol.username,
     password: password,

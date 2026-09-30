@@ -1,11 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 part '../generated/sync/http.g.dart';
 
 @riverpod
 Dio dio(Ref ref) {
-  final dio = Dio();
+  final dio = newSyncDio();
   // dio.options.baseUrl = 'https://api.stackexchange.com/2.2';
   // dio.options.connectTimeout = const Duration(seconds: 10);
   // dio.options.receiveTimeout = const Duration(seconds: 10);

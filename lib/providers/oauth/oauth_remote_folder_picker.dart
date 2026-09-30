@@ -8,6 +8,7 @@ import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
 import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// Provider-neutral folder metadata used only while selecting a remote root.
 class OAuthRemoteFolder {
@@ -33,7 +34,7 @@ class OAuthRemoteFolderPicker {
     OAuthTokenClient? tokenClient,
     Dio? dio,
     ProviderRateLimitRetry? rateLimitRetry,
-  }) : _dio = dio ?? Dio(),
+  }) : _dio = dio ?? newSyncDio(),
        _tokenClient = tokenClient ?? OAuthTokenClient(dio: dio),
        _credentialStore = credentialStore,
        _rateLimitRetry = rateLimitRetry ?? ProviderRateLimitRetry();

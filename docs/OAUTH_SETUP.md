@@ -110,3 +110,46 @@ its secure credential reference, then removes the old one. Removing an OAuth
 connection requests remote revocation where supported before deleting the
 local credential; if revocation fails the connection is restored so the user
 can retry.
+
+## Networks behind a proxy
+
+Dart's `HttpClient` ignores the system proxy, so a drive that is only reachable
+through one (Google from mainland China, for example) used to sign in fine in
+the browser sheet and then hang on "Connecting…" at token exchange. Every
+remote client is now built by `newSyncDio()`
+(`lib/infrastructure/network/sync_http.dart`):
+
+- finite timeouts (connect 30 s, send/receive 5 min; token calls 20 s / 60 s);
+- on iOS the manual HTTP/HTTPS proxy from the system settings (read through
+  the `tech.windata.velock.sync/system_proxy` channel at startup and on every
+  return to the foreground). Loopback, link-local, simple host names when the
+  system excludes them, and the system's exception list (CIDR, `*.x`, `.x`,
+  exact names) always go direct, so a LAN NAS or the local test server is not
+  sent through the proxy. A PAC (auto-config) proxy is not evaluated; a
+  VPN-style proxy needs nothing. Any malformed setting means direct.
+
+Do not create a bare `Dio()` for remote traffic.
+
+## Live check on a simulator
+
+`tool/live/oauth_drive_probe_main.dart` runs inside the app bundle and reuses
+the connections already signed in on that simulator. For each OAuth connection
+it uploads a ~70 KB object at the top level and under a nested key, reads it
+back and compares bytes, checks that `ifAbsent` refuses an overwrite, lists,
+deletes and confirms the delete. It touches only `velock-probe-*` keys and
+removes leftovers first; it prints no account, token or client ID.
+
+```bash
+flutter build ios --simulator --debug -t tool/live/oauth_drive_probe_main.dart
+```
+
+Install and launch the built app on the simulator, then read the result with
+`xcrun simctl spawn <udid> log show --last 3m --predicate 'eventMessage CONTAINS "PROBE "'`.
+Reinstall the normal build afterwards.
+
+Verified on 2026-09-30: Google Drive, iOS client, `appDataFolder`, through a
+desktop proxy, on an iOS Simulator (Debug). The first run found that reads and
+deletes inside `appDataFolder` failed (the ID lookup omitted
+`spaces=appDataFolder`, so reads reported "not found" and deletes silently did
+nothing); fixed and covered by a stateful regression test. OneDrive, Baidu
+Netdisk and Aliyun Drive have not been run against real accounts.

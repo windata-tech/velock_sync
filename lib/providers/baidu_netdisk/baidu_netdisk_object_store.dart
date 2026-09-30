@@ -11,6 +11,7 @@ import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// The folder Baidu lets a third-party app write to: `/apps/<app name>`.
 /// The name must match the app registered on the Baidu open platform.
@@ -44,7 +45,7 @@ class BaiduNetdiskObjectStore implements RemoteObjectStore {
     Future<Directory> Function()? spoolDirectory,
   }) : rootPath = normaliseRootPath(rootPath),
        _accessTokenProvider = accessTokenProvider,
-       _dio = dio ?? Dio(),
+       _dio = dio ?? newSyncDio(),
        _rateLimitRetry = rateLimitRetry ?? ProviderRateLimitRetry(),
        _spoolDirectory =
            spoolDirectory ??

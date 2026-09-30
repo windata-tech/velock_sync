@@ -5,7 +5,6 @@ import 'velock_location_guard.dart';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_dataset_adapter_factory.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_discovery.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
@@ -31,6 +30,7 @@ import 'package:velock_sync/sync_core/engine/sync_root_readme.dart';
 import 'package:velock_sync/sync_core/engine/vault_protocol.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 typedef VelockRemoteFactory =
     RemoteObjectStore Function({
@@ -372,13 +372,7 @@ class VelockSyncService implements VelockSyncRunner {
   }) => WebDavObjectStore(
     // Same rule as the shared factory: no silent infinite hang on a stalled
     // socket, so a stuck transfer becomes a reported failure.
-    dio: Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(minutes: 5),
-        sendTimeout: const Duration(minutes: 5),
-      ),
-    ),
+    dio: newSyncDio(),
     baseUri: _webDavUri(protocol),
     username: protocol.username,
     password: password,

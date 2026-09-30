@@ -370,3 +370,10 @@
 - 现场验证（2026-09-30，Debug 模拟器）：用户自己的 iOS 类型 Client ID 填入后，系统弹出“想要使用 accounts.google.com 登录”，继续后进入 Google 登录页（显示用户同意屏幕的应用名），**没有 redirect_uri 错误**。完整登录/选目录/上传需用户自己输入账号，截至记录时未完成。用户提供的 Client ID 与 plist（含 API_KEY）**不得写进仓库**，测试用 `123-abc.apps.googleusercontent.com` 之类占位。
 - 回归：`test/providers/oauth/oauth_client_registration_test.dart`（12 项，含变异检查）、`remote_provider_availability_test.dart`、`backup_navigation_test.dart`（四家各：折叠入口、自带密钥表单、显式保存）。未验证：真实账号端到端；Google iOS 客户端是否接受自定义 scheme `velocksync://oauth/callback`。
 - 验证边界：两家各 16 项 V1 契约 + 专项用例在**有状态假服务器**上通过并做过变异检查；接口细节未能对照官方文档在线核实，**没有真实账号端到端**。`velocksync://oauth/callback` 是否被两家后台接受、百度 `/apps` 目录限制、阿里云默认盘/资源盘选择都待真实账号确认。百度 secret 打进客户端二进制可被提取。
+
+### 代理网络与 Google Drive 实测（2026-09-30）
+
+- 用户电脑经系统代理（被墙）访问 Google。Dart `HttpClient` 不读系统代理，原先登录页（系统浏览器，走代理）成功后 token 交换无限挂在「正在连接」。现在所有远端 HTTP 一律用 `newSyncDio()`（`lib/infrastructure/network/sync_http.dart`）：有限超时 + iOS 读取系统手动代理（原生通道 `tech.windata.velock.sync/system_proxy`，启动与回前台刷新）；回环/链路本地/简单主机名/系统例外列表直连，PAC 不评估、畸形设置直连。**禁止再新建裸 `Dio()` 做远端请求。**
+- Google Drive 实测（iOS 模拟器 Debug、iOS 类型客户端、`appDataFolder`、经代理）：登录、选目录、上传/回读字节一致/防覆盖/列目录/删除全部通过。首轮实测发现 `_lookup` 漏 `spaces=appDataFolder`，导致 Sync 专用文件夹里**读不回、删不掉（静默跳过）**；已合并成单次查询并加有状态回归（去掉 spaces 必红）。旧假服务器不看查询参数，所以没抓到——Drive 测试的 fake 要按真实 space 语义回应。
+- 复测入口 `tool/live/oauth_drive_probe_main.dart`（复用模拟器上已登录的连接，只碰 `velock-probe-*`），用法见 `docs/OAUTH_SETUP.md`「Live check on a simulator」。用完重装正常包。OneDrive/百度/阿里云尚无真实账号实测。
+- Google 细粒度授权页默认不勾选权限，用户需勾选（全选）；App 目前不校验 token 返回的 scope，缺权限时会在后续请求才报 403（待改进）。

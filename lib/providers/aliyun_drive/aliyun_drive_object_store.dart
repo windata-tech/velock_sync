@@ -9,6 +9,7 @@ import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
+import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// Where an Aliyun Drive folder lives: the drive and the folder's file ID.
 ///
@@ -44,7 +45,7 @@ class AliyunDriveObjectStore implements RemoteObjectStore {
     Dio? dio,
     ProviderRateLimitRetry? rateLimitRetry,
   }) : _accessTokenProvider = accessTokenProvider,
-       _dio = dio ?? Dio(),
+       _dio = dio ?? newSyncDio(),
        _rateLimitRetry = rateLimitRetry ?? ProviderRateLimitRetry();
 
   static const _host = 'openapi.alipan.com';
