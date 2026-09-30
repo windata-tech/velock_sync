@@ -536,14 +536,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Opens [provider] from the protocol list. Without a built-in key (as in
-  /// tests) every cloud drive sits in the folded "更多云盘" section.
+  /// Opens [provider] from the protocol list, where every cloud drive is
+  /// listed whether or not the build has a key for it.
   Future<void> openFromProtocols(
     WidgetTester tester,
     RemoteProviderType provider,
   ) async {
-    await tester.tap(find.byKey(const Key('protocols-more-toggle')));
-    await tester.pumpAndSettle();
     final tile = find.byKey(Key('protocol-${provider.name}'));
     await tester.ensureVisible(tile);
     expect(
@@ -653,7 +651,9 @@ void main() {
       expect(input, findsOneWidget);
       expect(find.byKey(const Key('oauth-sign-in')), findsNothing);
       expect(credentials.registrations, isEmpty);
-      const publicId = 'test-public-client.apps.example';
+      final publicId = provider == RemoteProviderType.googleDrive
+          ? '123-test.apps.googleusercontent.com'
+          : 'test-public-client.apps.example';
       await tester.enterText(input, publicId);
       if (OAuthClientRegistration.requiresSecret(provider)) {
         await tester.enterText(

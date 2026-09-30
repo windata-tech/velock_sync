@@ -9,11 +9,41 @@ import 'package:velock_sync/sync_core/model/sync_models.dart';
 /// The repository itself ships none: official builds inject them, and anyone
 /// else can use [fromUserRegistration] with an app they registered.
 abstract final class OAuthPublicClientConfiguration {
+  /// The app's own callback, registered in the bundle/manifest. Used by every
+  /// provider except Google (see [redirectUriFor]).
   static final redirectUri = Uri(
     scheme: 'velocksync',
     host: 'oauth',
     path: '/callback',
   );
+
+  /// Google only accepts its own per-client scheme for installed apps (an
+  /// "iOS" OAuth client): the Client ID reversed, e.g.
+  /// `com.googleusercontent.apps.123-abc:/oauth2redirect`. It differs for
+  /// every registration, so it cannot be declared in the app bundle and is
+  /// received through the platform web-authentication session instead.
+  static Uri redirectUriFor(RemoteProviderType providerType, String clientId) {
+    if (providerType != RemoteProviderType.googleDrive) return redirectUri;
+    final prefix = googleClientIdPrefix(clientId);
+    if (prefix == null) {
+      throw OAuthClientRegistrationMissingException(providerType);
+    }
+    return Uri.parse('com.googleusercontent.apps.$prefix:/oauth2redirect');
+  }
+
+  /// What a Google "iOS" OAuth client must be registered with.
+  static const appleBundleId = 'tech.windata.velock.sync';
+
+  static const _googleClientIdSuffix = '.apps.googleusercontent.com';
+
+  /// The `123-abc` part of `123-abc.apps.googleusercontent.com`, or null when
+  /// [clientId] is not a Google OAuth Client ID.
+  static String? googleClientIdPrefix(String clientId) {
+    final id = clientId.trim().toLowerCase();
+    if (!id.endsWith(_googleClientIdSuffix)) return null;
+    final prefix = id.substring(0, id.length - _googleClientIdSuffix.length);
+    return RegExp(r'^[a-z0-9-]+$').hasMatch(prefix) ? prefix : null;
+  }
 
   static OAuthAuthorizationConfig forProvider(
     RemoteProviderType providerType,
@@ -70,7 +100,7 @@ abstract final class OAuthPublicClientConfiguration {
     final base = switch (providerType) {
       RemoteProviderType.googleDrive => OAuthAuthorizationConfig.googleDrive(
         clientId: registration.clientId,
-        redirectUri: redirectUri,
+        redirectUri: redirectUriFor(providerType, registration.clientId),
       ),
       RemoteProviderType.oneDrive => OAuthAuthorizationConfig.oneDrive(
         clientId: registration.clientId,
@@ -122,7 +152,7 @@ abstract final class OAuthPublicClientConfiguration {
     return switch (providerType) {
       RemoteProviderType.googleDrive => OAuthAuthorizationConfig.googleDrive(
         clientId: clientId,
-        redirectUri: redirectUri,
+        redirectUri: redirectUriFor(providerType, clientId),
       ),
       RemoteProviderType.oneDrive => OAuthAuthorizationConfig.oneDrive(
         clientId: clientId,

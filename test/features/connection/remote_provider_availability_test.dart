@@ -1,8 +1,7 @@
-/// Cloud drives with a built-in app key are offered directly when adding a
-/// connection. The rest are folded into “更多云盘”: the repository ships no
-/// keys, so a user can register their own app and enter it on the connection
-/// page — in release builds too. Once they have, that provider joins the main
-/// list.
+/// Every cloud drive is offered when adding a connection. The repository
+/// ships no keys, so without a built-in one the user signs in with an app
+/// they registered themselves, entered on the connection page — in release
+/// builds too.
 ///
 /// Saved connections of any type must still be listed (and therefore
 /// editable/deletable).
@@ -24,7 +23,6 @@ import 'package:velock_sync/features/connection/ui/new_oauth.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/features/connection/ui/remote_provider_icon.dart';
 import 'package:velock_sync/infrastructure/secure_storage/in_memory_credential_store.dart';
-import 'package:velock_sync/providers/oauth/oauth_client_registration.dart';
 import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
@@ -156,67 +154,43 @@ void main() {
     });
   });
 
-  testWidgets('providers without a key are folded under “更多云盘”', (
+  testWidgets('providers without a built-in key are listed for own keys', (
     tester,
   ) async {
     await _pump(tester, const Protocols(), availability: _releaseUnconfigured);
     expect(find.text('WebDAV'), findsOneWidget);
-    expect(find.byKey(const Key('protocol-googleDrive')), findsNothing);
-    expect(find.byKey(const Key('protocol-baiduNetdisk')), findsNothing);
-    expect(find.text('更多云盘'), findsOneWidget);
-    expect(find.text('其他服务'), findsNothing);
-    // No build options or environment variables are shown to users.
-    expect(find.textContaining('dart-define'), findsNothing);
-    expect(find.textContaining('此版本暂未开通'), findsNothing);
-
-    await tester.tap(find.byKey(const Key('protocols-more-toggle')));
-    await tester.pumpAndSettle();
     for (final type in RemoteProviderAvailability.oauthProviderTypes) {
       expect(find.byKey(Key('protocol-${type.name}')), findsOneWidget);
     }
-    expect(find.textContaining('需要先在百度网盘开放平台注册'), findsOneWidget);
+    expect(find.text('更多云盘'), findsNothing);
+    expect(find.byKey(const Key('protocols-more-toggle')), findsNothing);
+    expect(find.textContaining('使用你自己在百度网盘开放平台注册的应用密钥登录'), findsOneWidget);
+    // Google's own-key sign-in needs the iOS web-authentication sheet; the
+    // test platform is Android, so the tile says so up front.
+    expect(find.textContaining('目前只支持 iPhone 和 iPad'), findsOneWidget);
+    expect(find.text('使用你自己在 Microsoft Entra 注册的应用密钥登录。'), findsOneWidget);
+    expect(find.textContaining('额度也归你自己'), findsOneWidget);
+    // No build options or environment variables are shown to users.
+    expect(find.textContaining('dart-define'), findsNothing);
+    expect(find.textContaining('此版本暂未开通'), findsNothing);
     // The header no longer claims every location is encrypted.
     expect(find.textContaining('加密对象'), findsNothing);
     expect(find.textContaining('文件同步写入的是普通文件'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('configured OAuth providers are shown in the picker', (
+  testWidgets('built-in keys sign in directly, the rest use own keys', (
     tester,
   ) async {
     await _pump(tester, const Protocols(), availability: _releaseConfigured);
     expect(find.text('WebDAV'), findsOneWidget);
     expect(find.text('Google Drive'), findsOneWidget);
     expect(find.text('OneDrive'), findsOneWidget);
-    expect(find.byKey(const Key('protocol-baiduNetdisk')), findsNothing);
-    expect(find.byKey(const Key('protocols-more-toggle')), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a provider with the user’s own key joins the main list', (
-    tester,
-  ) async {
-    final credentials = InMemoryCredentialStore();
-    await credentials.writeOAuthClientRegistration(
-      RemoteProviderType.baiduNetdisk,
-      OAuthClientRegistration.normalized(
-        type: RemoteProviderType.baiduNetdisk,
-        clientId: 'user-app-key',
-        clientSecret: 'user-secret',
-        appFolderName: 'My Sync',
-      ),
-    );
-    await _pump(
-      tester,
-      const Protocols(),
-      availability: _releaseUnconfigured,
-      credentials: credentials,
-    );
+    expect(find.text('使用 Google 账号授权，然后选择同步所用的云端目录。'), findsOneWidget);
     expect(find.byKey(const Key('protocol-baiduNetdisk')), findsOneWidget);
-    expect(find.textContaining('使用你自己的应用密钥登录'), findsOneWidget);
-    // The others still wait behind the folded section.
-    expect(find.byKey(const Key('protocol-googleDrive')), findsNothing);
-    expect(find.byKey(const Key('protocols-more-toggle')), findsOneWidget);
+    expect(find.textContaining('使用你自己在阿里云盘开放平台注册的应用密钥登录'), findsOneWidget);
+    expect(find.textContaining('使用你自己在 Microsoft Entra 注册'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('each storage type has its own icon and colour', (tester) async {
@@ -363,7 +337,10 @@ void main() {
       expect(find.byKey(const Key('oauth-own-client-id')), findsOneWidget);
       // Google and Microsoft are public clients: no secret field.
       expect(find.byKey(const Key('oauth-own-secret')), findsNothing);
-      expect(find.text('velocksync://oauth/callback'), findsOneWidget);
+      // Google's redirect is derived from the Client ID; what the user must
+      // register is the bundle ID of an "iOS" client.
+      expect(find.text('velocksync://oauth/callback'), findsNothing);
+      expect(find.text('tech.windata.velock.sync'), findsOneWidget);
       expect(find.byKey(const Key('oauth-choose-another')), findsOneWidget);
       expect(find.byKey(const Key('oauth-sign-in')), findsNothing);
       expect(tester.takeException(), isNull);

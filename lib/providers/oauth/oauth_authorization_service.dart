@@ -49,8 +49,11 @@ class OAuthAuthorizationConfig {
         persistClientSecret: secret != null,
       );
 
-  /// Google Drive public-client authorization with the file scope, limited to
-  /// files the app creates or the user explicitly selects for the app.
+  /// Google Drive public-client authorization. `drive.file` limits it to files
+  /// the app creates or the user explicitly selects for the app; `drive.appdata`
+  /// covers the hidden app folder, the default location. Both are
+  /// non-sensitive scopes, so a user's own unverified registration can use
+  /// them without Google's app review.
   factory OAuthAuthorizationConfig.googleDrive({
     required String clientId,
     required Uri redirectUri,
@@ -63,7 +66,10 @@ class OAuthAuthorizationConfig {
     revocationEndpoint: Uri.parse('https://oauth2.googleapis.com/revoke'),
     clientId: clientId,
     redirectUri: redirectUri,
-    scopes: const {'https://www.googleapis.com/auth/drive.file'},
+    scopes: const {
+      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/drive.appdata',
+    },
     additionalParameters: const {'access_type': 'offline'},
   );
 

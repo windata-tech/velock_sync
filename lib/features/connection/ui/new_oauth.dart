@@ -23,6 +23,7 @@ import 'package:velock_sync/providers/oauth/oauth_remote_folder_picker.dart';
 import 'package:velock_sync/providers/oauth/oauth_remote_target_factory.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
 import 'package:velock_sync/providers/oauth/oauth_user_registration_provider.dart';
+import 'package:velock_sync/providers/oauth/oauth_web_authentication_session.dart';
 import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/app_format.dart';
@@ -137,6 +138,8 @@ class NewOAuthConnection extends HookConsumerWidget {
       );
     }
 
+    final providerLabel = _providerLabel(context, providerType);
+
     Future<void> authorizeAndSave() async {
       if (config == null || formKey.currentState?.validate() != true) return;
       final authorizationConfig = config;
@@ -152,6 +155,7 @@ class NewOAuthConnection extends HookConsumerWidget {
             tokenClient: OAuthTokenClient(),
             credentialStore: ref.read(credentialStoreProvider),
           ),
+          capturer: PlatformOAuthCallbackCapturer.forCurrentPlatform(),
         );
         credentialRef = await authorization.authorize(
           config: authorizationConfig,
@@ -205,6 +209,19 @@ class NewOAuthConnection extends HookConsumerWidget {
         }
         saved = true;
         if (context.mounted) leaveConnectionEditor(context, returnTo);
+      } on OAuthAuthorizationCancelledException {
+        // The user closed the sign-in sheet; nothing to report.
+      } on OAuthRedirectUnsupportedException {
+        if (context.mounted) {
+          showPlatformMessage(
+            context,
+            syncText(
+              context,
+              '这台设备暂时不能用自己的 $providerLabel 应用密钥登录，目前只支持 iPhone 和 iPad。',
+              'Signing in with your own $providerLabel app key is not available on this device yet. It currently works on iPhone and iPad.',
+            ),
+          );
+        }
       } on Object catch (error, stackTrace) {
         loge(
           'OAuth authorization or connection check failed: ${error.runtimeType}',
@@ -610,6 +627,10 @@ class _OwnRegistrationSetup extends HookWidget {
     final needsAppFolder = OAuthClientRegistration.acceptsAppFolderName(
       providerType,
     );
+    final isGoogle = providerType == RemoteProviderType.googleDrive;
+    final copyValue = isGoogle
+        ? OAuthPublicClientConfiguration.appleBundleId
+        : OAuthPublicClientConfiguration.redirectUri.toString();
     final idLabel = switch (providerType) {
       RemoteProviderType.baiduNetdisk => 'AppKey',
       RemoteProviderType.aliyunDrive => 'App ID',
@@ -653,6 +674,11 @@ class _OwnRegistrationSetup extends HookWidget {
             context,
             '$secretLabel 不能包含空格。',
             'The $secretLabel cannot contain spaces.',
+          ),
+          'oauth.registration.google_client_id_invalid' => syncText(
+            context,
+            'Google 的 Client ID 以 .apps.googleusercontent.com 结尾，请从 iOS 类型的 OAuth 客户端里复制。',
+            'A Google Client ID ends in .apps.googleusercontent.com. Copy it from an iOS-type OAuth client.',
           ),
           'oauth.registration.app_folder_invalid' => syncText(
             context,
@@ -701,11 +727,17 @@ class _OwnRegistrationSetup extends HookWidget {
         const SizedBox(height: 12),
         Text(
           explainsMissingKey
-              ? syncText(
-                  context,
-                  '这个版本没有内置 $provider 的应用密钥。你可以在 $provider 开放平台免费注册一个自己的应用，把回调地址设为下面这一行，再把得到的密钥填进来。之后登录、授权都用你自己的应用完成，你的账号密码不会交给 Sync。',
-                  'This build has no $provider app key. Register your own app for free on the $provider developer platform, set its redirect URI to the line below, and enter the key it gives you. Sign-in then goes through your own app; your account password is never given to Sync.',
-                )
+              ? isGoogle
+                    ? syncText(
+                        context,
+                        '在 Google Cloud Console 免费创建一个自己的 OAuth 客户端，类型选「iOS」，软件包 ID 填下面这一行，再把得到的 Client ID 填进来。登录、授权都用你自己的客户端完成，额度也属于你自己；你的账号密码不会交给 Sync。',
+                        'Create your own OAuth client for free in Google Cloud Console: choose the “iOS” type, set its bundle ID to the line below, and enter the Client ID it gives you. Sign-in and quota then belong to your own client; your account password is never given to Sync.',
+                      )
+                    : syncText(
+                        context,
+                        '在 $provider 开放平台免费注册一个自己的应用，把回调地址设为下面这一行，再把得到的密钥填进来。登录、授权都用你自己的应用完成，你的账号密码不会交给 Sync。',
+                        'Register your own app for free on the $provider developer platform, set its redirect URI to the line below, and enter the key it gives you. Sign-in then goes through your own app; your account password is never given to Sync.',
+                      )
               : syncText(
                   context,
                   '修改后，新的登录会使用这里的密钥。已经连接的位置继续使用它们登录时的密钥。',
@@ -727,8 +759,12 @@ class _OwnRegistrationSetup extends HookWidget {
           ),
         ),
         const SizedBox(height: 12),
+        // Google derives the redirect from the Client ID; what it needs
+        // from the user is the bundle ID of the "iOS" client instead.
         Text(
-          syncText(context, '回调地址', 'Redirect URI'),
+          isGoogle
+              ? syncText(context, '软件包 ID', 'Bundle ID')
+              : syncText(context, '回调地址', 'Redirect URI'),
           style: AppType.footnote.copyWith(color: context.appSecondaryLabel),
         ),
         const SizedBox(height: 4),
@@ -736,24 +772,24 @@ class _OwnRegistrationSetup extends HookWidget {
           children: [
             Expanded(
               child: SelectableText(
-                key: const Key('oauth-redirect-uri'),
-                OAuthPublicClientConfiguration.redirectUri.toString(),
+                key: Key(isGoogle ? 'oauth-bundle-id' : 'oauth-redirect-uri'),
+                copyValue,
                 style: AppType.mono,
               ),
             ),
             AdaptiveIconButton(
               icon: const Icon(CupertinoIcons.doc_on_doc),
-              semanticLabel: syncText(context, '复制回调地址', 'Copy redirect URI'),
+              semanticLabel: isGoogle
+                  ? syncText(context, '复制软件包 ID', 'Copy bundle ID')
+                  : syncText(context, '复制回调地址', 'Copy redirect URI'),
               onPressed: () async {
-                await Clipboard.setData(
-                  ClipboardData(
-                    text: OAuthPublicClientConfiguration.redirectUri.toString(),
-                  ),
-                );
+                await Clipboard.setData(ClipboardData(text: copyValue));
                 if (context.mounted) {
                   showPlatformMessage(
                     context,
-                    syncText(context, '已复制回调地址。', 'Redirect URI copied.'),
+                    isGoogle
+                        ? syncText(context, '已复制软件包 ID。', 'Bundle ID copied.')
+                        : syncText(context, '已复制回调地址。', 'Redirect URI copied.'),
                   );
                 }
               },

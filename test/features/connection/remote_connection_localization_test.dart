@@ -87,12 +87,10 @@ void main() {
       // straight to the storage type without a fixed "local data" step.
       expect(find.text('Where to save'), findsOneWidget);
       expect(find.text('Choose Remote Protocol'), findsNothing);
-      // Drives without a built-in key (none in tests) are folded under
-      // "More cloud drives" and open the own-key form.
+      // Drives without a built-in key (none in tests) are listed directly
+      // and open the own-key form.
       expect(find.text('Other Services'), findsNothing);
-      expect(find.text('More cloud drives'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('protocols-more-toggle')));
-      await tester.pumpAndSettle();
+      expect(find.text('More cloud drives'), findsNothing);
       expect(find.text('Baidu Netdisk'), findsOneWidget);
       expect(find.text('Aliyun Drive'), findsOneWidget);
       await tester.tap(find.text('WebDAV'));

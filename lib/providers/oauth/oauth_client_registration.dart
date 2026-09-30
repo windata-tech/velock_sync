@@ -50,6 +50,17 @@ class OAuthClientRegistration {
     if (id.isEmpty || _hasControlOrSpace(id)) {
       throw const FormatException('oauth.registration.client_id_invalid');
     }
+    // Google's redirect is derived from the Client ID itself, so anything
+    // else (an API key, a project number) could never complete sign-in.
+    if (type == RemoteProviderType.googleDrive &&
+        !RegExp(
+          r'^[a-z0-9-]+\.apps\.googleusercontent\.com$',
+          caseSensitive: false,
+        ).hasMatch(id)) {
+      throw const FormatException(
+        'oauth.registration.google_client_id_invalid',
+      );
+    }
     if (secret.isNotEmpty && !acceptsSecret(type)) {
       throw const FormatException('oauth.registration.secret_not_accepted');
     }

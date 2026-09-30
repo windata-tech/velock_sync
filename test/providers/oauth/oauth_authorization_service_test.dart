@@ -21,7 +21,10 @@ void main() {
     );
 
     expect(google.providerId, 'googleDrive');
-    expect(google.scopes, {'https://www.googleapis.com/auth/drive.file'});
+    expect(google.scopes, {
+      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/drive.appdata',
+    });
     expect(google.revocationEndpoint?.host, 'oauth2.googleapis.com');
     expect(oneDrive.providerId, 'oneDrive');
     expect(oneDrive.scopes, {'Files.ReadWrite', 'offline_access'});

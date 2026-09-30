@@ -537,13 +537,18 @@ ConnectionHelpDocument _googleDriveDocument(
           bullets: [
             syncText(
               context,
-              '在 Google Cloud 项目中启用 Drive API，配置 OAuth 同意屏幕，再创建 OAuth Client ID。',
-              'In your Google Cloud project, enable the Drive API, configure the OAuth consent screen, then create an OAuth Client ID.',
+              '在 Google Cloud 项目中启用 Drive API，配置 OAuth 同意屏幕，再创建一个类型为“iOS”的 OAuth Client ID。',
+              'In your Google Cloud project, enable the Drive API, configure the OAuth consent screen, then create an OAuth Client ID of type “iOS”.',
             ),
             syncText(
               context,
-              '移动端是公开客户端，只需要 Client ID，不需要也不要填写 Client Secret。',
-              'Mobile apps are public clients: only the Client ID is needed, and no Client Secret should be entered.',
+              '“iOS”类型的客户端只有 Client ID，没有也不需要 Client Secret。',
+              'An “iOS” client has only a Client ID; there is no Client Secret to enter.',
+            ),
+            syncText(
+              context,
+              '目前只能在 iPhone 和 iPad 上用自己的 Google 应用密钥登录。',
+              'Signing in with your own Google app key currently works on iPhone and iPad only.',
             ),
             syncText(
               context,
@@ -552,25 +557,30 @@ ConnectionHelpDocument _googleDriveDocument(
             ),
             syncText(
               context,
-              '测试账号、组织策略或未发布的同意屏幕，可能限制哪些账号可以登录。',
-              'Test accounts, organization policies or an unpublished consent screen can limit which accounts may sign in.',
+              '同意屏幕停在“测试”状态时，只有加入测试用户的账号能登录，而且大约 7 天后就要重新授权。把它发布为“正式版”即可；本应用用到的两个访问范围不需要 Google 审核。',
+              'While the consent screen is in “Testing”, only listed test users can sign in and each sign-in lasts about 7 days. Publish it to “In production”; the two scopes this app uses need no Google review.',
+            ),
+            syncText(
+              context,
+              '用自己的项目登录时，Google 仍可能提示“此应用未经验证”。这是你自己的项目，选择“继续”即可。',
+              'Google may still warn that the app is unverified when you sign in with your own project. It is your own project, so choose Continue.',
             ),
           ],
         ),
         ConnectionHelpItem(
-          title: syncText(context, '登记回调地址', 'Register the redirect address'),
+          title: syncText(context, '填写软件包 ID', 'Enter the bundle ID'),
           body: syncText(
             context,
-            '使用自己的 Client ID 时，授权完成后系统浏览器通过 velocksync://oauth/callback 把结果交回应用，Google Cloud 中登记的回调地址必须与它一致（连接页可以直接复制）。',
-            'With your own Client ID, the system browser hands the result back to the app through velocksync://oauth/callback when sign-in finishes. The redirect registered in Google Cloud must match it exactly (you can copy it from the connection page).',
+            '创建“iOS”客户端时，软件包 ID（Bundle ID）填写 tech.windata.velock.sync（连接页可以直接复制）。回调地址由 Google 根据 Client ID 自动生成，不需要另外登记。',
+            'When creating the “iOS” client, enter tech.windata.velock.sync as the bundle ID (you can copy it from the connection page). Google derives the redirect from the Client ID, so there is nothing else to register.',
           ),
         ),
         ConnectionHelpItem(
           title: syncText(context, '确认访问范围', 'Check the access scope'),
           body: syncText(
             context,
-            '当前实现使用 drive.file 范围：应用可以访问它创建的文件，以及用户在授权流程中明确选择或授予应用访问权的文件。',
-            'This version uses the drive.file scope: the app can reach the files it creates, plus files the user picks or grants access to during sign-in.',
+            '应用只申请 drive.file 与 drive.appdata 两个范围：可以访问它自己创建的文件、你明确授权的文件，以及 Google 为应用保留的隐藏空间，看不到网盘里的其他文件。',
+            'The app asks only for the drive.file and drive.appdata scopes: it can reach files it creates, files you grant it, and the hidden space Google keeps for the app, but none of your other Drive files.',
           ),
         ),
       ],
@@ -660,8 +670,8 @@ ConnectionHelpDocument _googleDriveDocument(
           ),
           body: syncText(
             context,
-            '说明这个版本没有内置 Google 的应用密钥。按上面的步骤创建自己的 Client ID 并填入；如果 Google 提示 redirect_uri_mismatch，检查回调地址是否与连接页显示的完全一致。',
-            'This version has no built-in Google app key. Create your own Client ID as described above and enter it. If Google reports redirect_uri_mismatch, check that the redirect matches the one shown on the connection page exactly.',
+            '说明这个版本没有内置 Google 的应用密钥。按上面的步骤创建自己的 Client ID 并填入；如果 Google 提示 redirect_uri_mismatch 或 invalid_request，检查客户端类型是否为“iOS”、软件包 ID 是否与连接页显示的完全一致。',
+            'This version has no built-in Google app key. Create your own Client ID as described above and enter it. If Google reports redirect_uri_mismatch or invalid_request, check that the client type is “iOS” and the bundle ID matches the one shown on the connection page exactly.',
           ),
         ),
         ConnectionHelpItem(
@@ -672,8 +682,8 @@ ConnectionHelpDocument _googleDriveDocument(
           ),
           body: syncText(
             context,
-            '检查自定义回调地址是否登记正确，系统是否允许 velocksync 链接唤起应用；如果浏览器停在空白页，返回应用查看是否已经收到回调。',
-            'Check that the custom redirect is registered correctly and that the system lets velocksync links open the app. If the browser sits on a blank page, switch back to the app and see whether the result arrived.',
+            '使用自己的 Client ID 时，登录页显示在应用内的系统登录窗口里，完成后会自动关闭；如果窗口停在空白页，关闭后重新登录，并检查 Client ID 是否属于“iOS”类型的客户端。',
+            'With your own Client ID, sign-in appears in the system sign-in sheet inside the app and closes itself when done. If the sheet sits on a blank page, close it, sign in again and check that the Client ID belongs to an “iOS” client.',
           ),
         ),
         ConnectionHelpItem(

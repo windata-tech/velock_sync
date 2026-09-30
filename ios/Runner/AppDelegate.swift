@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Flutter
 import UniformTypeIdentifiers
 import UIKit
@@ -6,6 +7,7 @@ import workmanager_apple
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var selectedFolderAccess: SelectedFolderAccessController?
+  private var webAuthentication: WebAuthenticationController?
 
   override func application(
     _ application: UIApplication,
@@ -106,6 +108,75 @@ import workmanager_apple
     registerDiskSpaceChannel(messenger)
     registerPowerStateChannel(messenger)
     selectedFolderAccess = SelectedFolderAccessController(messenger: messenger)
+    webAuthentication = WebAuthenticationController(messenger: messenger)
+  }
+}
+
+/// OAuth sign-in in `ASWebAuthenticationSession`. The sheet hands back the
+/// redirect for any scheme, so a user's own Google client (whose redirect is
+/// its reversed Client ID) works without being declared in Info.plist.
+/// It only returns the callback URL; state and code checks stay in Dart.
+private final class WebAuthenticationController: NSObject,
+  ASWebAuthenticationPresentationContextProviding
+{
+  private var session: ASWebAuthenticationSession?
+
+  init(messenger: FlutterBinaryMessenger) {
+    super.init()
+    let channel = FlutterMethodChannel(
+      name: "tech.windata.velock.sync/web_auth",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "authenticate" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.authenticate(arguments: call.arguments, result: result)
+    }
+  }
+
+  private func authenticate(arguments: Any?, result: @escaping FlutterResult) {
+    guard let arguments = arguments as? [String: Any],
+          let urlString = arguments["url"] as? String,
+          let url = URL(string: urlString),
+          url.scheme == "https",
+          let scheme = arguments["callbackScheme"] as? String,
+          !scheme.isEmpty else {
+      result(FlutterError(code: "invalid_arguments", message: "Invalid authorization request.", details: nil))
+      return
+    }
+    guard session == nil else {
+      result(FlutterError(code: "busy", message: "Another sign-in is already open.", details: nil))
+      return
+    }
+    let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) {
+      [weak self] callback, error in
+      DispatchQueue.main.async {
+        self?.session = nil
+        if let callback {
+          result(callback.absoluteString)
+        } else if let error = error as? ASWebAuthenticationSessionError,
+                  error.code == .canceledLogin {
+          result(FlutterError(code: "cancelled", message: nil, details: nil))
+        } else {
+          result(FlutterError(code: "failed", message: "Sign-in did not finish.", details: nil))
+        }
+      }
+    }
+    session.presentationContextProvider = self
+    self.session = session
+    if !session.start() {
+      self.session = nil
+      result(FlutterError(code: "failed", message: "Unable to open sign-in.", details: nil))
+    }
+  }
+
+  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .first { $0.isKeyWindow } ?? ASPresentationAnchor()
   }
 }
 

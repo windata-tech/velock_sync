@@ -16,18 +16,29 @@ and reputation. Keys therefore reach the app in exactly two ways:
    only in platform secure storage on that device and override the built-in
    key for that provider.
 
-A provider with neither a built-in key nor a user key is shown under
-“More cloud drives” and opens the own-key form instead of a dead end.
+Every cloud drive is listed when adding a connection. One without a built-in
+key opens the own-key form, which is the normal path for an open-source build.
+Your own registration also means the quota is yours, not shared with every
+other user.
 
 ## Redirect URI
 
-Every registration (built-in or user-owned) must use this redirect:
+OneDrive, Baidu Netdisk and Aliyun Drive registrations (built-in or
+user-owned) must use this redirect:
 
 ```text
 velocksync://oauth/callback
 ```
 
 The Android intent filter and the iOS URL scheme are already configured.
+
+Google is different: its mobile clients cannot register a custom redirect. A
+Google Client ID must belong to an **iOS**-type client with bundle ID
+`tech.windata.velock.sync`; the redirect is derived from the Client ID
+(`com.googleusercontent.apps.<prefix>:/oauth2redirect`) and received through
+`ASWebAuthenticationSession`, so no URL scheme has to be declared per client.
+This works on iPhone and iPad only for now; elsewhere the app says so before
+opening a browser.
 
 ## Building with built-in keys
 
@@ -44,7 +55,7 @@ in CI logs. Empty values mean “no built-in key” for that provider.
 
 | Define | Provider | Notes |
 | --- | --- | --- |
-| `GOOGLE_OAUTH_CLIENT_ID` | Google Drive | Public PKCE client, no secret |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google Drive | iOS-type client, no secret |
 | `ONEDRIVE_OAUTH_CLIENT_ID` | OneDrive | Application (client) ID, public client |
 | `BAIDU_NETDISK_APP_KEY` | Baidu Netdisk | AppKey |
 | `BAIDU_NETDISK_SECRET_KEY` | Baidu Netdisk | Required by Baidu at code exchange and refresh |
@@ -60,16 +71,23 @@ Drive and OneDrive are public clients and never take a secret.
 ## Registering your own app
 
 - **Google Drive** — in Google Cloud, enable the Drive API, configure the OAuth
-  consent screen and create an OAuth Client ID. Only the Client ID is entered.
-  Scope used: `drive.file`.
+  consent screen and create an OAuth Client ID of type **iOS** with bundle ID
+  `tech.windata.velock.sync`. Only the Client ID is entered; an iOS client
+  has no secret. Scopes used: `drive.file`, `drive.appdata` — both
+  non-sensitive, so publishing the consent screen to “In production” needs no
+  Google review. Leave it in “Testing” and only listed test users can sign
+  in, and each sign-in expires after about 7 days. Google may still show an
+  “unverified app” notice for your own project; choose Continue.
 - **OneDrive** — register a public client app in Microsoft Entra, add the
   redirect under “Mobile and desktop applications”, and enter the Application
   (client) ID. Scopes used: `Files.ReadWrite`, `offline_access`.
-- **Baidu Netdisk** — create an app on the Baidu Netdisk open platform and enter
+- **Baidu Netdisk** — create an app on the Baidu Netdisk open platform (this
+  needs a developer account and the platform's review) and enter
   its AppKey, SecretKey and app name. Baidu only lets third-party apps write to
   `/apps/<app name>`, so the app name must match exactly.
-- **Aliyun Drive** — create an app on the Aliyun Drive open platform and enter
-  its App ID; the App Secret is optional.
+- **Aliyun Drive** — create an app on the Aliyun Drive open platform (also
+  subject to developer registration and review) and enter its App ID; the App
+  Secret is optional.
 
 ## What is stored where
 
@@ -85,7 +103,8 @@ Drive and OneDrive are public clients and never take a secret.
 
 ## Re-authentication and removal
 
-Creating a connection opens the system browser and validates the returned
+Creating a connection opens the system browser (the in-app sign-in sheet for
+Google) and validates the returned
 state before token exchange. Re-authorizing a connection atomically replaces
 its secure credential reference, then removes the old one. Removing an OAuth
 connection requests remote revocation where supported before deleting the

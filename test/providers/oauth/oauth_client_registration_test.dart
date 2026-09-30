@@ -22,6 +22,36 @@ void main() {
       expect(registration.appFolderName, 'My Sync');
     });
 
+    test('a Google registration must be a Google OAuth Client ID', () {
+      for (final id in [
+        'AIzaSyExampleApiKey',
+        '123456789012',
+        'abc.apps.googleusercontent.com.evil.test',
+      ]) {
+        expect(
+          () => OAuthClientRegistration.normalized(
+            type: RemoteProviderType.googleDrive,
+            clientId: id,
+          ),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              'oauth.registration.google_client_id_invalid',
+            ),
+          ),
+          reason: id,
+        );
+      }
+      expect(
+        OAuthClientRegistration.normalized(
+          type: RemoteProviderType.googleDrive,
+          clientId: ' 123-abc.apps.googleusercontent.com ',
+        ).clientId,
+        '123-abc.apps.googleusercontent.com',
+      );
+    });
+
     test('never pairs a Google or Microsoft public client with a secret', () {
       for (final type in [
         RemoteProviderType.googleDrive,
@@ -30,7 +60,7 @@ void main() {
         expect(
           () => OAuthClientRegistration.normalized(
             type: type,
-            clientId: 'id',
+            clientId: _publicClientId(type),
             clientSecret: 'secret',
           ),
           throwsA(
@@ -141,9 +171,9 @@ void main() {
       expect(
         OAuthClientRegistration.normalized(
           type: RemoteProviderType.googleDrive,
-          clientId: 'id',
+          clientId: '123-abc.apps.googleusercontent.com',
         ).toSecureJson(),
-        {'clientId': 'id'},
+        {'clientId': '123-abc.apps.googleusercontent.com'},
       );
     });
 
@@ -169,7 +199,7 @@ void main() {
       // A secret smuggled into a Google entry is rejected, not ignored.
       expect(
         OAuthClientRegistration.fromSecureJson(RemoteProviderType.googleDrive, {
-          'clientId': 'id',
+          'clientId': '123-abc.apps.googleusercontent.com',
           'clientSecret': 'secret',
         }),
         isNull,
@@ -185,9 +215,11 @@ void main() {
       ]) {
         final config = OAuthPublicClientConfiguration.fromUserRegistration(
           providerType: type,
-          registration: const OAuthClientRegistration(clientId: 'user-id'),
+          registration: OAuthClientRegistration(
+            clientId: _publicClientId(type),
+          ),
         );
-        expect(config.clientId, 'user-id');
+        expect(config.clientId, _publicClientId(type));
         expect(config.clientSecret, isNull);
         expect(config.persistClientSecret, isFalse);
       }
@@ -335,3 +367,10 @@ class _Adapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) => _handler(options);
 }
+
+/// Google Client IDs have a fixed shape (the redirect is derived from it);
+/// other public clients take any token-like ID.
+String _publicClientId(RemoteProviderType type) =>
+    type == RemoteProviderType.googleDrive
+    ? '123-abc.apps.googleusercontent.com'
+    : 'user-id';
