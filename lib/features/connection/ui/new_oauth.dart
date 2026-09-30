@@ -253,10 +253,20 @@ class NewOAuthConnection extends HookConsumerWidget {
                   clientIdController: clientIdController,
                   showDeveloperSettings: allowsDeveloperClientId,
                   onSave: saveClientId,
-                  onChooseAnother: () => context.goNamed(
-                    AppRoutes.protocols.name,
-                    queryParameters: {'returnTo': ?returnTo},
-                  ),
+                  // `go` would replace the whole stack and leave the protocol
+                  // list with nothing to go back to. New connections are only
+                  // opened from that list, so pop back to it; editors opened
+                  // elsewhere swap in the list and keep their opener below.
+                  onChooseAnother: () {
+                    if (replacementConnectionId == null && context.canPop()) {
+                      context.pop();
+                      return;
+                    }
+                    context.pushReplacementNamed(
+                      AppRoutes.protocols.name,
+                      queryParameters: {'returnTo': ?returnTo},
+                    );
+                  },
                 )
               : Form(
                   key: formKey,

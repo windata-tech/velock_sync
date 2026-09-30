@@ -569,6 +569,39 @@ void main() {
       },
     );
 
+    testWidgets(
+      '$provider choose-another keeps the protocol list able to go back',
+      (tester) async {
+        const target = '/sync-profiles/new/velock?intent=restore';
+        final router = await mount(tester);
+        router.push('/protocols?returnTo=${Uri.encodeQueryComponent(target)}');
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.text(
+            provider == RemoteProviderType.googleDrive
+                ? 'Google Drive'
+                : 'OneDrive',
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('oauth-choose-another')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(NewOAuthConnection), findsNothing);
+        expect(find.byType(Protocols), findsOneWidget);
+        expect(
+          tester.widget<Protocols>(find.byType(Protocols)).returnTo,
+          target,
+        );
+        await tester.tap(find.bySemanticsLabel('返回'));
+        await tester.pumpAndSettle();
+        expect(find.byType(Protocols), findsNothing);
+        expect(router.routeInformationProvider.value.uri.path, '/dashboard');
+        expect(probes, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('$provider optional developer form waits for explicit save', (
       tester,
     ) async {
