@@ -26,7 +26,7 @@ tool/ios_ui_test/sim/e2e.sh --list
   失败时打印 `FAILED at stage: X — … e2e.sh --from X`，修好后续跑即可，不用从头。
 - 失败的 UI 步骤会打印精简树（`SMOKE_TREE_BEGIN…END`），完整 xcresult 路径在该步日志开头。
 - 2026-09-30 基线（iOS 27 / iPhone 18 Pro Max）：全新一轮 6 分 39 秒（构建 78s，其余每步约 50s，含 xcodebuild 启动开销）；
-  构建复用时约 5 分钟。首轮 init 出现过一次偶发“账号密码未保存”，重跑即过，已加树输出，再出现时直接看输出定位。
+  构建复用时约 5 分钟。首轮 init 偶发“账号密码未保存”的根因是新装模拟器的自动填充 helper 不回应导致保存挂起，已在格间修复（超时 + 后补重建，见格间 `docs/verification/2026-09-30-autofill-save-hang.md`）；helper 不可用时这次保存多等约 3 秒属正常。
 - 未覆盖：换第二台模拟器的恢复（需要 replica 设备，走 `docs/testing/tutorial-recording.md` 的双机流程）。
 
 ## 前提
