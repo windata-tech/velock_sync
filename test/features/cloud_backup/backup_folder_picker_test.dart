@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
@@ -18,35 +19,37 @@ void main() {
     bool restoring = false,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        locale: locale,
-        supportedLocales: const [Locale('zh'), Locale('en')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        theme: ThemeData(platform: TargetPlatform.iOS),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () async {
-                final result = await Navigator.of(context).push<List<String>>(
-                  MaterialPageRoute(
-                    builder: (_) => BackupFolderPicker(
-                      connectionName: '我的 NAS',
-                      basePath: '/dav',
-                      loadFolders: load,
-                      createFolder: create,
-                      restoring: restoring,
+      ProviderScope(
+        child: MaterialApp(
+          locale: locale,
+          supportedLocales: const [Locale('zh'), Locale('en')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  final result = await Navigator.of(context).push<List<String>>(
+                    MaterialPageRoute(
+                      builder: (_) => BackupFolderPicker(
+                        connectionName: '我的 NAS',
+                        basePath: '/dav',
+                        loadFolders: load,
+                        createFolder: create,
+                        restoring: restoring,
+                      ),
                     ),
-                  ),
-                );
-                onSelected?.call(result);
-              },
-              child: const Text('open'),
+                  );
+                  onSelected?.call(result);
+                },
+                child: const Text('open'),
+              ),
             ),
           ),
         ),
@@ -259,7 +262,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('new-backup-folder')));
       await tester.pumpAndSettle();
-      expect(find.text('创建位置：/dav/硬盘'), findsOneWidget);
+      expect(find.text('创建在 /dav/硬盘'), findsOneWidget);
       expect(created, isEmpty);
       await tester.enterText(
         find.byKey(const Key('new-backup-folder-name')),

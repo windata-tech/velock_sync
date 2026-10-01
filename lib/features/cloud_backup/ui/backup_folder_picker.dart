@@ -6,10 +6,12 @@ import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
+import 'package:velock_sync/features/connection/state/folder_view_mode.dart';
+import 'package:velock_sync/features/connection/ui/remote_folder_views.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
-import 'package:velock_sync/widgets/adaptive_dialogs.dart';
+import 'package:velock_sync/widgets/connection_settings_glyph.dart';
 
 import 'backup_widgets.dart';
 
@@ -46,9 +48,18 @@ final backupFolderCreatorProvider = Provider<BackupFolderCreator>((ref) {
       );
 });
 
+/// What a [BackupFolderPicker] browses. Editing the connection replaces it,
+/// since the address and the sign-in are part of how folders are read.
+typedef BackupFolderSource = ({
+  String connectionName,
+  String basePath,
+  Future<List<WebDavBackupFolder>> Function(List<String>) loadFolders,
+  Future<void> Function(List<String> parent, String name)? createFolder,
+});
+
 /// Browsing and selecting are read-only. An explicit new-folder confirmation
 /// creates only that empty directory, never a profile or a backup.
-class BackupFolderPicker extends StatefulWidget {
+class BackupFolderPicker extends ConsumerStatefulWidget {
   const BackupFolderPicker({
     super.key,
     required this.connectionName,
@@ -58,6 +69,7 @@ class BackupFolderPicker extends StatefulWidget {
     this.restoring = false,
     this.forSync = false,
     this.createFolder,
+    this.editConnection,
   });
 
   final String connectionName;
@@ -70,11 +82,18 @@ class BackupFolderPicker extends StatefulWidget {
   final Future<List<WebDavBackupFolder>> Function(List<String>) loadFolders;
   final Future<void> Function(List<String> parent, String name)? createFolder;
 
+  /// Opens the connection's editor on top of the picker when its folders
+  /// cannot be read, so a wrong address or password is fixed in place instead
+  /// of abandoning the flow. Returns the source to browse with the saved
+  /// connection, or null when nothing was saved.
+  final Future<BackupFolderSource?> Function(BuildContext context)?
+  editConnection;
+
   @override
-  State<BackupFolderPicker> createState() => _BackupFolderPickerState();
+  ConsumerState<BackupFolderPicker> createState() => _BackupFolderPickerState();
 }
 
-class _BackupFolderPickerState extends State<BackupFolderPicker> {
+class _BackupFolderPickerState extends ConsumerState<BackupFolderPicker> {
   late List<String> _segments;
   List<WebDavBackupFolder> _folders = const [];
   bool _loading = true;
@@ -84,11 +103,19 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
   bool _creating = false;
   String? _creationError;
   bool _justCreated = false;
-  bool get _busy => _loading || _creating;
+  bool _editing = false;
+  late BackupFolderSource _source;
+  bool get _busy => _loading || _creating || _editing;
 
   @override
   void initState() {
     super.initState();
+    _source = (
+      connectionName: widget.connectionName,
+      basePath: widget.basePath,
+      loadFolders: widget.loadFolders,
+      createFolder: widget.createFolder,
+    );
     _segments = List.unmodifiable(widget.initialSegments);
     _load(_segments);
   }
@@ -104,7 +131,7 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
       _loading = true;
     });
     try {
-      final folders = await widget.loadFolders(_segments);
+      final folders = await _source.loadFolders(_segments);
       if (!mounted || generation != _generation) return;
       setState(() {
         _folders = folders;
@@ -120,7 +147,7 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
   }
 
   Future<void> _newFolder() async {
-    final create = widget.createFolder;
+    final create = _source.createFolder;
     if (_busy ||
         _error != null ||
         _showingCreate ||
@@ -130,119 +157,18 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
     }
     _showingCreate = true;
     final parent = List<String>.unmodifiable(_segments);
-    var enteredName = '';
     String? name;
     try {
-      name = await showAdaptiveForm<String>(
-        context: context,
-        title: syncText(context, '新建文件夹', 'New folder'),
-        barrierDismissible: false,
-        builder: (dialogContext, setDialogState) {
-          final trimmedName = enteredName.trim();
-          final issue = WebDavBackupFolderBrowser.folderNameError(trimmedName);
-          final duplicate = _folders.any(
-            (folder) => folder.name == trimmedName,
-          );
-          final errorText = duplicate
-              ? syncText(
-                  dialogContext,
-                  '这里已有同名文件夹，请换个名称。',
-                  'A folder with this name already exists. Choose another name.',
-                )
-              : switch (issue) {
-                  'empty_name' => syncText(
-                    dialogContext,
-                    '请输入文件夹名称。',
-                    'Enter a folder name.',
-                  ),
-                  'name_too_long' => syncText(
-                    dialogContext,
-                    '名称太长，请使用短一些的名称。',
-                    'This name is too long. Use a shorter name.',
-                  ),
-                  null => null,
-                  _ => syncText(
-                    dialogContext,
-                    '名称不能是 . 或 ..，也不能包含斜杠或控制字符。',
-                    'Use one folder name without slashes, control characters, . or ..',
-                  ),
-                };
-          return AdaptiveFormSpec<String>(
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 12),
-                  Text(
-                    syncText(
-                      dialogContext,
-                      '创建位置：$_displayPath',
-                      'Create in: $_displayPath',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (isApplePlatform(dialogContext))
-                    CupertinoTextField(
-                      key: const Key('new-backup-folder-name'),
-                      autofocus: true,
-                      placeholder: syncText(
-                        dialogContext,
-                        widget.forSync ? '例如：照片' : '例如：格间备份',
-                        widget.forSync ? 'e.g. Photos' : 'e.g. Velock backup',
-                      ),
-                      onChanged: (value) =>
-                          setDialogState(() => enteredName = value),
-                    )
-                  else
-                    TextField(
-                      key: const Key('new-backup-folder-name'),
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: syncText(
-                          dialogContext,
-                          widget.forSync ? '例如：照片' : '例如：格间备份',
-                          widget.forSync ? 'e.g. Photos' : 'e.g. Velock backup',
-                        ),
-                      ),
-                      onChanged: (value) =>
-                          setDialogState(() => enteredName = value),
-                    ),
-                  if (enteredName.isNotEmpty && errorText != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      errorText,
-                      key: const Key('new-backup-folder-name-error'),
-                      style: TextStyle(color: dialogContext.appDanger),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  Text(
-                    syncText(
-                      dialogContext,
-                      '只新建一个空文件夹，不会改动已有数据。',
-                      'Creates an empty folder without changing existing data.',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              AdaptiveAlertAction<String>(
-                key: const Key('cancel-new-backup-folder'),
-                label: syncText(dialogContext, '取消', 'Cancel'),
-              ),
-              AdaptiveAlertAction<String>(
-                key: const Key('confirm-new-backup-folder'),
-                label: syncText(dialogContext, '创建并进入', 'Create and open'),
-                value: trimmedName,
-                enabled: errorText == null,
-                isDefault: true,
-                emphasized: true,
-              ),
-            ],
-          );
-        },
+      name = await showNewRemoteFolderDialog(
+        context,
+        location: _displayPath,
+        existingNames: {for (final folder in _folders) folder.name},
+        placeholder: syncText(
+          context,
+          widget.forSync ? '例如：照片' : '例如：格间备份',
+          widget.forSync ? 'e.g. Photos' : 'e.g. Velock backup',
+        ),
+        confirmLabel: syncText(context, '创建并进入', 'Create and open'),
       );
     } finally {
       _showingCreate = false;
@@ -260,33 +186,7 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
     } on Object catch (error) {
       if (!mounted) return;
       setState(
-        () => _creationError = switch (error) {
-          ProviderRequestException(statusCode: 401) => syncText(
-            context,
-            '无法新建文件夹，请返回检查此位置的登录信息。',
-            'Could not create a folder. Go back and check this location’s sign-in details.',
-          ),
-          ProviderRequestException(statusCode: 403) => syncText(
-            context,
-            '这个位置没有新建文件夹的权限，请选择其他位置。',
-            'You do not have permission to create folders here. Choose another location.',
-          ),
-          ProviderRequestException(statusCode: 405) => syncText(
-            context,
-            '未能新建：可能已有同名文件夹，或此位置不允许新建。请刷新列表确认，或换个名称和位置。',
-            'Could not create this folder. The name may already exist or this location may not allow new folders. Refresh to check, or choose another name or location.',
-          ),
-          ProviderRequestException(statusCode: 409) => syncText(
-            context,
-            '当前文件夹可能已被移动，请刷新列表或返回上一级。',
-            'The current folder may have moved. Refresh or go to the parent folder.',
-          ),
-          _ => syncText(
-            context,
-            '未能确认是否创建成功。请先刷新列表查看，不要重复创建。',
-            'Could not confirm whether the folder was created. Refresh the list to check before trying again.',
-          ),
-        },
+        () => _creationError = remoteFolderCreationError(context, error),
       );
     } finally {
       if (mounted) setState(() => _creating = false);
@@ -300,16 +200,59 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
         403,
       }.contains((_error as ProviderRequestException).statusCode);
 
+  String _errorMessage(BuildContext context) {
+    final editable = widget.editConnection != null;
+    if (_authenticationError) {
+      return editable
+          ? syncText(
+              context,
+              '服务器拒绝了这个连接的账号或密码。请修改连接后再试。',
+              'The server refused this connection’s account or password. Edit the connection, then try again.',
+            )
+          : syncText(
+              context,
+              '无法读取文件夹。请返回并检查这个位置的账号或访问权限。',
+              'Cannot read folders. Go back and check this location’s account or access permissions.',
+            );
+    }
+    return editable
+        ? syncText(
+            context,
+            '连不上这个位置，暂时读不到文件夹。可以检查连接的地址、端口和账号，或稍后重试。',
+            'Could not reach this location to read its folders. Check the connection’s address, port and account, or retry later.',
+          )
+        : syncText(
+            context,
+            '暂时无法读取文件夹。你可以重试，或返回选择其他位置。',
+            'Could not read folders. Retry or go back to choose another location.',
+          );
+  }
+
   String get _displayPath =>
       [
-        widget.basePath.replaceFirst(RegExp(r'/+$'), ''),
+        _source.basePath.replaceFirst(RegExp(r'/+$'), ''),
         ..._segments,
       ].join('/').isEmpty
       ? '/'
       : [
-          widget.basePath.replaceFirst(RegExp(r'/+$'), ''),
+          _source.basePath.replaceFirst(RegExp(r'/+$'), ''),
           ..._segments,
         ].join('/');
+
+  Future<void> _editConnection() async {
+    final edit = widget.editConnection;
+    if (edit == null || _busy) return;
+    setState(() => _editing = true);
+    BackupFolderSource? updated;
+    try {
+      updated = await edit(context);
+    } finally {
+      if (mounted) setState(() => _editing = false);
+    }
+    if (updated == null || !mounted) return;
+    _source = updated;
+    await _load(_segments);
+  }
 
   void _goBack() {
     if (_creating) return;
@@ -352,177 +295,195 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
           child: Column(
             children: [
               Expanded(
-                child: ListView(
+                child: CustomScrollView(
                   key: const Key('backup-folder-list'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 16,
-                  ),
-                  children: [
-                    Text(
-                      widget.connectionName,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _displayPath,
-                      key: const Key('backup-folder-current-path'),
-                      style: const TextStyle(height: 1.4),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      syncText(
-                        context,
-                        widget.restoring
-                            ? '选择当初备份时使用的保存文件夹，Sync 会查找其中的格间备份。'
-                            : widget.forSync
-                            ? '选择要和本机文件夹同步的远端文件夹，也可以新建一个空文件夹。不会改动其他文件夹。'
-                            : '选择已有文件夹，或新建一个空文件夹保存备份。不会改动其他文件夹。',
-                        widget.restoring
-                            ? 'Choose the folder you originally saved to. Sync will look for your Velock backup inside it.'
-                            : widget.forSync
-                            ? 'Choose the remote folder to sync with the folder on this device, or create an empty one. Other folders stay unchanged.'
-                            : 'Choose a folder or create an empty one for your backup. Other folders stay unchanged.',
-                      ),
-                      style: TextStyle(
-                        fontSize: 14,
-                        height: 1.45,
-                        color: context.appSecondaryLabel,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    OverflowBar(
-                      alignment: MainAxisAlignment.spaceBetween,
-                      overflowAlignment: OverflowBarAlignment.end,
-                      spacing: 16,
-                      overflowSpacing: 4,
-                      children: [
-                        if (_segments.isNotEmpty)
-                          _folderAction(
-                            key: const Key('backup-folder-up'),
-                            icon: CupertinoIcons.arrow_up,
-                            label: syncText(context, '上一级', 'Parent folder'),
-                            onPressed: _busy
-                                ? null
-                                : () => _load(
-                                    _segments.sublist(0, _segments.length - 1),
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      sliver: SliverList.list(
+                        children: [
+                          // The connection and, next to it, the way to fix it: the
+                          // address or account shown here is what an edit changes.
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _source.connectionName,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _displayPath,
+                                      key: const Key(
+                                        'backup-folder-current-path',
+                                      ),
+                                      style: const TextStyle(height: 1.4),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (widget.editConnection != null) ...[
+                                const SizedBox(width: 12),
+                                _folderAction(
+                                  key: const Key(
+                                    'backup-folder-edit-connection',
                                   ),
-                          )
-                        else
+                                  icon: const ConnectionSettingsGlyph(size: 20),
+                                  label: syncText(context, '修改连接', 'Edit'),
+                                  onPressed: _busy ? null : _editConnection,
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 12),
                           Text(
-                            syncText(context, '文件夹', 'Folders'),
+                            syncText(
+                              context,
+                              widget.restoring
+                                  ? '选择当初备份时使用的保存文件夹，Sync 会查找其中的格间备份。'
+                                  : widget.forSync
+                                  ? '选择要和本机文件夹同步的远端文件夹，也可以新建一个空文件夹。不会改动其他文件夹。'
+                                  : '选择已有文件夹，或新建一个空文件夹保存备份。不会改动其他文件夹。',
+                              widget.restoring
+                                  ? 'Choose the folder you originally saved to. Sync will look for your Velock backup inside it.'
+                                  : widget.forSync
+                                  ? 'Choose the remote folder to sync with the folder on this device, or create an empty one. Other folders stay unchanged.'
+                                  : 'Choose a folder or create an empty one for your backup. Other folders stay unchanged.',
+                            ),
                             style: TextStyle(
                               fontSize: 14,
+                              height: 1.45,
                               color: context.appSecondaryLabel,
                             ),
                           ),
-                        if (!widget.restoring && widget.createFolder != null)
-                          _folderAction(
-                            key: const Key('new-backup-folder'),
-                            icon: CupertinoIcons.folder_badge_plus,
-                            label: syncText(context, '新建文件夹', 'New folder'),
-                            onPressed:
-                                _busy ||
-                                    _error != null ||
-                                    _creationError != null
-                                ? null
-                                : _newFolder,
+                          const SizedBox(height: 12),
+                          OverflowBar(
+                            alignment: MainAxisAlignment.spaceBetween,
+                            overflowAlignment: OverflowBarAlignment.end,
+                            spacing: 16,
+                            overflowSpacing: 4,
+                            children: [
+                              if (_segments.isNotEmpty)
+                                _folderAction(
+                                  key: const Key('backup-folder-up'),
+                                  icon: Icon(
+                                    CupertinoIcons.arrow_up,
+                                    size: 20,
+                                    color: context.appPrimary,
+                                  ),
+                                  label: syncText(
+                                    context,
+                                    '上一级',
+                                    'Parent folder',
+                                  ),
+                                  onPressed: _busy
+                                      ? null
+                                      : () => _load(
+                                          _segments.sublist(
+                                            0,
+                                            _segments.length - 1,
+                                          ),
+                                        ),
+                                )
+                              else
+                                Text(
+                                  syncText(context, '文件夹', 'Folders'),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: context.appSecondaryLabel,
+                                  ),
+                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (!widget.restoring &&
+                                      _source.createFolder != null)
+                                    NewRemoteFolderButton(
+                                      key: const Key('new-backup-folder'),
+                                      onPressed:
+                                          _busy ||
+                                              _error != null ||
+                                              _creationError != null
+                                          ? null
+                                          : _newFolder,
+                                    ),
+                                  const FolderViewToggle(),
+                                ],
+                              ),
+                            ],
                           ),
-                      ],
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4, bottom: 8),
+                            child: Divider(
+                              height: 1,
+                              color: context.appSeparator,
+                            ),
+                          ),
+                          if (_creating)
+                            Text(
+                              syncText(context, '正在新建文件夹…', 'Creating folder…'),
+                            ),
+                          if (_justCreated && !_loading && _error == null)
+                            Text(
+                              syncText(
+                                context,
+                                widget.forSync
+                                    ? '已进入新文件夹。点下方按钮即可选择它，尚未开始同步。'
+                                    : '已进入新文件夹。点下方按钮即可选择它，尚未开始备份。',
+                                widget.forSync
+                                    ? 'Your new folder is open. Use the button below to select it. Sync has not started.'
+                                    : 'Your new folder is open. Use the button below to select it. Backup has not started.',
+                              ),
+                              key: const Key('backup-folder-created'),
+                            ),
+                          if (_creationError != null) ...[
+                            Text(
+                              _creationError!,
+                              key: const Key('backup-folder-create-error'),
+                            ),
+                            TextButton(
+                              key: const Key('refresh-after-folder-create'),
+                              onPressed: _busy ? null : () => _load(_segments),
+                              child: Text(
+                                syncText(context, '刷新列表', 'Refresh folders'),
+                              ),
+                            ),
+                          ],
+                          if (_loading)
+                            const Padding(
+                              padding: EdgeInsets.all(32),
+                              child: Center(
+                                child: CircularProgressIndicator.adaptive(),
+                              ),
+                            )
+                          else if (_error != null)
+                            _errorState(context)
+                          else if (_folders.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 28),
+                              child: Text(
+                                syncText(
+                                  context,
+                                  '这里没有子文件夹，可以选择当前文件夹。',
+                                  'No subfolders here. You can use this folder.',
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4, bottom: 8),
-                      child: Divider(height: 1, color: context.appSeparator),
-                    ),
-                    if (_creating)
-                      Text(syncText(context, '正在新建文件夹…', 'Creating folder…')),
-                    if (_justCreated && !_loading && _error == null)
-                      Text(
-                        syncText(
-                          context,
-                          widget.forSync
-                              ? '已进入新文件夹。点下方按钮即可选择它，尚未开始同步。'
-                              : '已进入新文件夹。点下方按钮即可选择它，尚未开始备份。',
-                          widget.forSync
-                              ? 'Your new folder is open. Use the button below to select it. Sync has not started.'
-                              : 'Your new folder is open. Use the button below to select it. Backup has not started.',
-                        ),
-                        key: const Key('backup-folder-created'),
+                    if (!_loading && _error == null && _folders.isNotEmpty)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                        sliver: _folderSliver(context),
                       ),
-                    if (_creationError != null) ...[
-                      Text(
-                        _creationError!,
-                        key: const Key('backup-folder-create-error'),
-                      ),
-                      TextButton(
-                        key: const Key('refresh-after-folder-create'),
-                        onPressed: _busy ? null : () => _load(_segments),
-                        child: Text(
-                          syncText(context, '刷新列表', 'Refresh folders'),
-                        ),
-                      ),
-                    ],
-                    if (_loading)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Center(
-                          child: CircularProgressIndicator.adaptive(),
-                        ),
-                      )
-                    else if (_error != null) ...[
-                      Text(
-                        syncText(
-                          context,
-                          _authenticationError
-                              ? '无法读取文件夹。请返回并检查这个位置的账号或访问权限。'
-                              : '暂时无法读取文件夹。你可以重试，或返回选择其他位置。',
-                          _authenticationError
-                              ? 'Cannot read folders. Go back and check this location’s account or access permissions.'
-                              : 'Could not read folders. Retry or go back to choose another location.',
-                        ),
-                        key: const Key('backup-folder-error'),
-                      ),
-                      if (!_authenticationError)
-                        TextButton(
-                          key: const Key('backup-folder-retry'),
-                          onPressed: () => _load(_segments),
-                          child: Text(syncText(context, '重试', 'Retry')),
-                        ),
-                    ] else if (_folders.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 28),
-                        child: Text(
-                          syncText(
-                            context,
-                            '这里没有子文件夹，可以选择当前文件夹。',
-                            'No subfolders here. You can use this folder.',
-                          ),
-                        ),
-                      )
-                    else
-                      for (final folder in _folders)
-                        ListTile(
-                          key: ValueKey('backup-folder-${folder.name}'),
-                          minTileHeight: 56,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                          ),
-                          leading: Icon(
-                            CupertinoIcons.folder,
-                            color: context.appPrimary,
-                          ),
-                          title: Text(folder.name),
-                          trailing: const Icon(
-                            CupertinoIcons.chevron_right,
-                            size: 18,
-                          ),
-                          onTap: _busy
-                              ? null
-                              : () => _load([..._segments, folder.name]),
-                        ),
                   ],
                 ),
               ),
@@ -545,9 +506,108 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
     ),
   );
 
+  /// The subfolders, as tiles or rows. Opening one is the only thing a tap
+  /// does; choosing still needs "Use this folder".
+  Widget _folderSliver(BuildContext context) {
+    void open(WebDavBackupFolder folder) => _load([..._segments, folder.name]);
+    if (ref.watch(folderViewModeProvider) == FolderViewMode.list) {
+      return SliverList.builder(
+        itemCount: _folders.length,
+        itemBuilder: (context, index) {
+          final folder = _folders[index];
+          return RemoteEntryRow(
+            key: ValueKey('backup-folder-${folder.name}'),
+            name: folder.name,
+            isDir: true,
+            inactive: _busy,
+            onTap: _busy ? null : () => open(folder),
+          );
+        },
+      );
+    }
+    return SliverPadding(
+      padding: const EdgeInsets.only(top: AppSpacing.xs),
+      sliver: SliverLayoutBuilder(
+        builder: (context, constraints) => SliverGrid.builder(
+          gridDelegate: remoteEntryGridDelegate(
+            context,
+            constraints.crossAxisExtent,
+          ),
+          itemCount: _folders.length,
+          itemBuilder: (context, index) {
+            final folder = _folders[index];
+            return CupertinoButton(
+              key: ValueKey('backup-folder-${folder.name}'),
+              minimumSize: Size.zero,
+              padding: EdgeInsets.zero,
+              onPressed: _busy ? null : () => open(folder),
+              child: SizedBox.expand(
+                child: RemoteEntryTile(
+                  name: folder.name,
+                  isDir: true,
+                  inactive: _busy,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Why the folders cannot be shown, and the one thing to do about it:
+  /// retry a connection that did not answer, or fix one that was refused.
+  Widget _errorState(BuildContext context) {
+    final fixFirst = _authenticationError;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Column(
+        children: [
+          Icon(
+            fixFirst
+                ? CupertinoIcons.lock_shield
+                : CupertinoIcons.wifi_exclamationmark,
+            size: 40,
+            color: context.appSecondaryLabel,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _errorMessage(context),
+            key: const Key('backup-folder-error'),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.45,
+              color: context.appSecondaryLabel,
+            ),
+          ),
+          if (!fixFirst || widget.editConnection != null) ...[
+            const SizedBox(height: 20),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: fixFirst
+                  ? BackupActionButton(
+                      key: const Key('backup-folder-error-edit'),
+                      label: syncText(context, '修改连接', 'Edit connection'),
+                      secondary: true,
+                      onPressed: _busy ? null : _editConnection,
+                    )
+                  : BackupActionButton(
+                      key: const Key('backup-folder-retry'),
+                      label: syncText(context, '重试', 'Retry'),
+                      secondary: true,
+                      onPressed: _busy ? null : () => _load(_segments),
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _folderAction({
     required Key key,
-    required IconData icon,
+    required Widget icon,
     required String label,
     required VoidCallback? onPressed,
   }) => AdaptiveTextButton(
@@ -558,7 +618,10 @@ class _BackupFolderPickerState extends State<BackupFolderPicker> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 20, color: context.appPrimary),
+          IconTheme.merge(
+            data: IconThemeData(color: context.appPrimary),
+            child: icon,
+          ),
           const SizedBox(width: 8),
           Flexible(child: Text(label)),
         ],

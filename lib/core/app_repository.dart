@@ -10,6 +10,7 @@ abstract class AppKeys {
   static const String connections = 'connections';
   static const String protocols = 'protocols';
   static const String deviceId = 'velock_sync_device_id';
+  static const String folderViewMode = 'folder_view_mode';
 }
 
 class AppSetting {

@@ -106,6 +106,38 @@ void main() {
       );
     });
 
+    test('renames on request; an empty name falls back to the server', () {
+      final original = ConnectionModel(
+        id: 'connection-1',
+        name: '旧名字',
+        source: 'folder',
+        target: 'https://old.example.test:443',
+        protocol: const WebDavProtocolModel(
+          protocolType: WebDavProtocolType.https,
+          address: 'https://old.example.test',
+          port: '443',
+        ),
+        createdAt: DateTime.utc(2026, 7, 14),
+        updatedAt: DateTime.utc(2026, 7, 14),
+        status: ConnectionStatus.active,
+      );
+      const protocol = WebDavProtocolModel(
+        protocolType: WebDavProtocolType.https,
+        address: 'https://new.example.test',
+        port: '8443',
+      );
+
+      expect(reconfiguredWebDavConnection(original, protocol).name, '旧名字');
+      expect(
+        reconfiguredWebDavConnection(original, protocol, name: ' 书房 ').name,
+        '书房',
+      );
+      expect(
+        reconfiguredWebDavConnection(original, protocol, name: '').name,
+        defaultConnectionName(protocol),
+      );
+    });
+
     test('rejects replacing a non-WebDAV connection', () {
       expect(
         () => reconfiguredWebDavConnection(

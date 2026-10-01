@@ -31,6 +31,52 @@ void main() {
     expect(oneDrive.revocationEndpoint, isNull);
   });
 
+  test('a file-sync Google sign-in asks only for full Drive access', () {
+    final google = OAuthAuthorizationConfig.googleDrive(
+      clientId: 'google-client',
+      redirectUri: Uri.parse('velocksync://oauth/callback'),
+    );
+    final full = google.withGoogleFullDriveAccess();
+    expect(full.scopes, {'https://www.googleapis.com/auth/drive'});
+    expect(full.clientId, google.clientId);
+    expect(full.redirectUri, google.redirectUri);
+    expect(full.additionalParameters, {'access_type': 'offline'});
+    expect(
+      () => OAuthAuthorizationConfig.oneDrive(
+        clientId: 'm',
+        redirectUri: Uri.parse('velocksync://oauth/callback'),
+      ).withGoogleFullDriveAccess(),
+      throwsStateError,
+    );
+  });
+
+  test('full Drive access counts only when Google granted it', () {
+    OAuthTokenBundle grant(Set<String> scopes) => OAuthTokenBundle(
+      accessToken: 'a',
+      refreshToken: 'r',
+      expiresAt: DateTime.utc(2031),
+      scopes: scopes,
+    );
+    expect(
+      OAuthAuthorizationConfig.grantsGoogleFullDriveAccess(
+        grant({'https://www.googleapis.com/auth/drive', 'openid'}),
+      ),
+      isTrue,
+    );
+    // The user unticked Drive access on the consent page.
+    expect(
+      OAuthAuthorizationConfig.grantsGoogleFullDriveAccess(
+        grant({'https://www.googleapis.com/auth/drive.file'}),
+      ),
+      isFalse,
+    );
+    expect(
+      OAuthAuthorizationConfig.grantsGoogleFullDriveAccess(grant({})),
+      isFalse,
+    );
+    expect(OAuthAuthorizationConfig.grantsGoogleFullDriveAccess(null), isFalse);
+  });
+
   test(
     'exchanges a consumed callback and returns only a secure credential reference',
     () async {

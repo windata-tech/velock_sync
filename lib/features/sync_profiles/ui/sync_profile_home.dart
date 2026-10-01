@@ -395,13 +395,6 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
           _isVelock ? 'Velock backup' : 'File sync',
         ),
         onRefresh: _refreshAndWait,
-        actions: [
-          AdaptiveIconButton(
-            tooltip: syncText(context, '刷新状态', 'Refresh status'),
-            onPressed: _refreshAndWait,
-            icon: const Icon(CupertinoIcons.refresh),
-          ),
-        ],
         slivers: _slivers(snapshot),
       ),
     );

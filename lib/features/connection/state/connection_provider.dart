@@ -125,6 +125,7 @@ class Connections extends _$Connections {
   Future<void> replaceWebDavConnection({
     required String connectionId,
     required WebDavProtocolModel protocol,
+    String? name,
   }) async {
     final repository = ref.read(connectionRepositoryProvider);
     final previousConnections = await future;
@@ -137,7 +138,11 @@ class Connections extends _$Connections {
       throw StateError('Only WebDAV connections can be reconfigured.');
     }
 
-    final replacement = reconfiguredWebDavConnection(previous, protocol);
+    final replacement = reconfiguredWebDavConnection(
+      previous,
+      protocol,
+      name: name,
+    );
     final updatedConnections = [...previousConnections]..[index] = replacement;
     state = AsyncData(updatedConnections);
     try {
@@ -262,15 +267,24 @@ ConnectionModel reauthorizedOAuthConnection(
 
 /// Produces the single safe persisted update for a WebDAV reconfiguration.
 /// Credential values remain outside the model as secure-storage references.
+///
+/// [name] renames it; left empty it falls back to the server address, and
+/// null keeps the current name.
 ConnectionModel reconfiguredWebDavConnection(
   ConnectionModel current,
   WebDavProtocolModel protocol, {
+  String? name,
   DateTime Function()? now,
 }) {
   if (current.protocol is! WebDavProtocolModel) {
     throw ArgumentError.value(current, 'current', 'is not a WebDAV connection');
   }
   return current.copyWith(
+    name: name == null
+        ? current.name
+        : name.trim().isEmpty
+        ? defaultConnectionName(protocol)
+        : name.trim(),
     protocol: protocol,
     target: protocol.targetLabel,
     targetDescription: 'address=${protocol.address}',
@@ -320,8 +334,11 @@ class ConnectionCreation extends _$ConnectionCreation {
     ).copyWith(name: name, source: source, target: target);
   }
 
+  /// Saves the new connection. [name] is what the user typed; without one
+  /// the connection is named after its server or account.
   Future<void> setProtocolAndFinalize({
     required ProtocolModel protocolModel,
+    String? name,
   }) async {
     // The draft provider is kept alive for the session, but a save can still
     // arrive without a prepared draft (e.g. a direct wizard shortcut). Fall
@@ -331,8 +348,11 @@ class ConnectionCreation extends _$ConnectionCreation {
         CreateConnectionDto.empty(
           name: '新建连接',
         ).copyWith(source: '格间', target: null);
+    final typed = name?.trim() ?? '';
     final completeConnection = base.copyWith(
-      name: _isPlaceholderName(base.name)
+      name: typed.isNotEmpty
+          ? typed
+          : _isPlaceholderName(base.name)
           ? defaultConnectionName(protocolModel)
           : base.name,
       target: protocolModel.targetLabel,

@@ -47,7 +47,7 @@ final class DioProvider extends $FunctionalProvider<Dio, Dio, Dio>
   }
 }
 
-String _$dioHash() => r'752e988f9490880f64bef088652cc7723ff31e0b';
+String _$dioHash() => r'03bf44723408dabec836f193784e6fbf022f0a2e';
 
 @ProviderFor(webDavRepository)
 const webDavRepositoryProvider = WebDavRepositoryProvider._();

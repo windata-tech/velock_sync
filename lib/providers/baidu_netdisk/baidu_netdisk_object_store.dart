@@ -10,6 +10,7 @@ import 'package:velock_sync/providers/provider_cancellation.dart';
 import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
+import 'package:velock_sync/sync_core/model/sync_failure.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
@@ -160,7 +161,7 @@ class BaiduNetdiskObjectStore implements RemoteObjectStore {
     }
     final itemsByKey = <String, RemoteObjectMetadata>{};
     for (final entry in _entries(data['list'])) {
-      if (entry['isdir'] == 1 || entry['isdir'] == true) continue;
+      if (_isDirectory(entry)) continue;
       final key = _keyFromPath(entry['path']);
       if (key == null || !key.startsWith(prefix)) continue;
       itemsByKey.putIfAbsent(key, () => _metadata(key, entry));
@@ -457,10 +458,30 @@ class BaiduNetdiskObjectStore implements RemoteObjectStore {
   Future<void> delete(
     String logicalKey, {
     RemoteOperationCancellation? cancellation,
+  }) => _delete(
+    logicalKey,
+    includeDirectories: false,
+    cancellation: cancellation,
+  );
+
+  /// This store seen as a plain folder tree for the file-sync mirror.
+  BaiduNetdiskMirrorStore asMirror() => BaiduNetdiskMirrorStore._(this);
+
+  Future<void> _delete(
+    String logicalKey, {
+    required bool includeDirectories,
+    RemoteOperationCancellation? cancellation,
   }) async {
     cancellation?.throwIfCancelled();
     _validateKey(logicalKey);
-    if (await _find(logicalKey, cancellation: cancellation) == null) return;
+    Future<bool> exists() async =>
+        await _find(
+          logicalKey,
+          includeDirectories: includeDirectories,
+          cancellation: cancellation,
+        ) !=
+        null;
+    if (!await exists()) return;
     final data = await _api(
       (token) => _dio.postUri(
         _fileApi.replace(
@@ -482,8 +503,7 @@ class BaiduNetdiskObjectStore implements RemoteObjectStore {
     );
     // Deleting an object that is already gone is a successful no-op; any
     // other per-file failure must not be reported as a delete.
-    if (data['errno'] != 0 &&
-        await _find(logicalKey, cancellation: cancellation) != null) {
+    if (data['errno'] != 0 && await exists()) {
       throw ProviderRequestException.fromStatus(409);
     }
   }
@@ -530,6 +550,7 @@ class BaiduNetdiskObjectStore implements RemoteObjectStore {
 
   Future<Map<String, dynamic>?> _find(
     String logicalKey, {
+    bool includeDirectories = false,
     RemoteOperationCancellation? cancellation,
   }) async {
     final path = _pathFor(logicalKey);
@@ -558,8 +579,7 @@ class BaiduNetdiskObjectStore implements RemoteObjectStore {
       final entries = _entries(data['list']);
       for (final entry in entries) {
         if (entry['server_filename'] == name &&
-            entry['isdir'] != 1 &&
-            entry['isdir'] != true) {
+            (includeDirectories || !_isDirectory(entry))) {
           return entry;
         }
       }
@@ -700,6 +720,9 @@ class BaiduNetdiskObjectStore implements RemoteObjectStore {
     return const {};
   }
 
+  static bool _isDirectory(Map<String, dynamic> entry) =>
+      entry['isdir'] == 1 || entry['isdir'] == true;
+
   static Iterable<Map<String, dynamic>> _entries(Object? value) =>
       value is List ? value.whereType<Map<String, dynamic>>() : const [];
 
@@ -750,8 +773,215 @@ class BaiduNetdiskObjectStore implements RemoteObjectStore {
           ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
           : DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true),
       etag: data['md5'] as String?,
+      isDirectory: _isDirectory(data),
     );
   }
+}
+
+/// Baidu Netdisk as a plain folder tree, for the file-sync mirror.
+///
+/// Unlike the object view used for Velock backups, [list] returns the direct
+/// children of one folder (folders included) and fails when that folder is
+/// missing, so an unreadable remote is never mistaken for an empty one.
+class BaiduNetdiskMirrorStore
+    implements RemoteObjectStore, RemoteCollectionCreator {
+  BaiduNetdiskMirrorStore._(this._store);
+
+  final BaiduNetdiskObjectStore _store;
+
+  @override
+  RemoteCapabilities get capabilities => _store.capabilities;
+
+  @override
+  Future<RemoteObjectMetadata?> stat(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    _validate(logicalKey);
+    final entry = await _store._find(
+      logicalKey,
+      includeDirectories: true,
+      cancellation: cancellation,
+    );
+    return entry == null
+        ? null
+        : BaiduNetdiskObjectStore._metadata(logicalKey, entry);
+  }
+
+  @override
+  Future<RemoteObjectPage> list({
+    String prefix = '',
+    String? cursor,
+    int limit = 100,
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    if (limit < 1 || limit > BaiduNetdiskObjectStore._pageSize) {
+      throw ArgumentError.value(limit, 'limit');
+    }
+    if (prefix.isNotEmpty) _validate(prefix);
+    final start = cursor == null ? 0 : int.tryParse(cursor);
+    if (start == null || start < 0) throw ArgumentError.value(cursor, 'cursor');
+    final root = _store.rootPath;
+    final directory = prefix.isEmpty
+        ? (root.isEmpty ? '/' : root)
+        : _store._pathFor(prefix);
+    final data = await _store._api(
+      (token) => _store._dio.getUri(
+        BaiduNetdiskObjectStore._fileApi.replace(
+          queryParameters: {
+            'method': 'list',
+            'access_token': token,
+            'dir': directory,
+            'start': '$start',
+            'limit': '$limit',
+            'order': 'name',
+          },
+        ),
+        options: _store._options(),
+        cancelToken: dioCancelTokenFor(cancellation),
+      ),
+      retryServerErrors: true,
+      acceptedErrnos: const {BaiduNetdiskObjectStore._errnoNotFound},
+      cancellation: cancellation,
+    );
+    if (data['errno'] == BaiduNetdiskObjectStore._errnoNotFound) {
+      throw RemoteObjectNotFoundException(prefix);
+    }
+    final entries = BaiduNetdiskObjectStore._entries(data['list']).toList();
+    final parent = prefix.isEmpty ? '' : '$prefix/';
+    final items = <String, RemoteObjectMetadata>{};
+    for (final entry in entries) {
+      final key = _store._keyFromPath(entry['path']);
+      // Only direct children of the requested folder belong on this page.
+      if (key == null || !key.startsWith(parent)) continue;
+      if (key.substring(parent.length).contains('/')) continue;
+      items.putIfAbsent(
+        key,
+        () => BaiduNetdiskObjectStore._metadata(key, entry),
+      );
+    }
+    return RemoteObjectPage(
+      items: items.values.toList(),
+      nextCursor: entries.length >= limit ? '${start + entries.length}' : null,
+    );
+  }
+
+  @override
+  Stream<List<int>> read(
+    String logicalKey, {
+    int? start,
+    int? endInclusive,
+    RemoteOperationCancellation? cancellation,
+  }) {
+    _validate(logicalKey);
+    return _store.read(
+      logicalKey,
+      start: start,
+      endInclusive: endInclusive,
+      cancellation: cancellation,
+    );
+  }
+
+  @override
+  Future<RemoteObjectMetadata> put(
+    String logicalKey,
+    Stream<List<int>> content, {
+    required int contentLength,
+    bool ifAbsent = false,
+    RemoteOperationCancellation? cancellation,
+  }) {
+    _validate(logicalKey);
+    return _store.put(
+      logicalKey,
+      content,
+      contentLength: contentLength,
+      ifAbsent: ifAbsent,
+      cancellation: cancellation,
+    );
+  }
+
+  /// Deletes a file or a folder (Baidu removes a folder with its contents).
+  @override
+  Future<void> delete(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) {
+    _validate(logicalKey);
+    return _store._delete(
+      logicalKey,
+      includeDirectories: true,
+      cancellation: cancellation,
+    );
+  }
+
+  /// Creates one folder. An existing folder at that path counts as created;
+  /// a file there, or a folder Baidu stored under another name, does not.
+  @override
+  Future<void> createCollection(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    _validate(logicalKey);
+    final path = _store._pathFor(logicalKey);
+    final data = await _store._api(
+      (token) => _store._dio.postUri(
+        BaiduNetdiskObjectStore._fileApi.replace(
+          queryParameters: {'method': 'create', 'access_token': token},
+        ),
+        // rtype 0: never rename, report the conflict instead.
+        data: {'path': path, 'isdir': '1', 'rtype': '0'},
+        options: _store._options(form: true),
+        cancelToken: dioCancelTokenFor(cancellation),
+      ),
+      acceptedErrnos: const {BaiduNetdiskObjectStore._errnoExists},
+      cancellation: cancellation,
+    );
+    if (data['errno'] == BaiduNetdiskObjectStore._errnoExists) {
+      final existing = await _store._find(
+        logicalKey,
+        includeDirectories: true,
+        cancellation: cancellation,
+      );
+      if (existing != null && BaiduNetdiskObjectStore._isDirectory(existing)) {
+        return;
+      }
+      throw ProviderRequestException.fromStatus(409);
+    }
+    if (data['path'] is String && data['path'] != path) {
+      throw const BaiduNetdiskException('Folder was created under a new name.');
+    }
+  }
+
+  /// Baidu refuses some characters that local file systems allow; such a
+  /// file is named in the failure instead of failing as an unknown error.
+  static void _validate(String logicalKey) {
+    try {
+      BaiduNetdiskObjectStore._validateKey(logicalKey);
+    } on ArgumentError {
+      throw BaiduNetdiskUnsupportedNameException(logicalKey);
+    }
+  }
+}
+
+class BaiduNetdiskUnsupportedNameException implements SyncFailureException {
+  const BaiduNetdiskUnsupportedNameException(this.logicalKey);
+
+  final String logicalKey;
+
+  @override
+  String toString() => 'Baidu Netdisk cannot store this name.';
+
+  @override
+  SyncFailure get syncFailure => SyncFailure(
+    errorCode: 'provider.baidu.unsupported_name',
+    category: SyncErrorCategory.datasetRejected,
+    retryable: false,
+    suggestedAction:
+        '百度网盘不支持文件名里的 \\ ? | " < > : * 这些字符，请在本机改名后再同步：$logicalKey',
+  );
 }
 
 class BaiduNetdiskException implements Exception {

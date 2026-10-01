@@ -128,11 +128,6 @@ class _PlainSyncHomeState extends ConsumerState<PlainSyncHome> {
         await ref.read(plainLocationViewsProvider.future);
       },
       actions: [
-        AdaptiveIconButton(
-          tooltip: syncText(context, '刷新状态', 'Refresh status'),
-          onPressed: () => ref.invalidate(plainLocationViewsProvider),
-          icon: const Icon(CupertinoIcons.refresh),
-        ),
         // One "+" in the header replaces the full-width "add location" row that
         // used to sit under the list.
         AdaptiveIconButton(

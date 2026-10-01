@@ -23,7 +23,7 @@ ProtocolModel _$ProtocolModelFromJson(
           return OAuthProtocolModel.fromJson(
             json
           );
-
+        
           default:
             throw CheckedFromJsonException(
   json,
@@ -32,7 +32,7 @@ ProtocolModel _$ProtocolModelFromJson(
   'Invalid union type "${json['runtimeType']}"!'
 );
         }
-
+      
 }
 
 /// @nodoc
@@ -176,11 +176,11 @@ return oauth(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function(@JsonKey(name: 'protocolType')  WebDavProtocolType protocolType,  String address,  String port,  String? username, @JsonKey(name: 'credentialRef')  String? credentialRef,  String? path)?  webDav,TResult Function(@JsonKey(name: 'providerType')  RemoteProviderType providerType, @JsonKey(name: 'clientId')  String clientId, @JsonKey(name: 'credentialRef')  String credentialRef, @JsonKey(name: 'rootId')  String rootId, @JsonKey(name: 'accountLabel')  String? accountLabel)?  oauth,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function(@JsonKey(name: 'protocolType')  WebDavProtocolType protocolType,  String address,  String port,  String? username, @JsonKey(name: 'credentialRef')  String? credentialRef,  String? path)?  webDav,TResult Function(@JsonKey(name: 'providerType')  RemoteProviderType providerType, @JsonKey(name: 'clientId')  String clientId, @JsonKey(name: 'credentialRef')  String credentialRef, @JsonKey(name: 'rootId')  String rootId, @JsonKey(name: 'accountLabel')  String? accountLabel, @JsonKey(name: 'fullDriveAccess')  bool fullDriveAccess)?  oauth,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case WebDavProtocolModel() when webDav != null:
 return webDav(_that.protocolType,_that.address,_that.port,_that.username,_that.credentialRef,_that.path);case OAuthProtocolModel() when oauth != null:
-return oauth(_that.providerType,_that.clientId,_that.credentialRef,_that.rootId,_that.accountLabel);case _:
+return oauth(_that.providerType,_that.clientId,_that.credentialRef,_that.rootId,_that.accountLabel,_that.fullDriveAccess);case _:
   return orElse();
 
 }
@@ -198,11 +198,11 @@ return oauth(_that.providerType,_that.clientId,_that.credentialRef,_that.rootId,
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function(@JsonKey(name: 'protocolType')  WebDavProtocolType protocolType,  String address,  String port,  String? username, @JsonKey(name: 'credentialRef')  String? credentialRef,  String? path)  webDav,required TResult Function(@JsonKey(name: 'providerType')  RemoteProviderType providerType, @JsonKey(name: 'clientId')  String clientId, @JsonKey(name: 'credentialRef')  String credentialRef, @JsonKey(name: 'rootId')  String rootId, @JsonKey(name: 'accountLabel')  String? accountLabel)  oauth,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function(@JsonKey(name: 'protocolType')  WebDavProtocolType protocolType,  String address,  String port,  String? username, @JsonKey(name: 'credentialRef')  String? credentialRef,  String? path)  webDav,required TResult Function(@JsonKey(name: 'providerType')  RemoteProviderType providerType, @JsonKey(name: 'clientId')  String clientId, @JsonKey(name: 'credentialRef')  String credentialRef, @JsonKey(name: 'rootId')  String rootId, @JsonKey(name: 'accountLabel')  String? accountLabel, @JsonKey(name: 'fullDriveAccess')  bool fullDriveAccess)  oauth,}) {final _that = this;
 switch (_that) {
 case WebDavProtocolModel():
 return webDav(_that.protocolType,_that.address,_that.port,_that.username,_that.credentialRef,_that.path);case OAuthProtocolModel():
-return oauth(_that.providerType,_that.clientId,_that.credentialRef,_that.rootId,_that.accountLabel);}
+return oauth(_that.providerType,_that.clientId,_that.credentialRef,_that.rootId,_that.accountLabel,_that.fullDriveAccess);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -216,11 +216,11 @@ return oauth(_that.providerType,_that.clientId,_that.credentialRef,_that.rootId,
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function(@JsonKey(name: 'protocolType')  WebDavProtocolType protocolType,  String address,  String port,  String? username, @JsonKey(name: 'credentialRef')  String? credentialRef,  String? path)?  webDav,TResult? Function(@JsonKey(name: 'providerType')  RemoteProviderType providerType, @JsonKey(name: 'clientId')  String clientId, @JsonKey(name: 'credentialRef')  String credentialRef, @JsonKey(name: 'rootId')  String rootId, @JsonKey(name: 'accountLabel')  String? accountLabel)?  oauth,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function(@JsonKey(name: 'protocolType')  WebDavProtocolType protocolType,  String address,  String port,  String? username, @JsonKey(name: 'credentialRef')  String? credentialRef,  String? path)?  webDav,TResult? Function(@JsonKey(name: 'providerType')  RemoteProviderType providerType, @JsonKey(name: 'clientId')  String clientId, @JsonKey(name: 'credentialRef')  String credentialRef, @JsonKey(name: 'rootId')  String rootId, @JsonKey(name: 'accountLabel')  String? accountLabel, @JsonKey(name: 'fullDriveAccess')  bool fullDriveAccess)?  oauth,}) {final _that = this;
 switch (_that) {
 case WebDavProtocolModel() when webDav != null:
 return webDav(_that.protocolType,_that.address,_that.port,_that.username,_that.credentialRef,_that.path);case OAuthProtocolModel() when oauth != null:
-return oauth(_that.providerType,_that.clientId,_that.credentialRef,_that.rootId,_that.accountLabel);case _:
+return oauth(_that.providerType,_that.clientId,_that.credentialRef,_that.rootId,_that.accountLabel,_that.fullDriveAccess);case _:
   return null;
 
 }
@@ -315,7 +315,7 @@ as String?,
 @JsonSerializable()
 
 class OAuthProtocolModel implements ProtocolModel {
-  const OAuthProtocolModel({@JsonKey(name: 'providerType') required this.providerType, @JsonKey(name: 'clientId') required this.clientId, @JsonKey(name: 'credentialRef') required this.credentialRef, @JsonKey(name: 'rootId') required this.rootId, @JsonKey(name: 'accountLabel') this.accountLabel, final  String? $type}): $type = $type ?? 'oauth';
+  const OAuthProtocolModel({@JsonKey(name: 'providerType') required this.providerType, @JsonKey(name: 'clientId') required this.clientId, @JsonKey(name: 'credentialRef') required this.credentialRef, @JsonKey(name: 'rootId') required this.rootId, @JsonKey(name: 'accountLabel') this.accountLabel, @JsonKey(name: 'fullDriveAccess') this.fullDriveAccess = false, final  String? $type}): $type = $type ?? 'oauth';
   factory OAuthProtocolModel.fromJson(Map<String, dynamic> json) => _$OAuthProtocolModelFromJson(json);
 
 @JsonKey(name: 'providerType') final  RemoteProviderType providerType;
@@ -323,6 +323,10 @@ class OAuthProtocolModel implements ProtocolModel {
 @override@JsonKey(name: 'credentialRef') final  String credentialRef;
 @JsonKey(name: 'rootId') final  String rootId;
 @JsonKey(name: 'accountLabel') final  String? accountLabel;
+/// Google Drive only: signed in with the full `drive` scope, so ordinary
+/// folders of My Drive can be read and written as a plain file-sync
+/// location. Older connections and backup connections keep false.
+@JsonKey(name: 'fullDriveAccess') final  bool fullDriveAccess;
 
 @JsonKey(name: 'runtimeType')
 final String $type;
@@ -341,16 +345,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is OAuthProtocolModel&&(identical(other.providerType, providerType) || other.providerType == providerType)&&(identical(other.clientId, clientId) || other.clientId == clientId)&&(identical(other.credentialRef, credentialRef) || other.credentialRef == credentialRef)&&(identical(other.rootId, rootId) || other.rootId == rootId)&&(identical(other.accountLabel, accountLabel) || other.accountLabel == accountLabel));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is OAuthProtocolModel&&(identical(other.providerType, providerType) || other.providerType == providerType)&&(identical(other.clientId, clientId) || other.clientId == clientId)&&(identical(other.credentialRef, credentialRef) || other.credentialRef == credentialRef)&&(identical(other.rootId, rootId) || other.rootId == rootId)&&(identical(other.accountLabel, accountLabel) || other.accountLabel == accountLabel)&&(identical(other.fullDriveAccess, fullDriveAccess) || other.fullDriveAccess == fullDriveAccess));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,providerType,clientId,credentialRef,rootId,accountLabel);
+int get hashCode => Object.hash(runtimeType,providerType,clientId,credentialRef,rootId,accountLabel,fullDriveAccess);
 
 @override
 String toString() {
-  return 'ProtocolModel.oauth(providerType: $providerType, clientId: $clientId, credentialRef: $credentialRef, rootId: $rootId, accountLabel: $accountLabel)';
+  return 'ProtocolModel.oauth(providerType: $providerType, clientId: $clientId, credentialRef: $credentialRef, rootId: $rootId, accountLabel: $accountLabel, fullDriveAccess: $fullDriveAccess)';
 }
 
 
@@ -361,7 +365,7 @@ abstract mixin class $OAuthProtocolModelCopyWith<$Res> implements $ProtocolModel
   factory $OAuthProtocolModelCopyWith(OAuthProtocolModel value, $Res Function(OAuthProtocolModel) _then) = _$OAuthProtocolModelCopyWithImpl;
 @override @useResult
 $Res call({
-@JsonKey(name: 'providerType') RemoteProviderType providerType,@JsonKey(name: 'clientId') String clientId,@JsonKey(name: 'credentialRef') String credentialRef,@JsonKey(name: 'rootId') String rootId,@JsonKey(name: 'accountLabel') String? accountLabel
+@JsonKey(name: 'providerType') RemoteProviderType providerType,@JsonKey(name: 'clientId') String clientId,@JsonKey(name: 'credentialRef') String credentialRef,@JsonKey(name: 'rootId') String rootId,@JsonKey(name: 'accountLabel') String? accountLabel,@JsonKey(name: 'fullDriveAccess') bool fullDriveAccess
 });
 
 
@@ -378,14 +382,15 @@ class _$OAuthProtocolModelCopyWithImpl<$Res>
 
 /// Create a copy of ProtocolModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? providerType = null,Object? clientId = null,Object? credentialRef = null,Object? rootId = null,Object? accountLabel = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? providerType = null,Object? clientId = null,Object? credentialRef = null,Object? rootId = null,Object? accountLabel = freezed,Object? fullDriveAccess = null,}) {
   return _then(OAuthProtocolModel(
 providerType: null == providerType ? _self.providerType : providerType // ignore: cast_nullable_to_non_nullable
 as RemoteProviderType,clientId: null == clientId ? _self.clientId : clientId // ignore: cast_nullable_to_non_nullable
 as String,credentialRef: null == credentialRef ? _self.credentialRef : credentialRef // ignore: cast_nullable_to_non_nullable
 as String,rootId: null == rootId ? _self.rootId : rootId // ignore: cast_nullable_to_non_nullable
 as String,accountLabel: freezed == accountLabel ? _self.accountLabel : accountLabel // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,fullDriveAccess: null == fullDriveAccess ? _self.fullDriveAccess : fullDriveAccess // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

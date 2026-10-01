@@ -1,4 +1,6 @@
+import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:hooks_riverpod/hooks_riverpod.dart' show Provider;
+import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/providers/oauth/oauth_public_client_configuration.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 
@@ -77,6 +79,16 @@ String remoteProviderDisplayName(RemoteProviderType type) => switch (type) {
   RemoteProviderType.oneDrive => 'OneDrive',
   RemoteProviderType.baiduNetdisk => 'Baidu Netdisk',
   RemoteProviderType.aliyunDrive => 'Aliyun Drive',
+};
+
+/// The provider's name in the interface language.
+String localizedRemoteProviderName(
+  BuildContext context,
+  RemoteProviderType type,
+) => switch (type) {
+  RemoteProviderType.baiduNetdisk => syncText(context, '百度网盘', 'Baidu Netdisk'),
+  RemoteProviderType.aliyunDrive => syncText(context, '阿里云盘', 'Aliyun Drive'),
+  _ => remoteProviderDisplayName(type),
 };
 
 final remoteProviderAvailabilityProvider = Provider<RemoteProviderAvailability>(

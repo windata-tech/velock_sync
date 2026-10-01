@@ -8,10 +8,10 @@ library;
 
 import 'dart:async';
 
-import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:velock_sync/widgets/app_dialog.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
@@ -338,7 +338,7 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       // Nothing blocks the page while the run is in flight.
       expect(find.byType(AlertDialog), findsNothing);
-      expect(find.byType(CupertinoAlertDialog), findsNothing);
+      expect(find.byType(AppDialog), findsNothing);
 
       pending.complete(completedPlainRun());
       await tester.pumpAndSettle();
@@ -349,7 +349,7 @@ void main() {
       expect(find.text('正在同步…'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.byType(AlertDialog), findsNothing);
-      expect(find.byType(CupertinoAlertDialog), findsNothing);
+      expect(find.byType(AppDialog), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

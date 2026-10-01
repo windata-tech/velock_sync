@@ -14,7 +14,6 @@ import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_provisioner.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_scope_guard.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_access_authorizer.dart';
-import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
@@ -22,6 +21,8 @@ import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/plain_sync/model/plain_location_presentation.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_storage.dart';
+import 'package:velock_sync/features/plain_sync/state/plain_remote_folders.dart';
+import 'package:velock_sync/features/plain_sync/ui/plain_remote_folder_picker.dart';
 import 'package:velock_sync/features/plain_sync/state/plain_sync_providers.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_providers.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
@@ -50,15 +51,33 @@ class AddPlainLocation extends HookConsumerWidget {
     final error = useState<String?>(null);
 
     final connections = ref.watch(connectionsProvider);
-    final webDavConnections =
-        (connections.asData?.value ?? const <ConnectionModel>[])
-            .where((item) => item.protocol is WebDavProtocolModel)
-            .toList(growable: false);
+    final allConnections =
+        connections.asData?.value ?? const <ConnectionModel>[];
+    final supportedConnections = allConnections
+        .where(
+          (item) =>
+              RemoteObjectStoreFactory.supportsPlainFolders(item.protocol),
+        )
+        .toList(growable: false);
+    // Cloud drives without real folder paths cannot hold a plain mirror; they
+    // are named on the page so a connection the user knows about does not
+    // just go missing.
+    final unsupportedConnections = allConnections
+        .where(
+          (item) =>
+              !RemoteObjectStoreFactory.supportsPlainFolders(item.protocol),
+        )
+        .toList(growable: false);
 
-    /// Lets the wizard finish without leaving it: opens the real WebDAV form
-    /// and re-reads the connections when the user comes back.
+    /// Lets the wizard finish without leaving it: opens the connection types
+    /// file sync can use, and re-reads the connections when the user comes
+    /// back. `returnTo=back` brings the user here instead of the connections
+    /// tab once the new connection is saved.
     Future<void> addConnection() async {
-      await context.pushNamed(AppRoutes.newWebDav.name);
+      await context.pushNamed(
+        AppRoutes.protocols.name,
+        queryParameters: const {'returnTo': 'back', 'for': 'plain'},
+      );
       if (!context.mounted) return;
       ref.invalidate(connectionsProvider);
       ref.invalidate(connectionRepositoryProvider);
@@ -95,27 +114,18 @@ class AddPlainLocation extends HookConsumerWidget {
 
     Future<void> pickRemoteFolder(ConnectionModel value) async {
       if (busy.value) return;
-      final protocol = value.protocol;
-      if (protocol is! WebDavProtocolModel) return;
+      if (!RemoteObjectStoreFactory.supportsPlainFolders(value.protocol)) {
+        return;
+      }
       busy.value = true;
       error.value = null;
       try {
-        final loader = ref.read(backupFolderLoaderProvider);
-        final picked = await Navigator.of(context).push<List<String>>(
-          MaterialPageRoute(
-            builder: (_) => BackupFolderPicker(
-              connectionName: value.name,
-              basePath: RemoteObjectStoreFactory.webDavDisplayAddress(protocol),
-              forSync: true,
-              loadFolders: (relative) =>
-                  loader(protocol: protocol, relativeSegments: relative),
-              createFolder: (parent, folderName) => ref.read(
-                backupFolderCreatorProvider,
-              )(protocol: protocol, relativeSegments: parent, name: folderName),
-            ),
-          ),
-        );
-        if (picked == null || !context.mounted) return;
+        final folders = ref.read(plainRemoteFoldersProvider);
+        final result = await pickPlainRemoteFolder(context, ref, value);
+        if (result == null || !context.mounted) return;
+        // The connection may have been edited inside the picker.
+        final chosen = result.connection;
+        final picked = result.segments;
         if (picked.isEmpty) {
           error.value = syncText(
             context,
@@ -127,18 +137,15 @@ class AddPlainLocation extends HookConsumerWidget {
         // Refuse a backup folder right away instead of at the last step.
         await assertPlainFolderIsNotBackup(
           backups: ref.read(syncProfileRepositoryProvider),
-          connectionId: value.id,
+          connectionId: chosen.id,
           segments: picked,
           childFolderNames: () async => [
-            for (final folder in await loader(
-              protocol: protocol,
-              relativeSegments: picked,
-            ))
+            for (final folder in await folders.list(chosen, picked))
               folder.name,
           ],
         );
         if (!context.mounted) return;
-        connection.value = value;
+        connection.value = chosen;
         segments.value = picked;
       } on BackupFolderOverlapException catch (failure) {
         if (!context.mounted) return;
@@ -390,7 +397,8 @@ class AddPlainLocation extends HookConsumerWidget {
                 else if (step.value == 1)
                   ..._remoteStep(
                     context,
-                    webDavConnections,
+                    supportedConnections,
+                    unsupportedConnections,
                     connections.isLoading,
                     connection.value,
                     segments.value,
@@ -535,6 +543,7 @@ class AddPlainLocation extends HookConsumerWidget {
   List<Widget> _remoteStep(
     BuildContext context,
     List<ConnectionModel> connections,
+    List<ConnectionModel> unsupported,
     bool loading,
     ConnectionModel? selected,
     List<String>? segments,
@@ -566,8 +575,8 @@ class AddPlainLocation extends HookConsumerWidget {
               Text(
                 syncText(
                   context,
-                  '文件夹同步用的是 WebDAV（NAS 或网盘提供的 WebDAV 地址）。先添加一个连接，选好文件夹后就能开始同步。',
-                  'File sync uses WebDAV (a NAS, or the WebDAV address your cloud drive offers). Add one connection, pick the folder, and syncing can start.',
+                  '文件夹同步可以用 WebDAV（NAS）、OneDrive、Google Drive、百度网盘或阿里云盘。先添加一个连接，选好文件夹后就能开始同步。',
+                  'File sync works with WebDAV (a NAS), OneDrive, Google Drive, Baidu Netdisk or Aliyun Drive. Add one connection, pick the folder, and syncing can start.',
                 ),
                 style: TextStyle(color: context.appSecondaryLabel),
               ),
@@ -576,16 +585,13 @@ class AddPlainLocation extends HookConsumerWidget {
               // the connections page by hand and come back.
               BackupActionButton(
                 key: const Key('plain-add-connection'),
-                label: syncText(
-                  context,
-                  '添加 WebDAV 连接',
-                  'Add a WebDAV connection',
-                ),
+                label: syncText(context, '添加云端连接', 'Add a connection'),
                 onPressed: () => onAddConnection(),
               ),
             ],
           ),
         ),
+        ?_unsupportedNote(context, unsupported),
       ];
     }
     return [
@@ -610,7 +616,11 @@ class AddPlainLocation extends HookConsumerWidget {
           for (final item in connections)
             AdaptiveListTile(
               widgetKey: Key('plain-remote-${item.id}'),
-              leading: const Icon(CupertinoIcons.cloud),
+              leading: Icon(
+                item.protocol is WebDavProtocolModel
+                    ? CupertinoIcons.cloud
+                    : CupertinoIcons.cloud_fill,
+              ),
               title: Text(item.name),
               subtitle: Text(
                 selected?.id == item.id && segments != null
@@ -621,9 +631,54 @@ class AddPlainLocation extends HookConsumerWidget {
               enabled: !busy,
               onTap: () => pick(item),
             ),
+          // Saved connections are not the only choice: a new server can be
+          // added without leaving the wizard (the empty state offers the same).
+          AdaptiveListTile(
+            widgetKey: const Key('plain-add-another-connection'),
+            leading: const Icon(CupertinoIcons.add_circled),
+            title: Text(syncText(context, '添加新的云端连接', 'Add a new connection')),
+            subtitle: Text(
+              syncText(
+                context,
+                'WebDAV、OneDrive、Google Drive、百度网盘或阿里云盘',
+                'WebDAV, OneDrive, Google Drive, Baidu Netdisk or Aliyun Drive',
+              ),
+            ),
+            showChevron: true,
+            enabled: !busy,
+            onTap: () => onAddConnection(),
+          ),
         ],
       ),
+      ?_unsupportedNote(context, unsupported),
     ];
+  }
+
+  /// Explains why saved cloud-drive connections are not offered here.
+  Widget? _unsupportedNote(
+    BuildContext context,
+    List<ConnectionModel> unsupported,
+  ) {
+    if (unsupported.isEmpty) return null;
+    final names = unsupported.map((item) => '「${item.name}」').join('、');
+    final englishNames = unsupported.map((item) => '"${item.name}"').join(', ');
+    return Padding(
+      key: const Key('plain-unsupported-connections'),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.page,
+        AppSpacing.sm,
+        AppSpacing.page,
+        0,
+      ),
+      child: Text(
+        syncText(
+          context,
+          '已保存的连接 $names 不在这里：它只能访问 Sync 自己建的文件和隐藏的专用文件夹，用于格间备份。要同步 Google Drive 里的普通文件夹，请点“添加新的云端连接”，新建一个允许访问全部文件的 Google Drive 连接。',
+          'Your saved connection${unsupported.length == 1 ? '' : 's'} $englishNames ${unsupported.length == 1 ? 'is' : 'are'} not listed: ${unsupported.length == 1 ? 'it' : 'they'} can only reach Sync’s own files and its hidden app folder, for Velock backups. To sync an ordinary Google Drive folder, choose “Add a new connection” and add a Google Drive connection with access to all files.',
+        ),
+        style: AppType.footnote.copyWith(color: context.appSecondaryLabel),
+      ),
+    );
   }
 
   List<Widget> _modeStep(
@@ -740,21 +795,45 @@ String firstSyncNote(BuildContext context, MirrorDirection direction) {
   return syncText(context, '$merge$plaintext', '$merge $plaintext');
 }
 
-/// Why a remote folder that holds (or contains) a Velock backup is refused.
+/// Why a remote folder that holds (or contains) a Velock backup is refused,
+/// naming both folders so the user can see which one to pick instead.
 String backupOverlapMessage(
   BuildContext context,
   BackupFolderOverlapException failure,
 ) {
-  if (failure.backupName.isEmpty) {
+  String path(List<String> segments) => '/${segments.join('/')}';
+  final chosen = path(failure.chosenSegments);
+  final backupSegments = failure.backupSegments;
+  const zhWhy = '文件同步会把选中文件夹里的所有文件当成普通文件来上传、下载甚至删除，格间的加密备份会被弄坏，所以不能选它。';
+  const enWhy =
+      'File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.';
+  if (failure.backupName.isEmpty || backupSegments == null) {
     return syncText(
       context,
-      '这个远端文件夹里有格间的加密备份（或它本身就在备份里）。明文同步会把加密备份当成普通文件处理，可能改动或删除它，所以不能用。请换一个文件夹。',
-      'This remote folder holds a Velock encrypted backup, or sits inside one. Plain sync would treat the backup as ordinary files and could change or delete it, so it cannot be used. Pick another folder.',
+      '你选的文件夹 $chosen 里有格间的加密备份（或它本身就在一份备份里）。$zhWhy请换一个文件夹，或者新建一个专门用于同步的文件夹。',
+      'The folder you chose, $chosen, holds a Velock encrypted backup or sits inside one. $enWhy Choose another folder, or create a new one just for syncing.',
+    );
+  }
+  final backup = path(backupSegments);
+  final name = failure.backupName;
+  if (failure.containsBackup) {
+    final child = backupSegments[failure.chosenSegments.length];
+    return syncText(
+      context,
+      '你选的文件夹 $chosen 里面，有格间备份「$name」用的文件夹 $backup。$zhWhy请选一个里面不含「$child」的文件夹，或者在这里新建一个专门用于同步的文件夹。',
+      'The folder you chose, $chosen, contains $backup, the folder of the Velock backup “$name”. $enWhy Choose a folder that does not contain “$child”, or create a new folder here just for syncing.',
+    );
+  }
+  if (failure.insideBackup) {
+    return syncText(
+      context,
+      '你选的文件夹 $chosen 在格间备份「$name」用的文件夹 $backup 里面。$zhWhy请选备份文件夹以外的位置。',
+      'The folder you chose, $chosen, is inside $backup, the folder of the Velock backup “$name”. $enWhy Choose a place outside the backup folder.',
     );
   }
   return syncText(
     context,
-    '这个远端文件夹和格间备份用的是同一个位置（或它的上级/下级）：${failure.backupName}。明文同步会把加密备份当成普通文件处理，所以不能用。请换一个文件夹。',
-    'This remote folder is the same as — or contains, or sits inside — the folder used by the backup “${failure.backupName}”. Plain sync would treat the encrypted backup as ordinary files, so it cannot be used here. Pick another folder.',
+    '你选的文件夹 $chosen 就是格间备份「$name」用的文件夹。$zhWhy请换一个文件夹，或者新建一个专门用于同步的文件夹。',
+    'The folder you chose, $chosen, is the folder of the Velock backup “$name”. $enWhy Choose another folder, or create a new one just for syncing.',
   );
 }

@@ -48,6 +48,7 @@ void main() {
       for (final label in [
         'Server Address',
         'Port',
+        'Name',
         'Subpath',
         'Username',
         'Password',
@@ -56,16 +57,28 @@ void main() {
       ]) {
         expect(find.text(label), findsOneWidget);
       }
-      // Five fields, all of them form fields on this platform.
-      expect(find.byType(AdaptiveTextFormField), findsNWidgets(5));
+      // Six fields, all of them form fields on this platform.
+      expect(find.byType(AdaptiveTextFormField), findsNWidgets(6));
       // The same label reaches both branches: the Apple row prefix, or the
       // Material floating label.
       expect(
         find.byType(AdaptiveFieldPrefix),
-        platform == TargetPlatform.iOS ? findsNWidgets(5) : findsNothing,
+        platform == TargetPlatform.iOS ? findsNWidgets(6) : findsNothing,
       );
       // No RenderFlex overflow from the long English label, and no other
       // exception while building the migrated widgets.
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('$platform keeps help apart from Save in the header', (
+      tester,
+    ) async {
+      await _pump(tester, platform);
+      final help = tester.getRect(find.byKey(const Key('webdav-help')));
+      final save = tester.getRect(find.byKey(const Key('webdav-save')));
+      // Side by side, never touching: the help text used to run into "Save".
+      expect(help.right, lessThanOrEqualTo(save.left));
+      expect(help.width, greaterThanOrEqualTo(40));
       expect(tester.takeException(), isNull);
     });
 
@@ -189,7 +202,7 @@ void main() {
     // One shared label, drawn in the growing prefix box rather than the fixed
     // 112pt box that clipped "Server Address".
     final prefixes = find.byType(AdaptiveFieldPrefix);
-    expect(prefixes, findsNWidgets(5));
+    expect(prefixes, findsNWidgets(6));
     for (final label in ['Server Address', 'Subpath', 'Username']) {
       expect(
         find.descendant(of: prefixes, matching: find.text(label)),

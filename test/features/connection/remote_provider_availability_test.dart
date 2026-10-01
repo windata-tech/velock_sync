@@ -23,6 +23,7 @@ import 'package:velock_sync/features/connection/ui/new_oauth.dart';
 import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/features/connection/ui/remote_provider_icon.dart';
 import 'package:velock_sync/infrastructure/secure_storage/in_memory_credential_store.dart';
+import 'package:velock_sync/providers/oauth/oauth_client_registration.dart';
 import 'package:velock_sync/providers/remote_provider_availability.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
@@ -345,6 +346,42 @@ void main() {
       expect(find.byKey(const Key('oauth-sign-in')), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    for (final full in [true, false]) {
+      testWidgets(
+        full
+            ? 'a Google sign-in for file sync says it asks for all files'
+            : 'a Google sign-in for backups keeps quiet about all files',
+        (tester) async {
+          final credentials = InMemoryCredentialStore();
+          await credentials.writeOAuthClientRegistration(
+            RemoteProviderType.googleDrive,
+            const OAuthClientRegistration(
+              clientId: '123-abc.apps.googleusercontent.com',
+            ),
+          );
+          await _pump(
+            tester,
+            NewOAuthConnection(
+              providerType: RemoteProviderType.googleDrive,
+              fullDriveAccess: full,
+            ),
+            availability: _releaseUnconfigured,
+            credentials: credentials,
+          );
+          expect(find.text('登录并选择保存位置'), findsOneWidget);
+          expect(
+            find.byKey(const Key('oauth-google-full-access-note')),
+            full ? findsOneWidget : findsNothing,
+          );
+          expect(
+            find.textContaining('所有 Google 云端硬盘文件'),
+            full ? findsOneWidget : findsNothing,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
 
     testWidgets('Baidu asks for the SecretKey and app name', (tester) async {
       final credentials = InMemoryCredentialStore();

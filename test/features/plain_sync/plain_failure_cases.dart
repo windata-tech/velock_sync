@@ -9,6 +9,8 @@
 /// * `provider.http.*` — `lib/providers/provider_request_exception.dart`
 /// * `provider.webdav.*` — `lib/providers/webdav/webdav_object_store.dart`
 /// * `provider.oauth.*` — `lib/providers/oauth/*`
+/// * `provider.baidu.*`, `provider.onedrive.*`, `provider.aliyun.*` — the
+///   cloud-drive folder views in `lib/providers/*/`
 /// * `sync.run_busy`, `sync.unexpected` — the upload engine and the classifier
 /// * `sync.interrupted` — runs the system killed before they could finish
 /// * `network.unreachable`, `network.timeout` — transport failures the
@@ -106,8 +108,28 @@ const plainFailureCases = <FailureCopy>[
   ),
   FailureCopy(
     'plain_folder.remote_unsupported',
-    zh: '这个远端不支持文件夹同步。请改用 WebDAV 连接，例如 NAS。',
-    en: 'This remote does not support folder sync. Use a WebDAV connection, for example a NAS.',
+    zh: '这个连接不能用于文件夹同步。请改用 WebDAV（例如 NAS）、OneDrive、百度网盘或阿里云盘；Google Drive 需要在添加同步位置时新建一个允许访问全部文件的连接。',
+    en: 'This connection cannot be used for folder sync. Use WebDAV (for example a NAS), OneDrive, Baidu Netdisk or Aliyun Drive; for Google Drive, add a new connection with access to all files while adding the sync location.',
+  ),
+  FailureCopy(
+    'provider.google.duplicate_name',
+    zh: 'Google Drive 的同一个文件夹里有同名的文件、文件夹或 Google 文档，Sync 分不清该用哪一个，这次没有继续同步。请在 Google Drive 里把多余的改名或删除后再同步。',
+    en: 'One Google Drive folder holds several files, folders or Google Docs with the same name, so Sync cannot tell which one is meant and stopped. Rename or remove the extra ones in Google Drive, then sync again.',
+  ),
+  FailureCopy(
+    'provider.baidu.unsupported_name',
+    zh: '有文件名里含有百度网盘不允许的字符（\\ ? | " < > : *）。请在本机改名后再同步。',
+    en: 'A file name contains characters Baidu Netdisk does not allow (\\ ? | " < > : *). Rename it on this device, then sync again.',
+  ),
+  FailureCopy(
+    'provider.onedrive.unsupported_name',
+    zh: '有文件名里含有 OneDrive 不允许的字符（" * : < > ? \\ |）。请在本机改名后再同步。',
+    en: 'A file name contains characters OneDrive does not allow (" * : < > ? \\ |). Rename it on this device, then sync again.',
+  ),
+  FailureCopy(
+    'provider.aliyun.unsupported_name',
+    zh: '有文件名阿里云盘不能保存。请在本机改名后再同步。',
+    en: 'A file name cannot be stored on Aliyun Drive. Rename it on this device, then sync again.',
   ),
   FailureCopy(
     'plain_folder.remote_too_large',
@@ -213,13 +235,13 @@ const plainFailureCases = <FailureCopy>[
   ),
   FailureCopy(
     'provider.oauth.token_broker_required',
-    zh: '云盘连接的授权不完整，文件夹同步也不支持云盘连接。请改用 WebDAV 连接，例如 NAS。',
-    en: 'This cloud connection is missing its authorization, and folder sync does not support cloud drives. Use a WebDAV connection, for example a NAS.',
+    zh: '云盘连接的登录不完整或已失效。请在“连接”页重新登录这个网盘后再同步。',
+    en: 'This cloud drive sign-in is incomplete or has expired. Sign in to the drive again on the Connections page, then sync.',
   ),
   FailureCopy(
     'provider.oauth.client_id_missing',
-    zh: '云盘连接的授权不完整，文件夹同步也不支持云盘连接。请改用 WebDAV 连接，例如 NAS。',
-    en: 'This cloud connection is missing its authorization, and folder sync does not support cloud drives. Use a WebDAV connection, for example a NAS.',
+    zh: '云盘连接的登录不完整或已失效。请在“连接”页重新登录这个网盘后再同步。',
+    en: 'This cloud drive sign-in is incomplete or has expired. Sign in to the drive again on the Connections page, then sync.',
   ),
   // ---- HTTP status from any provider ----
   FailureCopy(

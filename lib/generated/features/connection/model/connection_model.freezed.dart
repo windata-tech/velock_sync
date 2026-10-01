@@ -385,7 +385,7 @@ as ConnectionStatus,
 @override
 @pragma('vm:prefer-inline')
 $ProtocolModelCopyWith<$Res> get protocol {
-
+  
   return $ProtocolModelCopyWith<$Res>(_self.protocol, (value) {
     return _then(_self.copyWith(protocol: value));
   });
@@ -608,7 +608,7 @@ as ConnectionStatus,
 @override
 @pragma('vm:prefer-inline')
 $ProtocolModelCopyWith<$Res> get protocol {
-
+  
   return $ProtocolModelCopyWith<$Res>(_self.protocol, (value) {
     return _then(_self.copyWith(protocol: value));
   });
@@ -792,7 +792,7 @@ return failure(_that.reason,_that.message,_that.error);case _:
 
 class _Initial implements ConnectionUiState {
   const _Initial();
-
+  
 
 
 
@@ -824,7 +824,7 @@ String toString() {
 
 class _InProgress implements ConnectionUiState {
   const _InProgress();
-
+  
 
 
 
@@ -856,7 +856,7 @@ String toString() {
 
 class _Success implements ConnectionUiState {
   const _Success({required this.connection});
-
+  
 
  final  ConnectionModel connection;
 
@@ -919,7 +919,7 @@ as ConnectionModel,
 @override
 @pragma('vm:prefer-inline')
 $ConnectionModelCopyWith<$Res> get connection {
-
+  
   return $ConnectionModelCopyWith<$Res>(_self.connection, (value) {
     return _then(_self.copyWith(connection: value));
   });
@@ -931,7 +931,7 @@ $ConnectionModelCopyWith<$Res> get connection {
 
 class _Failure implements ConnectionUiState {
   const _Failure({required this.reason, this.message, this.error});
-
+  
 
  final  FailedReason reason;
  final  String? message;

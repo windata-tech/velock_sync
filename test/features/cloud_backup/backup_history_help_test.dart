@@ -264,12 +264,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('选择备份文件夹'), findsOneWidget);
       expect(find.text('找到原备份文件夹'), findsNothing);
-      expect(find.text('新建文件夹'), findsOneWidget);
+      final newFolder = find.byKey(const Key('new-backup-folder'));
+      expect(newFolder, findsOneWidget);
+      expect(find.byTooltip('新建文件夹'), findsOneWidget);
       expect(
-        tester.getCenter(find.text('新建文件夹')).dx,
+        tester.getCenter(newFolder).dx,
         greaterThan(tester.getCenter(find.text('上一级')).dx),
       );
-      await tester.tap(find.text('新建文件夹'));
+      await tester.tap(newFolder);
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('new-backup-folder-name')),
@@ -297,7 +299,7 @@ void main() {
     await tester.tap(find.byKey(const Key('backup-history-browse-location')));
     await tester.pumpAndSettle();
     expect(find.text('找到原备份文件夹'), findsOneWidget);
-    expect(find.text('新建文件夹'), findsNothing);
+    expect(find.byKey(const Key('new-backup-folder')), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });
@@ -471,7 +473,7 @@ void main() {
       await tester.tap(find.byKey(const Key('backup-history-browse-location')));
       await tester.pumpAndSettle();
       expect(find.byType(BackupFolderPicker), findsOneWidget);
-      expect(find.text('新建文件夹'), findsNothing);
+      expect(find.byKey(const Key('new-backup-folder')), findsNothing);
       expect(runner.calls, 0);
       await tester.tap(find.byKey(const Key('backup-folder-up')));
       await tester.pumpAndSettle();

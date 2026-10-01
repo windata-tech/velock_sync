@@ -86,19 +86,7 @@ class SyncActivity extends HookConsumerWidget {
           future: activity,
           builder: (context, snapshot) => AdaptiveSliverScaffold(
             title: syncText(context, '活动', 'Activity'),
-            actions: [
-              AdaptiveIconButton(
-                tooltip: syncText(context, '刷新活动记录', 'Refresh activity'),
-                onPressed: refresh,
-                icon: Icon(
-                  adaptiveIcon(
-                    context,
-                    material: Icons.refresh_rounded,
-                    cupertino: CupertinoIcons.refresh,
-                  ),
-                ),
-              ),
-            ],
+            onRefresh: refresh,
             slivers: _activitySlivers(
               context,
               snapshot,

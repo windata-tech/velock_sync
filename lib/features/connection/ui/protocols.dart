@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/features/connection/ui/remote_provider_icon.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
@@ -12,8 +13,12 @@ import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
 
 class Protocols extends ConsumerWidget {
-  const Protocols({super.key, this.returnTo});
+  const Protocols({super.key, this.returnTo, this.forPlainFolders = false});
   final String? returnTo;
+
+  /// Opened from file-sync setup: lists only the storage types that can hold
+  /// a plain folder of real files.
+  final bool forPlainFolders;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,12 +26,41 @@ class Protocols extends ConsumerWidget {
     // user signs in with an app they registered themselves, the usual way
     // for an open-source client; the connection page walks them through it.
     final availability = ref.watch(remoteProviderAvailabilityProvider);
-    final needsOwnKey = availability.needsOwnRegistration.isNotEmpty;
 
-    void openOAuth(RemoteProviderType type) => context.pushNamed(
-      AppRoutes.newOAuth.name,
-      queryParameters: {'returnTo': ?returnTo},
-      pathParameters: {'provider': type.name},
+    final oauthTypes = [
+      for (final type in RemoteProviderAvailability.oauthProviderTypes)
+        if (!forPlainFolders ||
+            RemoteObjectStoreFactory.plainFolderProviders.contains(type))
+          type,
+    ];
+    final needsOwnKey = oauthTypes.any(
+      availability.needsOwnRegistration.contains,
+    );
+
+    /// With `returnTo=back` the editor pops with true once it saved; this list
+    /// then steps aside too, so the user lands back where they started.
+    Future<void> open(Future<bool?> Function() push) async {
+      final saved = await push();
+      if (saved == true &&
+          returnTo == connectionEditorPopBack &&
+          context.mounted &&
+          context.canPop()) {
+        context.pop(true);
+      }
+    }
+
+    void openOAuth(RemoteProviderType type) => open(
+      () => context.pushNamed<bool>(
+        AppRoutes.newOAuth.name,
+        queryParameters: {
+          'returnTo': ?returnTo,
+          // File sync needs Google Drive's ordinary folders, not just the
+          // app's own files.
+          if (forPlainFolders && type == RemoteProviderType.googleDrive)
+            'access': oauthFullDriveAccess,
+        },
+        pathParameters: {'provider': type.name},
+      ),
     );
 
     return AdaptiveScaffold(
@@ -78,12 +112,14 @@ class Protocols extends ConsumerWidget {
                   maxLines: 2,
                 ),
                 showChevron: true,
-                onTap: () => context.pushNamed(
-                  AppRoutes.newWebDav.name,
-                  queryParameters: {'returnTo': ?returnTo},
+                onTap: () => open(
+                  () => context.pushNamed<bool>(
+                    AppRoutes.newWebDav.name,
+                    queryParameters: {'returnTo': ?returnTo},
+                  ),
                 ),
               ),
-              for (final type in RemoteProviderAvailability.oauthProviderTypes)
+              for (final type in oauthTypes)
                 _OAuthProviderTile(
                   type: type,
                   subtitle: availability.canCreate(type)
@@ -93,6 +129,26 @@ class Protocols extends ConsumerWidget {
                 ),
             ],
           ),
+          if (forPlainFolders)
+            Padding(
+              key: const Key('protocols-plain-only-note'),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                0,
+                AppSpacing.page,
+                AppSpacing.sm,
+              ),
+              child: Text(
+                syncText(
+                  context,
+                  '文件同步把文件原样放进你选的普通文件夹。Google Drive 在这里会申请访问全部文件的权限，和格间备份用的 Google 连接分开保存。',
+                  'File sync keeps files as-is in the ordinary folder you choose. Google Drive asks here for access to all of your files, and is kept apart from the Google connection used for Velock backups.',
+                ),
+                style: AppType.footnote.copyWith(
+                  color: context.appSecondaryLabel,
+                ),
+              ),
+            ),
           if (needsOwnKey)
             Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -133,21 +189,12 @@ class _OAuthProviderTile extends StatelessWidget {
   Widget build(BuildContext context) => AdaptiveListTile(
     widgetKey: Key('protocol-${type.name}'),
     leading: RemoteProviderBadge(type),
-    title: Text(_providerName(context, type)),
+    title: Text(localizedRemoteProviderName(context, type)),
     subtitle: Text(subtitle, maxLines: 2),
     showChevron: true,
     onTap: onTap,
   );
 }
-
-String _providerName(
-  BuildContext context,
-  RemoteProviderType type,
-) => switch (type) {
-  RemoteProviderType.baiduNetdisk => syncText(context, '百度网盘', 'Baidu Netdisk'),
-  RemoteProviderType.aliyunDrive => syncText(context, '阿里云盘', 'Aliyun Drive'),
-  _ => remoteProviderDisplayName(type),
-};
 
 String _ownKeySubtitle(BuildContext context, RemoteProviderType type) {
   // A Google "iOS" client's redirect can only be caught by the iOS
@@ -164,8 +211,8 @@ String _ownKeySubtitle(BuildContext context, RemoteProviderType type) {
     RemoteProviderType.googleDrive => (' Google Cloud ', 'Google Cloud'),
     RemoteProviderType.oneDrive => (' Microsoft Entra ', 'Microsoft Entra'),
     _ => (
-      '${_providerName(context, type)}开放平台',
-      'the ${_providerName(context, type)} developer platform',
+      '${localizedRemoteProviderName(context, type)}开放平台',
+      'the ${localizedRemoteProviderName(context, type)} developer platform',
     ),
   };
   return syncText(

@@ -11,7 +11,8 @@ import 'automation_id.dart';
 import 'app_components.dart';
 import 'common_widgets.dart';
 
-export 'adaptive_dialogs.dart' show showAdaptiveConfirmation;
+export 'adaptive_dialogs.dart'
+    show showAdaptiveConfirmation, showAdaptiveNotice;
 
 IconData adaptiveIcon(
   BuildContext context, {
@@ -1262,6 +1263,7 @@ class AdaptiveActionItem<T> {
     required this.value,
     required this.label,
     this.icon,
+    this.appleIcon,
     this.isDestructive = false,
     this.enabled = true,
   });
@@ -1269,6 +1271,9 @@ class AdaptiveActionItem<T> {
   final T value;
   final String label;
   final IconData? icon;
+
+  /// Symbol in the Apple menu; falls back to [icon].
+  final Widget? appleIcon;
   final bool isDestructive;
   final bool enabled;
 }
@@ -1359,6 +1364,8 @@ class AdaptiveActionMenu<T> extends StatelessWidget {
           AdaptiveAction<T>(
             label: item.label,
             value: item.value,
+            icon:
+                item.appleIcon ?? (item.icon == null ? null : Icon(item.icon)),
             isDestructive: item.isDestructive,
           ),
       ],

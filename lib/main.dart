@@ -9,6 +9,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:velock_sync/features/connection/state/folder_view_mode.dart';
 import 'package:velock_sync/appearance/theme.dart';
 import 'package:velock_sync/background/background_sync.dart';
 import 'package:velock_sync/background/foreground_sync_coordinator.dart';
@@ -60,6 +61,11 @@ void main() async {
         syncLanguageBootstrapProvider.overrideWithValue(
           SyncLanguage.fromStored(
             LocalDataManager.instance.getString(AppKeys.languageCode),
+          ),
+        ),
+        folderViewModeBootstrapProvider.overrideWithValue(
+          FolderViewMode.fromStored(
+            LocalDataManager.instance.getString(AppKeys.folderViewMode),
           ),
         ),
       ],

@@ -12,11 +12,30 @@ import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dar
 /// to restore. That damage cannot be undone from this app, so the binding is
 /// refused instead of warned about.
 class BackupFolderOverlapException implements Exception {
-  const BackupFolderOverlapException(this.backupName);
+  const BackupFolderOverlapException(
+    this.backupName, {
+    this.chosenSegments = const [],
+    this.backupSegments,
+  });
 
   /// The backup whose folder would be covered; empty for a backup found by
   /// its content rather than by a profile on this device.
   final String backupName;
+
+  /// The folder the user picked, relative to the connection.
+  final List<String> chosenSegments;
+
+  /// The backup's folder, relative to the same connection; null when the
+  /// backup was found by its content.
+  final List<String>? backupSegments;
+
+  /// The picked folder holds the backup's folder further down.
+  bool get containsBackup =>
+      backupSegments != null && chosenSegments.length < backupSegments!.length;
+
+  /// The picked folder lies inside the backup's folder.
+  bool get insideBackup =>
+      backupSegments != null && chosenSegments.length > backupSegments!.length;
 
   @override
   String toString() => 'Plain sync would cover the backup "$backupName".';
@@ -49,6 +68,8 @@ Future<void> assertPlainScopeAvoidsBackups({
     }
     throw BackupFolderOverlapException(
       profile.displayName.isEmpty ? '格间备份' : profile.displayName,
+      chosenSegments: List.unmodifiable(segments),
+      backupSegments: List.unmodifiable(envelopeRemoteRootSegments(profile)),
     );
   }
 }
@@ -91,7 +112,10 @@ Future<void> assertPlainFolderIsNotBackup({
     // Unreadable: left to the writability check.
   }
   if (looksLikeVelockBackupFolder(segments, children)) {
-    throw const BackupFolderOverlapException('');
+    throw BackupFolderOverlapException(
+      '',
+      chosenSegments: List.unmodifiable(segments),
+    );
   }
 }
 

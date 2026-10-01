@@ -33,7 +33,7 @@ final class DownloadManagerProvider
   DownloadManager create() => DownloadManager();
 }
 
-String _$downloadManagerHash() => r'9ee823745dc32fbb4b36ae88882f5ea7471b5074';
+String _$downloadManagerHash() => r'51e96a5474c4f514db96fef3d450ce1501f8e1a8';
 
 abstract class _$DownloadManager extends $AsyncNotifier<List<DownloadTask>> {
   FutureOr<List<DownloadTask>> build();

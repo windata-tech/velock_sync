@@ -12,8 +12,9 @@
 /// picker flows are exercised on the Material app bar instead.
 library;
 
+import 'dart:io' show SocketException;
+
 import 'package:cupertino_ui/cupertino_ui.dart';
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_service.dart';
@@ -22,9 +23,14 @@ import 'package:velock_sync/features/cloud_backup/application/webdav_backup_fold
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
+import 'package:velock_sync/features/connection/ui/new_webdav.dart';
+import 'package:velock_sync/features/connection/ui/new_oauth.dart';
+import 'package:velock_sync/features/connection/ui/protocols.dart';
 import 'package:velock_sync/features/plain_sync/ui/add_plain_location.dart';
 import 'package:velock_sync/features/plain_sync/ui/plain_sync_home.dart';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
+import 'package:velock_sync/providers/provider_request_exception.dart';
+import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
 import 'package:velock_sync/widgets/common_widgets.dart' show AppBackButton;
@@ -187,7 +193,9 @@ void main() {
 
     expect(find.text('还没有可用的远端连接'), findsOneWidget);
     expect(
-      find.text('文件夹同步用的是 WebDAV（NAS 或网盘提供的 WebDAV 地址）。先添加一个连接，选好文件夹后就能开始同步。'),
+      find.text(
+        '文件夹同步可以用 WebDAV（NAS）、OneDrive、Google Drive、百度网盘或阿里云盘。先添加一个连接，选好文件夹后就能开始同步。',
+      ),
       findsOneWidget,
     );
     // Not a dead end: the wizard offers the connection form itself instead of
@@ -213,14 +221,255 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('step 2 does not offer a non-WebDAV connection', (tester) async {
+  testWidgets('step 2 can add a new connection next to the saved ones', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [webDavConnection()],
+      platform: TargetPlatform.android,
+    );
+    await pickLocalAndContinue(tester);
+
+    // A saved connection does not hide the way to add another server.
+    expect(find.byKey(const Key('plain-remote-conn-1')), findsOneWidget);
+    final addRow = find.byKey(const Key('plain-add-another-connection'));
+    expect(addRow, findsOneWidget);
+    expect(find.text('添加新的云端连接'), findsOneWidget);
+    expect(find.text('WebDAV、OneDrive、Google Drive、百度网盘或阿里云盘'), findsOneWidget);
+    expect(
+      find.byKey(const Key('plain-unsupported-connections')),
+      findsNothing,
+    );
+    // Same card as the connection rows, so it carries an icon like they do.
+    expect(
+      find.descendant(
+        of: addRow,
+        matching: find.byIcon(CupertinoIcons.add_circled),
+      ),
+      findsOneWidget,
+    );
+
+    await tapVisible(tester, addRow);
+
+    // The connection kinds open on top of the wizard, limited to the ones a
+    // plain folder can live on, and the page says why the others are missing.
+    expect(find.byType(Protocols), findsOneWidget);
+    expect(find.byKey(const Key('protocol-webDav')), findsOneWidget);
+    expect(find.byKey(const Key('protocol-baiduNetdisk')), findsOneWidget);
+    expect(find.byKey(const Key('protocol-oneDrive')), findsOneWidget);
+    expect(find.byKey(const Key('protocol-aliyunDrive')), findsOneWidget);
+    // Google Drive is offered too; its sign-in here asks for full access.
+    expect(find.byKey(const Key('protocol-googleDrive')), findsOneWidget);
+    expect(find.byKey(const Key('protocols-plain-only-note')), findsOneWidget);
+    expect(find.textContaining('访问全部文件的权限'), findsOneWidget);
+
+    await tapVisible(tester, find.byKey(const Key('protocol-webDav')));
+    expect(find.byType(NewWebDav), findsOneWidget);
+    expect(find.byKey(const Key('webdav-save')), findsOneWidget);
+
+    // Saving pops the form with true; the list closes with it and the wizard
+    // is back on the same step, not the start.
+    Navigator.of(tester.element(find.byType(NewWebDav))).pop(true);
+    await tester.pumpAndSettle();
+    expect(find.byType(NewWebDav), findsNothing);
+    expect(find.byType(Protocols), findsNothing);
+    expect(find.text('第 2 步，共 3 步'), findsOneWidget);
+    expect(find.byKey(const Key('plain-remote-conn-1')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('backing out of the connection list keeps the wizard step', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [webDavConnection()],
+      platform: TargetPlatform.android,
+    );
+    await pickLocalAndContinue(tester);
+
+    await tapVisible(
+      tester,
+      find.byKey(const Key('plain-add-another-connection')),
+    );
+    await tapVisible(tester, find.byKey(const Key('protocol-webDav')));
+    // Leaving the form without saving returns to the list, not the wizard.
+    Navigator.of(tester.element(find.byType(NewWebDav))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(Protocols), findsOneWidget);
+
+    Navigator.of(tester.element(find.byType(Protocols))).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('第 2 步，共 3 步'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('step 2 offers a Baidu Netdisk connection and its folders', (
+    tester,
+  ) async {
+    final world = await openWizard(
+      tester,
+      connections: [
+        oAuthConnection(
+          id: 'baidu-1',
+          name: '百度网盘',
+          providerType: RemoteProviderType.baiduNetdisk,
+          rootId: '/apps/Velock Sync',
+        ),
+      ],
+      platform: TargetPlatform.android,
+      folderListing: (segments) async => segments.isEmpty
+          ? const [WebDavBackupFolder(name: '手机备份')]
+          : const [],
+    );
+    await pickLocalAndContinue(tester);
+
+    expect(find.byKey(const Key('plain-remote-baidu-1')), findsOneWidget);
+    expect(
+      find.byKey(const Key('plain-unsupported-connections')),
+      findsNothing,
+    );
+
+    await tapVisible(tester, find.byKey(const Key('plain-remote-baidu-1')));
+    expect(find.byType(BackupFolderPicker), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('backup-folder-手机备份')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('use-backup-folder')));
+    await tester.pumpAndSettle();
+
+    // Root, the opened folder, then the chosen folder once more to make sure
+    // it does not hold a backup — all through the Baidu listing.
+    expect(world.loadedFolders, [
+      <String>[],
+      ['手机备份'],
+      ['手机备份'],
+    ]);
+    expect(find.text('/手机备份'), findsOneWidget);
+    expect(
+      tester
+          .widget<BackupActionButton>(
+            find.byKey(const Key('plain-wizard-next-2')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('step 2 offers OneDrive and Aliyun Drive connections', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [
+        oAuthConnection(
+          id: 'onedrive-1',
+          name: '工作 OneDrive',
+          providerType: RemoteProviderType.oneDrive,
+        ),
+        oAuthConnection(
+          id: 'aliyun-1',
+          name: '家里的阿里云盘',
+          providerType: RemoteProviderType.aliyunDrive,
+          rootId: 'drive-1:folder-1',
+        ),
+      ],
+    );
+    await pickLocalAndContinue(tester);
+
+    expect(find.byKey(const Key('plain-remote-onedrive-1')), findsOneWidget);
+    expect(find.byKey(const Key('plain-remote-aliyun-1')), findsOneWidget);
+    expect(
+      find.byKey(const Key('plain-unsupported-connections')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('step 2 does not offer a Google Drive backup connection', (
+    tester,
+  ) async {
     await openWizard(tester, connections: [oAuthConnection()]);
     await pickLocalAndContinue(tester);
 
-    // Only WebDAV folders can be mirrored as plain files.
+    // A backup connection only reaches the app's own files and its hidden
+    // folder, not the ordinary folders file sync works on.
     expect(find.byKey(const Key('plain-remote-oauth-1')), findsNothing);
     expect(find.text('网盘'), findsNothing);
     expect(find.text('还没有可用的远端连接'), findsOneWidget);
+    // ... but it is not silently missing: the page names it and says why.
+    expect(
+      find.byKey(const Key('plain-unsupported-connections')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('「网盘」'), findsOneWidget);
+    expect(find.textContaining('允许访问全部文件的 Google Drive 连接'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a Google Drive added here signs in with full access', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [webDavConnection()],
+      platform: TargetPlatform.android,
+    );
+    await pickLocalAndContinue(tester);
+    await tapVisible(
+      tester,
+      find.byKey(const Key('plain-add-another-connection')),
+    );
+    // The sign-in page waits on secure storage, so it never settles here.
+    await tester.ensureVisible(find.byKey(const Key('protocol-googleDrive')));
+    await tester.tap(find.byKey(const Key('protocol-googleDrive')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final page = tester.widget<NewOAuthConnection>(
+      find.byType(NewOAuthConnection),
+    );
+    expect(page.providerType, RemoteProviderType.googleDrive);
+    expect(page.fullDriveAccess, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('step 2 offers a Google Drive connection with full access', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [
+        oAuthConnection(),
+        oAuthConnection(id: 'google-full', name: '我的谷歌', fullDriveAccess: true),
+      ],
+    );
+    await pickLocalAndContinue(tester);
+
+    expect(find.byKey(const Key('plain-remote-google-full')), findsOneWidget);
+    expect(find.byKey(const Key('plain-remote-oauth-1')), findsNothing);
+    expect(find.textContaining('「网盘」'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('step 2 lists every WebDAV connection and names the rest', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [webDavConnection(), oAuthConnection()],
+    );
+    await pickLocalAndContinue(tester);
+
+    expect(find.byKey(const Key('plain-remote-conn-1')), findsOneWidget);
+    expect(find.byKey(const Key('plain-remote-oauth-1')), findsNothing);
+    expect(
+      find.byKey(const Key('plain-unsupported-connections')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('「网盘」'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -274,6 +523,125 @@ void main() {
     // Browsing is read-only: nothing was created and no profile written.
     expect(world.createdFolders, isEmpty);
     expect(await world.listProfiles(), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an unreachable connection can be edited from the picker', (
+    tester,
+  ) async {
+    var reachable = false;
+    final world = await openWizard(
+      tester,
+      connections: [webDavConnection()],
+      platform: TargetPlatform.android,
+      folderListing: (segments) async {
+        if (!reachable) throw const SocketException('Connection refused');
+        return const [WebDavBackupFolder(name: '手机备份')];
+      },
+    );
+    await pickLocalAndContinue(tester);
+    await tapVisible(tester, find.byKey(const Key('plain-remote-conn-1')));
+
+    // Not a dead end with only "go back": the connection itself can be fixed.
+    expect(find.byKey(const Key('backup-folder-error')), findsOneWidget);
+    expect(find.textContaining('检查连接的地址、端口和账号'), findsOneWidget);
+    expect(find.byKey(const Key('backup-folder-retry')), findsOneWidget);
+    final edit = find.byKey(const Key('backup-folder-edit-connection'));
+    expect(edit, findsOneWidget);
+    // It sits with the connection's name and address it changes, not among
+    // the error's buttons.
+    expect(
+      tester.getCenter(edit).dy,
+      lessThan(
+        tester
+                .getTopLeft(find.byKey(const Key('backup-folder-current-path')))
+                .dy +
+            30,
+      ),
+    );
+    expect(
+      tester.getCenter(edit).dx,
+      greaterThan(tester.getCenter(find.byType(BackupFolderPicker)).dx),
+    );
+    expect(find.byKey(const Key('backup-folder-error-edit')), findsNothing);
+
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    expect(find.byType(NewWebDav), findsOneWidget);
+    expect(find.byKey(const Key('webdav-save')), findsOneWidget);
+
+    // Saving returns to the picker, which reads the folders again in place.
+    reachable = true;
+    Navigator.of(tester.element(find.byType(NewWebDav))).pop(true);
+    await tester.pumpAndSettle();
+    expect(find.byType(NewWebDav), findsNothing);
+    expect(find.byType(BackupFolderPicker), findsOneWidget);
+    expect(find.byKey(const Key('backup-folder-error')), findsNothing);
+    expect(find.byKey(const ValueKey('backup-folder-手机备份')), findsOneWidget);
+    expect(world.loadedFolders, [<String>[], <String>[]]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a refused account offers to fix the connection, not retry', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [webDavConnection()],
+      platform: TargetPlatform.android,
+      folderListing: (segments) async =>
+          throw ProviderRequestException.fromStatus(401),
+    );
+    await pickLocalAndContinue(tester);
+    await tapVisible(tester, find.byKey(const Key('plain-remote-conn-1')));
+
+    expect(find.textContaining('拒绝了这个连接的账号或密码'), findsOneWidget);
+    expect(find.byKey(const Key('backup-folder-retry')), findsNothing);
+    final fix = find.byKey(const Key('backup-folder-error-edit'));
+    expect(fix, findsOneWidget);
+    await tester.tap(fix);
+    await tester.pumpAndSettle();
+    expect(find.byType(NewWebDav), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a readable connection can be edited from the picker too', (
+    tester,
+  ) async {
+    await openWizard(
+      tester,
+      connections: [webDavConnection()],
+      platform: TargetPlatform.android,
+    );
+    await pickLocalAndContinue(tester);
+    await tapVisible(tester, find.byKey(const Key('plain-remote-conn-1')));
+    expect(find.byKey(const Key('backup-folder-error')), findsNothing);
+    expect(
+      find.byKey(const Key('backup-folder-edit-connection')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('leaving the editor without saving keeps the picker as it was', (
+    tester,
+  ) async {
+    final world = await openWizard(
+      tester,
+      connections: [webDavConnection()],
+      platform: TargetPlatform.android,
+      folderListing: (segments) async =>
+          throw const SocketException('Connection refused'),
+    );
+    await pickLocalAndContinue(tester);
+    await tapVisible(tester, find.byKey(const Key('plain-remote-conn-1')));
+    await tester.tap(find.byKey(const Key('backup-folder-edit-connection')));
+    await tester.pumpAndSettle();
+
+    Navigator.of(tester.element(find.byType(NewWebDav))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('backup-folder-error')), findsOneWidget);
+    expect(world.loadedFolders, [<String>[]]);
     expect(tester.takeException(), isNull);
   });
 
@@ -556,7 +924,7 @@ void main() {
         tester,
         world,
         path: ['velock-backup'],
-        message: '这个远端文件夹里有格间的加密备份',
+        message: '你选的文件夹 /velock-backup 里有格间的加密备份',
       );
     });
 
@@ -571,7 +939,7 @@ void main() {
         tester,
         world,
         path: ['velock-backup', 'velock-sync'],
-        message: '这个远端文件夹里有格间的加密备份',
+        message: '你选的文件夹 /velock-backup/velock-sync 里有格间的加密备份',
       );
     });
   });

@@ -1,3 +1,4 @@
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -48,6 +49,7 @@ class NewWebDav extends HookConsumerWidget {
     final userController = useTextEditingController();
     final passwordController = useTextEditingController();
     final pathController = useTextEditingController();
+    final nameController = useTextEditingController();
 
     final isLoading = useState(false);
     final hasPrefilled = useRef(false);
@@ -63,9 +65,12 @@ class NewWebDav extends HookConsumerWidget {
       portController.text = existingWebDav.port;
       userController.text = existingWebDav.username ?? '';
       pathController.text = existingWebDav.path ?? '';
+      nameController.text = replacementConnection?.name ?? '';
       hasPrefilled.value = true;
       return null;
-    }, [existingWebDav?.credentialRef]);
+      // Keyed on the connection itself: one without a password has no
+      // credential reference, which stays null from loading to loaded.
+    }, [existingWebDav]);
 
     useEffect(() {
       const http = 'http://';
@@ -162,15 +167,22 @@ class NewWebDav extends HookConsumerWidget {
               : syncText(context, '编辑 WebDAV 连接', 'Edit WebDAV Connection'),
         ),
         trailingActions: [
-          AdaptiveTextButton(
-            padding: EdgeInsets.zero,
+          // An icon, so it keeps its own touch target instead of running
+          // into the "Save" text next to it.
+          AdaptiveIconButton(
+            key: const Key('webdav-help'),
+            icon: Icon(
+              adaptiveIcon(
+                context,
+                material: Icons.help_outline,
+                cupertino: CupertinoIcons.question_circle,
+              ),
+            ),
+            semanticLabel: syncText(context, '配置说明', 'Setup help'),
+            tooltip: syncText(context, '配置说明', 'Setup help'),
             onPressed: () => context.pushNamed(
               AppRoutes.connectionHelp.name,
               queryParameters: {'provider': RemoteProviderType.webDav.name},
-            ),
-            child: Text(
-              syncText(context, '说明', 'Help'),
-              style: TextStyle(color: context.appSecondaryLabel),
             ),
           ),
           AdaptiveTextButton(
@@ -226,6 +238,7 @@ class NewWebDav extends HookConsumerWidget {
                                 .replaceWebDavConnection(
                                   connectionId: replacementConnection.id,
                                   protocol: protocolModel,
+                                  name: nameController.text,
                                 );
                           } else {
                             final connectionCreation = ref.read(
@@ -233,6 +246,7 @@ class NewWebDav extends HookConsumerWidget {
                             );
                             await connectionCreation.setProtocolAndFinalize(
                               protocolModel: protocolModel,
+                              name: nameController.text,
                             );
                           }
                           connectionPersisted = true;
@@ -321,6 +335,7 @@ class NewWebDav extends HookConsumerWidget {
                 userController: userController,
                 passwordController: passwordController,
                 pathController: pathController,
+                nameController: nameController,
                 passwordOptional: existingWebDav?.credentialRef != null,
                 onEnableHTTPSChanged: onHttpsChanged,
               ),
@@ -338,6 +353,7 @@ class _WebDavFormFields extends StatelessWidget {
   final TextEditingController userController;
   final TextEditingController passwordController;
   final TextEditingController pathController;
+  final TextEditingController nameController;
   final bool enableHTTPS;
   final bool passwordOptional;
   final ValueChanged<bool> onEnableHTTPSChanged;
@@ -348,6 +364,7 @@ class _WebDavFormFields extends StatelessWidget {
     required this.userController,
     required this.passwordController,
     required this.pathController,
+    required this.nameController,
     required this.enableHTTPS,
     required this.passwordOptional,
     required this.onEnableHTTPSChanged,
@@ -425,6 +442,13 @@ class _WebDavFormFields extends StatelessWidget {
     ];
 
     final formOptionalChildren = [
+      AdaptiveTextFormField(
+        key: const ValueKey('webdav_name'),
+        label: syncText(context, '名称', 'Name'),
+        controller: nameController,
+        maxLines: 1,
+        hint: syncText(context, '不填则用服务器地址', 'Defaults to the server address'),
+      ),
       AdaptiveTextFormField(
         key: const ValueKey('webdav_path'),
         label: syncText(context, '子路径', 'Subpath'),

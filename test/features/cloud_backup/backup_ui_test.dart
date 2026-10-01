@@ -430,7 +430,7 @@ void main() {
     },
   );
 
-  testWidgets('home refresh action does not return a Future from setState', (
+  testWidgets('home reloads by pulling down, not by a header button', (
     tester,
   ) async {
     await repository.save(_profile());
@@ -439,9 +439,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final refresh = find.byTooltip('刷新状态');
-    expect(refresh, findsOneWidget);
-    await tester.tap(refresh);
+    // The header button only re-read this device's own records, which the
+    // page already does after every action, so it was removed.
+    expect(find.byTooltip('刷新状态'), findsNothing);
+    await tester.fling(find.text('我的格间'), const Offset(0, 400), 1000);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

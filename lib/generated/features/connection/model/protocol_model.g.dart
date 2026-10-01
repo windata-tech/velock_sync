@@ -47,6 +47,7 @@ OAuthProtocolModel _$OAuthProtocolModelFromJson(Map<String, dynamic> json) =>
       credentialRef: json['credentialRef'] as String,
       rootId: json['rootId'] as String,
       accountLabel: json['accountLabel'] as String?,
+      fullDriveAccess: json['fullDriveAccess'] as bool? ?? false,
       $type: json['runtimeType'] as String?,
     );
 
@@ -57,6 +58,7 @@ Map<String, dynamic> _$OAuthProtocolModelToJson(OAuthProtocolModel instance) =>
       'credentialRef': instance.credentialRef,
       'rootId': instance.rootId,
       'accountLabel': instance.accountLabel,
+      'fullDriveAccess': instance.fullDriveAccess,
       'runtimeType': instance.$type,
     };
 

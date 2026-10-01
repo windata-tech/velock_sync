@@ -104,6 +104,16 @@ class BaiduContractCloud extends ContractCloud {
 
   List<String> get storedPaths => _files.keys.toList();
 
+  /// Absolute folder paths, including parents created by uploads.
+  Set<String> get directories => Set.unmodifiable(_directories);
+
+  /// Creates a folder (and its parents) without any file in it.
+  void addDirectory(String path) {
+    for (var at = path.length; at > 0; at = path.lastIndexOf('/', at - 1)) {
+      _directories.add(path.substring(0, at));
+    }
+  }
+
   @override
   Future<RemoteObjectStore> createStore({
     required OAuthAccessTokenProvider tokens,
@@ -297,6 +307,14 @@ class BaiduContractCloud extends ContractCloud {
 
   ResponseBody _create(Map<String, String> form) {
     final path = form['path']!;
+    if (form['isdir'] == '1') {
+      expect(form['rtype'], '0', reason: 'folders must never be renamed');
+      if (_directories.contains(path) || _files.containsKey(path)) {
+        return _errno(-8);
+      }
+      addDirectory(path);
+      return _ok({..._directoryJson(path), 'ctime': 1893499200});
+    }
     final upload = _uploads.remove(form['uploadid']);
     if (upload == null || upload.path != path) return _errno(31299);
     final blocks = (jsonDecode(form['block_list']!) as List).cast<String>();
@@ -321,7 +339,13 @@ class BaiduContractCloud extends ContractCloud {
     final paths = (jsonDecode(form['filelist']!) as List).cast<String>();
     final info = <Map<String, Object?>>[];
     for (final path in paths) {
-      final removed = _files.remove(path) != null;
+      var removed = _files.remove(path) != null;
+      if (_directories.contains(path) && path != '/') {
+        // Deleting a folder removes everything inside it.
+        _directories.removeWhere((d) => d == path || d.startsWith('$path/'));
+        _files.removeWhere((f, _) => f.startsWith('$path/'));
+        removed = true;
+      }
       info.add({'path': path, 'errno': removed ? 0 : -9});
     }
     final failed = info.any((entry) => entry['errno'] != 0);

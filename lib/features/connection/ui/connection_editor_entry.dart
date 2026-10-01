@@ -23,7 +23,11 @@ Future<bool> openConnectionEditor(
       ? await context.pushNamed<bool>(
           AppRoutes.newOAuth.name,
           pathParameters: {'provider': protocol.providerType.name},
-          queryParameters: query,
+          // Signing in again keeps the access the connection was made with.
+          queryParameters: {
+            ...query,
+            if (protocol.fullDriveAccess) 'access': oauthFullDriveAccess,
+          },
         )
       : await context.pushNamed<bool>(
           AppRoutes.newWebDav.name,

@@ -247,13 +247,6 @@ class _SyncProfileDetailState extends ConsumerState<SyncProfileDetail>
         title: profile.kind == SyncDatasetKind.velockManaged
             ? syncText(context, '格间备份', 'Velock backup')
             : profile.displayName,
-        actions: [
-          AdaptiveIconButton(
-            tooltip: syncText(context, '刷新', 'Refresh'),
-            icon: const Icon(CupertinoIcons.refresh),
-            onPressed: _refresh,
-          ),
-        ],
         body: _DetailMaterialSurface(
           child: _OverviewTab(
             profile: profile,

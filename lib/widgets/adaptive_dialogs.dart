@@ -5,15 +5,18 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../appearance/design_tokens.dart';
+import 'app_dialog.dart';
 import 'automation_id.dart';
+
+export 'app_dialog.dart' show AppActionSheet, AppDialog, AppDialogTextField;
 
 /// Platform-adaptive dialogs.
 ///
 /// Every dialog in the app is created here so a page can never mix a Material
 /// dialog into a Cupertino tree (or the other way around):
 ///
-/// * Apple platforms get the native presentation — [CupertinoAlertDialog] for
-///   alerts and [CupertinoActionSheet] for choices.
+/// * Apple platforms get the app's own [AppDialog] for alerts and forms and
+///   [AppActionSheet] for choices (floating cards in the current iOS style).
 /// * Every other platform gets the Material equivalent — [AlertDialog] or a
 ///   [SimpleDialog] option list.
 ///
@@ -27,9 +30,13 @@ class AdaptiveAction<T> {
     required this.label,
     required this.value,
     this.caption,
+    this.icon,
     this.key,
     this.isDestructive = false,
   });
+
+  /// Leading symbol on Apple platforms.
+  final Widget? icon;
 
   /// Primary line of the option.
   final String label;
@@ -64,10 +71,10 @@ class AdaptiveAlertAction<T> {
   final T? value;
   final Key? key;
 
-  /// Disabled actions are greyed out and cannot be pressed.
+  /// Disabled actions are dimmed and cannot be pressed.
   final bool enabled;
 
-  /// Apple platforms render this as the preferred action.
+  /// The suggested answer; Apple platforms fill it with the brand colour.
   final bool isDefault;
 
   final bool isDestructive;
@@ -108,32 +115,25 @@ Future<T?> showAdaptiveActionSheet<T>({
   if (actions.isEmpty) return Future<T?>.value();
 
   if (isApplePlatform(context)) {
-    return showCupertinoModalPopup<T>(
+    return showAppActionSheet<T>(
       context: context,
       barrierDismissible: barrierDismissible,
-      builder: (sheetContext) => CupertinoActionSheet(
-        title: title == null ? null : Text(title),
-        message: message == null ? null : Text(message),
-        actions: [
+      builder: (sheetContext) => AppActionSheet(
+        title: title,
+        message: message,
+        options: [
           for (final action in actions)
-            withAutomationId(
-              action.key,
-              CupertinoActionSheetAction(
-                key: action.key,
-                isDestructiveAction: action.isDestructive,
-                onPressed: () => Navigator.of(sheetContext).pop(action.value),
-                child: _SheetLabel(
-                  label: action.label,
-                  caption: action.caption,
-                ),
-              ),
+            AppSheetOption(
+              key: action.key,
+              label: action.label,
+              caption: action.caption,
+              icon: action.icon,
+              isDestructive: action.isDestructive,
+              onPressed: () => Navigator.of(sheetContext).pop(action.value),
             ),
         ],
-        cancelButton: CupertinoActionSheetAction(
-          isDefaultAction: true,
-          onPressed: () => Navigator.of(sheetContext).pop(),
-          child: Text(cancelLabel ?? syncText(context, '取消', 'Cancel')),
-        ),
+        cancelLabel: cancelLabel ?? syncText(sheetContext, '取消', 'Cancel'),
+        onCancel: () => Navigator.of(sheetContext).pop(),
       ),
     );
   }
@@ -210,27 +210,19 @@ Future<T?> showAdaptiveAlert<T>({
   bool barrierDismissible = true,
 }) {
   if (isApplePlatform(context)) {
-    return showCupertinoDialog<T>(
+    return showAppDialog<T>(
       context: context,
       barrierDismissible: barrierDismissible,
-      builder: (dialogContext) => CupertinoAlertDialog(
-        title: Text(title),
-        content: _AlertBody(message: message, details: details, icon: icon),
-        actions: [
-          for (final action in actions)
-            withAutomationId(
-              action.key,
-              CupertinoDialogAction(
-                key: action.key,
-                isDefaultAction: action.isDefault,
-                isDestructiveAction: action.isDestructive,
-                onPressed: action.enabled
-                    ? () => Navigator.of(dialogContext).pop(action.value)
-                    : null,
-                child: Text(action.label),
+      builder: (dialogContext) => AppDialog(
+        title: title,
+        icon: icon,
+        tint: _tintFor(dialogContext, actions),
+        content: message == null && details == null
+            ? null
+            : SingleChildScrollView(
+                child: _AlertBody(message: message, details: details),
               ),
-            ),
-        ],
+        buttons: _appButtons(dialogContext, actions),
       ),
     );
   }
@@ -369,30 +361,19 @@ Future<T?> showAdaptiveForm<T>({
     StateSetter setDialogState,
   )
   builder,
+  Widget? icon,
   bool barrierDismissible = true,
 }) {
   Widget dialog(BuildContext dialogContext) => StatefulBuilder(
     builder: (context, setDialogState) {
       final spec = builder(context, setDialogState);
       if (isApplePlatform(context)) {
-        return CupertinoAlertDialog(
-          title: Text(title),
+        return AppDialog(
+          title: title,
+          icon: icon,
+          tint: _tintFor(context, spec.actions),
           content: spec.content,
-          actions: [
-            for (final action in spec.actions)
-              withAutomationId(
-                action.key,
-                CupertinoDialogAction(
-                  key: action.key,
-                  isDefaultAction: action.isDefault,
-                  isDestructiveAction: action.isDestructive,
-                  onPressed: action.enabled
-                      ? () => Navigator.of(context).pop(action.value)
-                      : null,
-                  child: Text(action.label),
-                ),
-              ),
-          ],
+          buttons: _appButtons(context, spec.actions),
         );
       }
       final scheme = Theme.of(context).colorScheme;
@@ -438,7 +419,7 @@ Future<T?> showAdaptiveForm<T>({
   );
 
   if (isApplePlatform(context)) {
-    return showCupertinoDialog<T>(
+    return showAppDialog<T>(
       context: context,
       barrierDismissible: barrierDismissible,
       builder: dialog,
@@ -480,10 +461,7 @@ Future<List<String>?> showAdaptiveTextInputs({
   );
 
   if (isApplePlatform(context)) {
-    return showCupertinoDialog<List<String>>(
-      context: context,
-      builder: builder,
-    );
+    return showAppDialog<List<String>>(context: context, builder: builder);
   }
   return showDialog<List<String>>(context: context, builder: builder);
 }
@@ -718,23 +696,20 @@ class _SheetLabel extends StatelessWidget {
 }
 
 class _AlertBody extends StatelessWidget {
-  const _AlertBody({this.message, this.details, this.icon});
+  const _AlertBody({this.message, this.details});
 
   final String? message;
   final Widget? details;
-  final Widget? icon;
 
   @override
   Widget build(BuildContext context) {
     final children = <Widget>[
-      if (icon != null)
-        Padding(padding: const EdgeInsets.only(bottom: 8), child: icon),
       if (message != null)
         Text(
           message!,
-          textAlign: isApplePlatform(context)
-              ? TextAlign.center
-              : TextAlign.start,
+          style: isApplePlatform(context)
+              ? TextStyle(color: context.appSecondaryLabel)
+              : null,
         ),
       if (details != null) ...[
         if (message != null) const SizedBox(height: 12),
@@ -745,13 +720,41 @@ class _AlertBody extends StatelessWidget {
     if (children.length == 1) return children.single;
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: isApplePlatform(context)
-          ? CrossAxisAlignment.center
-          : CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: children,
     );
   }
 }
+
+/// Capsule buttons for [AppDialog]; each pops the dialog with its value.
+List<AppDialogButton> _appButtons<T>(
+  BuildContext context,
+  List<AdaptiveAlertAction<T>> actions,
+) => [
+  for (final action in actions)
+    AppDialogButton(
+      key: action.key,
+      label: action.label,
+      onPressed: action.enabled
+          ? () => Navigator.of(context).pop(action.value)
+          : null,
+      role: switch ((
+        action.isDestructive,
+        action.emphasized || action.isDefault,
+      )) {
+        (true, true) => AppDialogButtonRole.destructive,
+        (true, false) => AppDialogButtonRole.destructiveQuiet,
+        (false, true) => AppDialogButtonRole.primary,
+        (false, false) => AppDialogButtonRole.neutral,
+      },
+    ),
+];
+
+/// A dialog that offers to remove something wears a red symbol.
+Color? _tintFor<T>(
+  BuildContext context,
+  List<AdaptiveAlertAction<T>> actions,
+) => actions.any((action) => action.isDestructive) ? context.appDanger : null;
 
 class _AdaptiveTextForm extends StatefulWidget {
   const _AdaptiveTextForm({
@@ -824,27 +827,23 @@ class _AdaptiveTextFormState extends State<_AdaptiveTextForm> {
     ];
 
     if (isApplePlatform(context)) {
-      return CupertinoAlertDialog(
-        title: Text(widget.title),
+      return AppDialog(
+        title: widget.title,
         content: _formBody(
           context,
-          messageStyle: TextStyle(
-            fontSize: 13,
-            height: 1.35,
-            color: context.appSecondaryLabel,
-          ),
+          messageStyle: TextStyle(color: context.appSecondaryLabel),
           fields: fields,
         ),
-        actions: [
-          CupertinoDialogAction(
+        buttons: [
+          AppDialogButton(
+            label: widget.cancelLabel,
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(widget.cancelLabel),
           ),
-          CupertinoDialogAction(
+          AppDialogButton(
             key: widget.confirmKey,
-            isDefaultAction: true,
+            label: widget.confirmLabel,
+            role: AppDialogButtonRole.primary,
             onPressed: _canSubmit ? _submit : null,
-            child: Text(widget.confirmLabel),
           ),
         ],
       );
@@ -880,8 +879,9 @@ class _AdaptiveTextFormState extends State<_AdaptiveTextForm> {
         children: [
           if (message != null) ...[
             Text(message, style: messageStyle, textAlign: TextAlign.start),
-            const SizedBox(height: 12),
-          ],
+            const SizedBox(height: 14),
+          ] else
+            const SizedBox(height: 8),
           ...fields,
         ],
       ),
@@ -893,26 +893,15 @@ class _AdaptiveTextFormState extends State<_AdaptiveTextForm> {
     final controller = _controllers[index];
 
     if (isApplePlatform(context)) {
-      return CupertinoTextField(
+      return AppDialogTextField(
         controller: controller,
+        autofocus: index == 0,
         placeholder: input.placeholder ?? input.label,
-        placeholderStyle: TextStyle(
-          fontSize: 14,
-          color: context.appTertiaryLabel,
-        ),
         obscureText: input.obscureText,
         minLines: input.minLines,
         maxLines: input.maxLines,
         autocorrect: input.autocorrect,
-        style: const TextStyle(fontSize: 14),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: context.appGroupedSurface.withValues(alpha: 0.7),
-          border: Border.all(
-            color: context.appSeparator.withValues(alpha: 0.5),
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
+        onSubmitted: (_) => _submit(),
       );
     }
 

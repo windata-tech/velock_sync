@@ -78,16 +78,31 @@ ProviderCapabilitySummary providerCapabilitySummary(
       'The password is kept in the system secure storage, never in connection records, backups or logs',
     ),
   ),
-  OAuthProtocolModel(providerType: RemoteProviderType.googleDrive) =>
+  OAuthProtocolModel(
+    providerType: RemoteProviderType.googleDrive,
+    :final fullDriveAccess,
+  ) =>
     ProviderCapabilitySummary(
       providerName: 'Google Drive',
       features: _oauthFeatures(context),
       limitations: [
-        _t(
-          context,
-          '只能访问你授权给 Sync 的文件和已选择的目录',
-          'Only the files granted to Sync and the folders you choose are accessible',
-        ),
+        if (fullDriveAccess) ...[
+          _t(
+            context,
+            '这个连接可以访问 Google Drive 里的全部文件，用于同步你选的普通文件夹',
+            'This connection can reach all of your Google Drive files, to sync the ordinary folder you chose',
+          ),
+          _t(
+            context,
+            '同一个文件夹里有同名的文件或文件夹时会停止同步；Google 文档、表格和快捷方式不会被同步',
+            'Sync stops when one folder holds several items with the same name; Google Docs, Sheets and shortcuts are not synced',
+          ),
+        ] else
+          _t(
+            context,
+            '只能访问你授权给 Sync 的文件和已选择的目录',
+            'Only the files granted to Sync and the folders you choose are accessible',
+          ),
         _oauthResumeLimitation(context),
       ],
       credentials: _oauthCredentials(context),

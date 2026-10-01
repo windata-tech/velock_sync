@@ -529,7 +529,6 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
           material: Icons.sync_problem_outlined,
           cupertino: CupertinoIcons.exclamationmark_circle,
         ),
-        color: context.appSecondaryLabel,
       ),
       actions: [
         AdaptiveAlertAction<_PairingRecoveryAction>(

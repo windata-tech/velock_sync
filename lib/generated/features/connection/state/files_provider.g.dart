@@ -50,7 +50,7 @@ final class RemoteFileBrowserProvider
   }
 }
 
-String _$remoteFileBrowserHash() => r'60fd8969e5fd2c43014f80f0ddd56a8e740cfb90';
+String _$remoteFileBrowserHash() => r'6b48877e4380efd0967fea8abdf7d2e28b9cdfd9';
 
 final class RemoteFileBrowserFamily extends $Family
     with

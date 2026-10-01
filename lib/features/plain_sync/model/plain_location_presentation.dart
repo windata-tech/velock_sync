@@ -253,8 +253,28 @@ String plainFailureMessage(
     ),
     'plain_folder.remote_unsupported' => syncText(
       context,
-      '这个远端不支持文件夹同步。请改用 WebDAV 连接，例如 NAS。',
-      'This remote does not support folder sync. Use a WebDAV connection, for example a NAS.',
+      '这个连接不能用于文件夹同步。请改用 WebDAV（例如 NAS）、OneDrive、百度网盘或阿里云盘；Google Drive 需要在添加同步位置时新建一个允许访问全部文件的连接。',
+      'This connection cannot be used for folder sync. Use WebDAV (for example a NAS), OneDrive, Baidu Netdisk or Aliyun Drive; for Google Drive, add a new connection with access to all files while adding the sync location.',
+    ),
+    'provider.baidu.unsupported_name' => syncText(
+      context,
+      '有文件名里含有百度网盘不允许的字符（\\ ? | " < > : *）。请在本机改名后再同步。',
+      'A file name contains characters Baidu Netdisk does not allow (\\ ? | " < > : *). Rename it on this device, then sync again.',
+    ),
+    'provider.onedrive.unsupported_name' => syncText(
+      context,
+      '有文件名里含有 OneDrive 不允许的字符（" * : < > ? \\ |）。请在本机改名后再同步。',
+      'A file name contains characters OneDrive does not allow (" * : < > ? \\ |). Rename it on this device, then sync again.',
+    ),
+    'provider.aliyun.unsupported_name' => syncText(
+      context,
+      '有文件名阿里云盘不能保存。请在本机改名后再同步。',
+      'A file name cannot be stored on Aliyun Drive. Rename it on this device, then sync again.',
+    ),
+    'provider.google.duplicate_name' => syncText(
+      context,
+      'Google Drive 的同一个文件夹里有同名的文件、文件夹或 Google 文档，Sync 分不清该用哪一个，这次没有继续同步。请在 Google Drive 里把多余的改名或删除后再同步。',
+      'One Google Drive folder holds several files, folders or Google Docs with the same name, so Sync cannot tell which one is meant and stopped. Rename or remove the extra ones in Google Drive, then sync again.',
     ),
     'plain_folder.remote_too_large' => syncText(
       context,
@@ -418,8 +438,8 @@ String plainFailureMessage(
   if (code.startsWith('provider.oauth.')) {
     return syncText(
       context,
-      '云盘连接的授权不完整，文件夹同步也不支持云盘连接。请改用 WebDAV 连接，例如 NAS。',
-      'This cloud connection is missing its authorization, and folder sync does not support cloud drives. Use a WebDAV connection, for example a NAS.',
+      '云盘连接的登录不完整或已失效。请在“连接”页重新登录这个网盘后再同步。',
+      'This cloud drive sign-in is incomplete or has expired. Sign in to the drive again on the Connections page, then sync.',
     );
   }
   if (code.startsWith('provider.webdav.')) {

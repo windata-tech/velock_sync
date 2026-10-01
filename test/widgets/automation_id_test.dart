@@ -11,13 +11,12 @@ import 'package:velock_sync/widgets/adaptive_widgets.dart';
 void main() {
   for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
     group(platform.name, () {
-      Future<void> pump(WidgetTester tester, Widget child) =>
-          tester.pumpWidget(
-            MaterialApp(
-              theme: ThemeData(platform: platform),
-              home: Scaffold(body: ListView(children: [child])),
-            ),
-          );
+      Future<void> pump(WidgetTester tester, Widget child) => tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: platform),
+          home: Scaffold(body: ListView(children: [child])),
+        ),
+      );
 
       void expectTappable(WidgetTester tester, String id, String label) {
         final finder = find.bySemanticsIdentifier(id);
@@ -88,10 +87,7 @@ void main() {
 
       testWidgets('unkeyed controls stay as they were', (tester) async {
         final handle = tester.ensureSemantics();
-        await pump(
-          tester,
-          BackupActionButton(label: '开始备份', onPressed: () {}),
-        );
+        await pump(tester, BackupActionButton(label: '开始备份', onPressed: () {}));
         expect(
           find.byWidgetPredicate(
             (widget) =>

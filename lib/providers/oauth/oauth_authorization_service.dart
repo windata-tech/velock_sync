@@ -1,5 +1,6 @@
 import 'package:velock_sync/infrastructure/secure_storage/credential_store.dart';
 import 'package:velock_sync/providers/oauth/oauth_authorization_session.dart';
+import 'package:velock_sync/providers/oauth/oauth_token_bundle.dart';
 import 'package:velock_sync/providers/oauth/oauth_token_client.dart';
 
 /// OAuth details for one provider. Google and Microsoft are public PKCE
@@ -48,6 +49,42 @@ class OAuthAuthorizationConfig {
         tokenRequestFormat: tokenRequestFormat,
         persistClientSecret: secret != null,
       );
+
+  /// Whether Google granted full Drive access. Its consent page lets the
+  /// user untick a permission, so the requested scope is not a given; a grant
+  /// that does not name its scopes counts as without it.
+  static bool grantsGoogleFullDriveAccess(OAuthTokenBundle? tokens) =>
+      tokens != null && tokens.scopes.contains(googleDriveFullScope);
+
+  /// The same sign-in asking for [scopes] instead.
+  OAuthAuthorizationConfig withScopes(Set<String> scopes) =>
+      OAuthAuthorizationConfig(
+        providerId: providerId,
+        authorizationEndpoint: authorizationEndpoint,
+        tokenEndpoint: tokenEndpoint,
+        clientId: clientId,
+        redirectUri: redirectUri,
+        scopes: scopes,
+        revocationEndpoint: revocationEndpoint,
+        additionalParameters: additionalParameters,
+        clientSecret: clientSecret,
+        tokenRequestFormat: tokenRequestFormat,
+        persistClientSecret: persistClientSecret,
+      );
+
+  /// Google's full Drive scope: every file and folder of My Drive. File sync
+  /// needs it to keep an ordinary, visible folder in step; it is a restricted
+  /// scope, so Google warns that an unverified app wants it.
+  static const googleDriveFullScope = 'https://www.googleapis.com/auth/drive';
+
+  /// The Google sign-in for a file-sync connection: only the full scope.
+  /// The hidden app folder of backup connections is not part of it.
+  OAuthAuthorizationConfig withGoogleFullDriveAccess() {
+    if (providerId != 'googleDrive') {
+      throw StateError('Full Drive access is a Google Drive sign-in.');
+    }
+    return withScopes(const {googleDriveFullScope});
+  }
 
   /// Google Drive public-client authorization. `drive.file` limits it to files
   /// the app creates or the user explicitly selects for the app; `drive.appdata`

@@ -16,6 +16,7 @@ import 'package:velock_sync/features/connection/ui/connection_info_sheet.dart';
 import 'package:velock_sync/features/connection/ui/remote_provider_icon.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
+import 'package:velock_sync/widgets/connection_settings_glyph.dart';
 
 class Connections extends HookConsumerWidget {
   const Connections({super.key});
@@ -78,7 +79,7 @@ class Connections extends HookConsumerWidget {
             icon: const Icon(CupertinoIcons.add),
           ),
         AdaptiveIconButton(
-          tooltip: syncText(context, '刷新连接状态', 'Refresh Connection Status'),
+          tooltip: syncText(context, '检查连接状态', 'Check connections'),
           onPressed: isRefreshing.value ? null : refreshConnections,
           icon: isRefreshing.value
               ? (isApplePlatform(context)
@@ -92,7 +93,7 @@ class Connections extends HookConsumerWidget {
                   adaptiveIcon(
                     context,
                     material: Icons.refresh_rounded,
-                    cupertino: CupertinoIcons.refresh,
+                    cupertino: CupertinoIcons.arrow_clockwise,
                   ),
                 ),
         ),
@@ -299,16 +300,19 @@ class _ConnectionTile extends StatelessWidget {
                 value: _ConnectionAction.info,
                 label: syncText(context, '连接说明', 'Connection info'),
                 icon: Icons.info_outline,
+                appleIcon: const Icon(CupertinoIcons.info_circle),
               ),
               AdaptiveActionItem(
                 value: _ConnectionAction.edit,
                 label: syncText(context, '修改连接', 'Edit Connection'),
                 icon: Icons.edit_outlined,
+                appleIcon: const ConnectionSettingsGlyph(size: 22),
               ),
               AdaptiveActionItem(
                 value: _ConnectionAction.delete,
                 label: syncText(context, '删除连接', 'Delete Connection'),
                 icon: Icons.delete_outline_rounded,
+                appleIcon: const Icon(CupertinoIcons.trash),
                 isDestructive: true,
               ),
             ],

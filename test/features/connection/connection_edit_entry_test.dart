@@ -46,16 +46,17 @@ ConnectionModel _webDav() => ConnectionModel(
   status: ConnectionStatus.active,
 );
 
-ConnectionModel _oAuth() => ConnectionModel(
+ConnectionModel _oAuth({bool fullDriveAccess = false}) => ConnectionModel(
   id: 'conn-oauth',
   name: 'Google Drive',
   source: 'googleDrive',
   target: 'Google Drive',
-  protocol: const OAuthProtocolModel(
+  protocol: OAuthProtocolModel(
     providerType: RemoteProviderType.googleDrive,
     clientId: 'client-1',
     credentialRef: 'cred-2',
     rootId: 'root',
+    fullDriveAccess: fullDriveAccess,
   ),
   createdAt: DateTime(2026),
   updatedAt: DateTime(2026),
@@ -101,7 +102,8 @@ Future<GoRouter> _mount(WidgetTester tester, ConnectionModel connection) async {
         path: '/protocol/:provider/oauth/new',
         builder: (_, state) => Text(
           'OAuth 授权页 ${state.pathParameters['provider']} '
-          'replace=${state.uri.queryParameters['replace']}',
+          'replace=${state.uri.queryParameters['replace']}'
+          '${state.uri.queryParameters.containsKey('access') ? ' access=${state.uri.queryParameters['access']}' : ''}',
         ),
       ),
     ],
@@ -195,6 +197,18 @@ void main() {
 
     expect(
       find.text('OAuth 授权页 googleDrive replace=conn-oauth'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('signing in again keeps full Drive access for file sync', (
+    tester,
+  ) async {
+    await _mount(tester, _oAuth(fullDriveAccess: true));
+    await _openEdit(tester);
+
+    expect(
+      find.text('OAuth 授权页 googleDrive replace=conn-oauth access=full'),
       findsOneWidget,
     );
   });

@@ -16,7 +16,6 @@ import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_providers.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
-import 'package:velock_sync/widgets/adaptive_dialogs.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
 class VelockBackupRebuildPage extends ConsumerStatefulWidget {

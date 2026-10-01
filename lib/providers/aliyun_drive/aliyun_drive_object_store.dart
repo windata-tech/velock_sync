@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -8,6 +9,7 @@ import 'package:velock_sync/providers/provider_cancellation.dart';
 import 'package:velock_sync/providers/provider_rate_limit_retry.dart';
 import 'package:velock_sync/providers/provider_request_exception.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
+import 'package:velock_sync/sync_core/model/sync_failure.dart';
 import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
@@ -133,6 +135,22 @@ class AliyunDriveObjectStore implements RemoteObjectStore {
     _validateKey(logicalKey);
     final file = await _find(logicalKey, cancellation: cancellation);
     if (file == null) throw RemoteObjectNotFoundException(logicalKey);
+    yield* _downloadFile(
+      file,
+      logicalKey,
+      start: start,
+      endInclusive: endInclusive,
+      cancellation: cancellation,
+    );
+  }
+
+  Stream<List<int>> _downloadFile(
+    Map<String, dynamic> file,
+    String logicalKey, {
+    int? start,
+    int? endInclusive,
+    RemoteOperationCancellation? cancellation,
+  }) async* {
     final link = await _call(
       'openFile/getDownloadUrl',
       {'drive_id': file['drive_id'], 'file_id': file['file_id']},
@@ -188,15 +206,41 @@ class AliyunDriveObjectStore implements RemoteObjectStore {
       await _deleteFile(existing, cancellation: cancellation);
     }
     final root = await _resolveRoot(cancellation);
+    final completed = await _uploadFile(
+      driveId: root.folder.driveId,
+      parentId: root.folder.fileId,
+      name: _name(logicalKey),
+      content: content,
+      contentLength: contentLength,
+      logicalKey: logicalKey,
+      cancellation: cancellation,
+    );
+    if (completed['name'] is String && completed['name'] != _name(logicalKey)) {
+      throw const AliyunDriveException('Upload was stored under a new name.');
+    }
+    return _metadata(logicalKey, completed);
+  }
+
+  /// Creates [name] inside [parentId] (refusing an existing name), sends the
+  /// parts and returns the completed file.
+  Future<Map<String, dynamic>> _uploadFile({
+    required String driveId,
+    required String parentId,
+    required String name,
+    required Stream<List<int>> content,
+    required int contentLength,
+    required String logicalKey,
+    RemoteOperationCancellation? cancellation,
+  }) async {
     final partCount = contentLength == 0
         ? 1
         : (contentLength + _partBytes - 1) ~/ _partBytes;
     final created = await _call(
       'openFile/create',
       {
-        'drive_id': root.folder.driveId,
-        'parent_file_id': root.folder.fileId,
-        'name': _name(logicalKey),
+        'drive_id': driveId,
+        'parent_file_id': parentId,
+        'name': name,
         'type': 'file',
         'check_name_mode': 'refuse',
         'size': contentLength,
@@ -253,7 +297,7 @@ class AliyunDriveObjectStore implements RemoteObjectStore {
         if (status == 403 && attempt == 0) {
           // Upload URLs expire; ask for fresh ones and resend this part.
           final refreshed = await _call('openFile/getUploadUrl', {
-            'drive_id': root.folder.driveId,
+            'drive_id': driveId,
             'file_id': fileId,
             'upload_id': uploadId,
             'part_info_list': [
@@ -291,14 +335,11 @@ class AliyunDriveObjectStore implements RemoteObjectStore {
       );
     }
     final completed = await _call('openFile/complete', {
-      'drive_id': root.folder.driveId,
+      'drive_id': driveId,
       'file_id': fileId,
       'upload_id': uploadId,
     }, cancellation: cancellation);
-    if (completed['name'] is String && completed['name'] != _name(logicalKey)) {
-      throw const AliyunDriveException('Upload was stored under a new name.');
-    }
-    return _metadata(logicalKey, completed);
+    return completed;
   }
 
   @override
@@ -325,6 +366,11 @@ class AliyunDriveObjectStore implements RemoteObjectStore {
       cancellation: cancellation,
     );
   }
+
+  /// This drive seen as a plain folder tree under [scope] (folder names
+  /// below the connection's root folder) for the file-sync mirror.
+  AliyunDriveMirrorStore asMirror({List<String> scope = const []}) =>
+      AliyunDriveMirrorStore._(this, List.unmodifiable(scope));
 
   /// Lists the folders directly inside [parentId] (an encoded folder ref, or
   /// null for the default drive root) for the location picker. Returned IDs
@@ -650,4 +696,364 @@ class AliyunDriveException implements Exception {
   final String message;
   @override
   String toString() => 'AliyunDriveException: $message';
+}
+
+/// Aliyun Drive as a plain folder tree, for the file-sync mirror.
+///
+/// Files and folders keep their real names below the connection's root
+/// folder. [list] returns the direct children of one folder (folders included)
+/// and fails when that folder is missing, so an unreadable remote is never
+/// mistaken for an empty one. Deletes go to the Aliyun recycle bin.
+///
+/// Aliyun cannot overwrite a file in place, so a replacement is uploaded under
+/// a hidden temporary name first; only after it is complete does the old file
+/// move to the recycle bin and the new one take its name. A failed upload
+/// therefore never costs the remote its previous version.
+class AliyunDriveMirrorStore
+    implements RemoteObjectStore, RemoteCollectionCreator {
+  AliyunDriveMirrorStore._(this._store, this._scope);
+
+  final AliyunDriveObjectStore _store;
+  final List<String> _scope;
+  static final _random = Random.secure();
+
+  @override
+  RemoteCapabilities get capabilities => _store.capabilities;
+
+  @override
+  Future<RemoteObjectMetadata?> stat(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    _validate(logicalKey);
+    final item = await _get(_segments(logicalKey), cancellation);
+    return item == null ? null : _metadata(logicalKey, item);
+  }
+
+  @override
+  Future<RemoteObjectPage> list({
+    String prefix = '',
+    String? cursor,
+    int limit = 100,
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    if (limit < 1) throw ArgumentError.value(limit, 'limit');
+    if (prefix.isNotEmpty) _validate(prefix);
+    final folder = await _get(_segments(prefix), cancellation);
+    if (folder == null || folder['type'] != 'folder') {
+      throw RemoteObjectNotFoundException(prefix);
+    }
+    final data = await _store._call(
+      'openFile/list',
+      {
+        'drive_id': folder['drive_id'],
+        'parent_file_id': folder['file_id'],
+        'limit': limit > AliyunDriveObjectStore._pageSize
+            ? AliyunDriveObjectStore._pageSize
+            : limit,
+        'marker': ?cursor,
+        'order_by': 'name',
+        'order_direction': 'ASC',
+      },
+      acceptNotFound: true,
+      retryServerErrors: true,
+      cancellation: cancellation,
+    );
+    if (data['_status'] == 404) throw RemoteObjectNotFoundException(prefix);
+    final parent = prefix.isEmpty ? '' : '$prefix/';
+    final items = <String, RemoteObjectMetadata>{};
+    for (final item in AliyunDriveObjectStore._items(data['items'])) {
+      final name = item['name'];
+      final type = item['type'];
+      if (name is! String || (type != 'file' && type != 'folder')) continue;
+      final key = '$parent$name';
+      items.putIfAbsent(key, () => _metadata(key, item));
+    }
+    final next = data['next_marker'];
+    return RemoteObjectPage(
+      items: items.values.toList(),
+      nextCursor: next is String && next.isNotEmpty ? next : null,
+    );
+  }
+
+  @override
+  Stream<List<int>> read(
+    String logicalKey, {
+    int? start,
+    int? endInclusive,
+    RemoteOperationCancellation? cancellation,
+  }) async* {
+    cancellation?.throwIfCancelled();
+    _validate(logicalKey);
+    final file = await _get(_segments(logicalKey), cancellation);
+    if (file == null || file['type'] != 'file') {
+      throw RemoteObjectNotFoundException(logicalKey);
+    }
+    yield* _store._downloadFile(
+      file,
+      logicalKey,
+      start: start,
+      endInclusive: endInclusive,
+      cancellation: cancellation,
+    );
+  }
+
+  @override
+  Future<RemoteObjectMetadata> put(
+    String logicalKey,
+    Stream<List<int>> content, {
+    required int contentLength,
+    bool ifAbsent = false,
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    _validate(logicalKey);
+    if (contentLength < 0) {
+      throw ArgumentError.value(contentLength, 'contentLength');
+    }
+    final segments = _segments(logicalKey);
+    final name = segments.last;
+    final parent = await _parentFolder(segments, cancellation);
+    final existing = await _get(segments, cancellation);
+    if (existing != null) {
+      if (ifAbsent) throw RemoteObjectAlreadyExistsException(logicalKey);
+      if (existing['type'] != 'file') {
+        throw ProviderRequestException.fromStatus(409);
+      }
+    }
+    final driveId = parent['drive_id'] as String;
+    final parentId = parent['file_id'] as String;
+    if (existing == null) {
+      final completed = await _store._uploadFile(
+        driveId: driveId,
+        parentId: parentId,
+        name: name,
+        content: content,
+        contentLength: contentLength,
+        logicalKey: logicalKey,
+        cancellation: cancellation,
+      );
+      return _named(logicalKey, name, completed);
+    }
+
+    final temporaryName =
+        '.velock-tmp-${List.generate(8, (_) => _random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
+    final Map<String, dynamic> uploaded;
+    try {
+      uploaded = await _store._uploadFile(
+        driveId: driveId,
+        parentId: parentId,
+        name: temporaryName,
+        content: content,
+        contentLength: contentLength,
+        logicalKey: logicalKey,
+        cancellation: cancellation,
+      );
+    } on Object {
+      await _discard(driveId, temporaryName, segments);
+      rethrow;
+    }
+    final uploadedId = uploaded['file_id'];
+    if (uploadedId is! String || uploaded['name'] != temporaryName) {
+      throw const AliyunDriveException('Upload was stored under a new name.');
+    }
+    await _trash(existing, cancellation);
+    final renamed = await _store._call(
+      'openFile/update',
+      {
+        'drive_id': driveId,
+        'file_id': uploadedId,
+        'name': name,
+        'check_name_mode': 'refuse',
+      },
+      acceptConflict: true,
+      cancellation: cancellation,
+    );
+    if (renamed['_status'] == 409) {
+      // Someone else created the name in between; the new content stays under
+      // the hidden temporary name rather than overwriting their file.
+      throw ProviderRequestException.fromStatus(409);
+    }
+    return _named(logicalKey, name, {...uploaded, ...renamed});
+  }
+
+  /// Moves a file or a folder (with its contents) to the recycle bin.
+  @override
+  Future<void> delete(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    _validate(logicalKey);
+    final item = await _get(_segments(logicalKey), cancellation);
+    if (item == null) return;
+    await _trash(item, cancellation);
+  }
+
+  /// Creates one folder. An existing folder at that path counts as created;
+  /// a file there, or a missing parent, does not.
+  @override
+  Future<void> createCollection(
+    String logicalKey, {
+    RemoteOperationCancellation? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    _validate(logicalKey);
+    final segments = _segments(logicalKey);
+    final parent = await _parentFolder(segments, cancellation);
+    final created = await _store._call(
+      'openFile/create',
+      {
+        'drive_id': parent['drive_id'],
+        'parent_file_id': parent['file_id'],
+        'name': segments.last,
+        'type': 'folder',
+        'check_name_mode': 'refuse',
+      },
+      acceptConflict: true,
+      cancellation: cancellation,
+    );
+    if (created['exist'] == true || created['_status'] == 409) {
+      final existing = await _get(segments, cancellation);
+      if (existing != null && existing['type'] == 'folder') return;
+      throw ProviderRequestException.fromStatus(409);
+    }
+    if (created['file_name'] is String &&
+        created['file_name'] != segments.last) {
+      throw const AliyunDriveException('Folder was created under a new name.');
+    }
+  }
+
+  /// The folder or file at [segments] below the connection root, or null.
+  Future<Map<String, dynamic>?> _get(
+    List<String> segments,
+    RemoteOperationCancellation? cancellation,
+  ) async {
+    final root = await _store._resolveRoot(cancellation);
+    if (segments.isEmpty) {
+      return {
+        'drive_id': root.folder.driveId,
+        'file_id': root.folder.fileId,
+        'type': 'folder',
+      };
+    }
+    final data = await _store._call(
+      'openFile/get_by_path',
+      {
+        'drive_id': root.folder.driveId,
+        'file_path': '${root.path}/${segments.join('/')}',
+      },
+      acceptNotFound: true,
+      cancellation: cancellation,
+    );
+    if (data['_status'] == 404 || data['file_id'] is! String) return null;
+    return {'drive_id': root.folder.driveId, ...data};
+  }
+
+  /// The folder that holds [segments]; a missing parent is a conflict, as a
+  /// WebDAV server reports it, never an implicit create.
+  Future<Map<String, dynamic>> _parentFolder(
+    List<String> segments,
+    RemoteOperationCancellation? cancellation,
+  ) async {
+    final parent = await _get(
+      segments.sublist(0, segments.length - 1),
+      cancellation,
+    );
+    if (parent == null || parent['type'] != 'folder') {
+      throw ProviderRequestException.fromStatus(409);
+    }
+    return parent;
+  }
+
+  Future<void> _trash(
+    Map<String, dynamic> item,
+    RemoteOperationCancellation? cancellation,
+  ) => _store._call(
+    'openFile/recyclebin/trash',
+    {'drive_id': item['drive_id'], 'file_id': item['file_id']},
+    acceptNotFound: true,
+    cancellation: cancellation,
+  );
+
+  /// Best-effort removal of a temporary upload that did not finish; a leftover
+  /// is hidden from file sync by its name.
+  Future<void> _discard(
+    String driveId,
+    String temporaryName,
+    List<String> segments,
+  ) async {
+    try {
+      final left = await _get([
+        ...segments.sublist(0, segments.length - 1),
+        temporaryName,
+      ], null);
+      if (left != null) {
+        await _store._call('openFile/delete', {
+          'drive_id': driveId,
+          'file_id': left['file_id'],
+        }, acceptNotFound: true);
+      }
+    } on Object {
+      // The original failure is the one worth reporting.
+    }
+  }
+
+  RemoteObjectMetadata _named(
+    String logicalKey,
+    String name,
+    Map<String, dynamic> item,
+  ) {
+    if (item['name'] is String && item['name'] != name) {
+      throw const AliyunDriveException('Upload was stored under a new name.');
+    }
+    return _metadata(logicalKey, item);
+  }
+
+  List<String> _segments(String logicalKey) => [
+    ..._scope,
+    if (logicalKey.isNotEmpty) ...logicalKey.split('/'),
+  ];
+
+  static RemoteObjectMetadata _metadata(String key, Map<String, dynamic> raw) {
+    final folder = raw['type'] == 'folder';
+    final base = AliyunDriveObjectStore._metadata(key, raw);
+    return RemoteObjectMetadata(
+      logicalKey: key,
+      size: folder ? 0 : base.size,
+      updatedAt: base.updatedAt,
+      etag: folder ? null : base.etag,
+      isDirectory: folder,
+    );
+  }
+
+  static void _validate(String logicalKey) {
+    try {
+      AliyunDriveObjectStore._validateKey(logicalKey);
+    } on ArgumentError {
+      throw AliyunDriveUnsupportedNameException(logicalKey);
+    }
+    if (logicalKey.runes.any((rune) => rune < 0x20)) {
+      throw AliyunDriveUnsupportedNameException(logicalKey);
+    }
+  }
+}
+
+class AliyunDriveUnsupportedNameException implements SyncFailureException {
+  const AliyunDriveUnsupportedNameException(this.logicalKey);
+
+  final String logicalKey;
+
+  @override
+  String toString() => 'Aliyun Drive cannot store this name.';
+
+  @override
+  SyncFailure get syncFailure => SyncFailure(
+    errorCode: 'provider.aliyun.unsupported_name',
+    category: SyncErrorCategory.datasetRejected,
+    retryable: false,
+    suggestedAction: '阿里云盘不能保存这个名称，请在本机改名后再同步：$logicalKey',
+  );
 }

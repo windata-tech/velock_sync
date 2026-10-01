@@ -16,9 +16,16 @@ import 'package:velock_sync/features/connection/state/connection_provider.dart';
 import 'package:velock_sync/features/connection/state/files_provider.dart';
 import 'package:velock_sync/features/connection/ui/connection_editor_entry.dart';
 import 'package:velock_sync/features/connection/ui/connection_info_sheet.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart'
+    show backupFolderCreatorProvider;
+import 'package:velock_sync/features/connection/state/folder_view_mode.dart';
+import 'package:velock_sync/features/connection/ui/remote_folder_views.dart';
+import 'package:path/path.dart' as p;
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'package:velock_sync/widgets/app_components.dart';
+import 'package:velock_sync/widgets/app_format.dart';
 import 'package:velock_sync/widgets/common_widgets.dart';
+import 'package:velock_sync/widgets/connection_settings_glyph.dart';
 import 'package:webdav_client_plus/webdav_client_plus.dart';
 
 class Connection extends HookConsumerWidget {
@@ -122,9 +129,15 @@ class Connection extends HookConsumerWidget {
           });
         }
 
+        // Reads the folder from the server again. The connection's status dot
+        // follows from that read; no separate "status updated" notice.
         Future<void> refreshBrowser() async {
           await notifier.refresh();
-          await testConnection();
+          try {
+            await ref.read(connectionsProvider.notifier).refreshStatuses();
+          } on Object {
+            /* a failed read already shows its own error */
+          }
         }
 
         final isLoading = asyncFileBrowserState.isLoading;
@@ -141,6 +154,55 @@ class Connection extends HookConsumerWidget {
             notifier.goBack();
           } else {
             Navigator.of(context).maybePop();
+          }
+        }
+
+        final viewMode = ref.watch(folderViewModeProvider);
+        final creating = useState(false);
+        final busy = isLoading || creating.value;
+        Future<void> newFolder() async {
+          final protocol = connectionModel.protocol;
+          final visible = fileBrowserState;
+          if (busy || protocol is! WebDavProtocolModel || visible == null) {
+            return;
+          }
+          final parentPath = notifier.currentPath;
+          final rootPath = p.posix.normalize(protocol.path ?? '/');
+          final relative = p.posix.relative(parentPath, from: rootPath);
+          final parent = relative == '.'
+              ? const <String>[]
+              : p.posix.split(relative);
+          final name = await showNewRemoteFolderDialog(
+            context,
+            location: parentPath,
+            existingNames: {for (final file in visible.files) file.name},
+            placeholder: syncText(context, '例如：照片', 'e.g. Photos'),
+            confirmLabel: syncText(context, '创建', 'Create'),
+          );
+          if (name == null || !context.mounted) return;
+          creating.value = true;
+          try {
+            await ref.read(backupFolderCreatorProvider)(
+              protocol: protocol,
+              relativeSegments: parent,
+              name: name,
+            );
+            // Show the new folder where it was made; opening it is a tap away.
+            if (notifier.currentPath == parentPath) await notifier.refresh();
+          } on Object catch (error) {
+            if (context.mounted) {
+              await showAdaptiveNotice(
+                context: context,
+                title: syncText(
+                  context,
+                  '未能新建文件夹',
+                  'Could not create the folder',
+                ),
+                message: remoteFolderCreationError(context, error),
+              );
+            }
+          } finally {
+            if (context.mounted) creating.value = false;
           }
         }
 
@@ -176,15 +238,20 @@ class Connection extends HookConsumerWidget {
               trailingActions: [
                 _ConnectionInfoButton(protocol: connectionModel.protocol),
                 AdaptiveIconButton(
-                  icon: const Icon(CupertinoIcons.pencil),
-                  materialIcon: const Icon(Icons.edit_outlined, size: 24),
+                  key: const Key('connection-edit'),
+                  tooltip: syncText(context, '修改连接', 'Edit connection'),
+                  semanticLabel: syncText(context, '修改连接', 'Edit connection'),
+                  icon: const ConnectionSettingsGlyph(size: 23),
                   onPressed: () =>
                       openConnectionEditor(context, connectionModel),
                 ),
                 AdaptiveIconButton(
-                  icon: const Icon(CupertinoIcons.refresh),
+                  key: const Key('remote-browser-reload'),
+                  tooltip: syncText(context, '重新读取文件夹', 'Reload folder'),
+                  semanticLabel: syncText(context, '重新读取文件夹', 'Reload folder'),
+                  icon: const Icon(CupertinoIcons.arrow_clockwise),
                   materialIcon: const Icon(Icons.refresh, size: 24),
-                  onPressed: isLoading ? null : refreshBrowser,
+                  onPressed: busy ? null : refreshBrowser,
                 ),
               ],
             ),
@@ -224,6 +291,16 @@ class Connection extends HookConsumerWidget {
                                 )
                               : null,
                         ),
+                        NewRemoteFolderButton(
+                          key: const Key('remote-browser-new-folder'),
+                          onPressed:
+                              busy ||
+                                  browserError != null ||
+                                  fileBrowserState == null
+                              ? null
+                              : newFolder,
+                        ),
+                        const FolderViewToggle(),
                       ],
                     ),
                   ),
@@ -254,64 +331,78 @@ class Connection extends HookConsumerWidget {
                       AppSpacing.page,
                       AppSpacing.xl,
                     ),
-                    sliver: SliverLayoutBuilder(
-                      builder: (context, constraints) => SliverGrid(
-                        delegate: SliverChildBuilderDelegate((
-                          BuildContext context,
-                          int index,
-                        ) {
-                          final file = fileBrowserState.files[index];
-                          double? progress;
-                          return StatefulBuilder(
-                            builder:
-                                (BuildContext context, StateSetter setState) {
-                                  return SizedBox.expand(
-                                    child: CupertinoButton(
-                                      minimumSize: Size.zero,
-                                      padding: EdgeInsets.zero,
-                                      onPressed: isLoading
-                                          ? null
-                                          : () async {
-                                              notifier.onRemoteFileItemTapped(
-                                                file,
-                                                (a, b) {
-                                                  setState(() {
-                                                    progress =
-                                                        a.toDouble() /
-                                                        b.toDouble();
-                                                  });
-                                                },
-                                              );
-                                            },
-                                      child: SizedBox.expand(
-                                        child: RemoteFileItem(
-                                          file: file,
-                                          progress: progress,
-                                          inactive: isLoading,
+                    sliver: viewMode == FolderViewMode.list
+                        ? SliverList.builder(
+                            itemCount: fileBrowserState.files.length,
+                            itemBuilder: (context, index) {
+                              final file = fileBrowserState.files[index];
+                              double? progress;
+                              return StatefulBuilder(
+                                builder: (context, setState) => RemoteEntryRow(
+                                  key: ValueKey('remote-entry-${file.name}'),
+                                  name: file.name,
+                                  isDir: file.isDir,
+                                  detail: file.isDir ? null : _fileDetail(file),
+                                  progress: progress,
+                                  inactive: busy,
+                                  onTap: busy
+                                      ? null
+                                      : () => notifier.onRemoteFileItemTapped(
+                                          file,
+                                          (a, b) => setState(
+                                            () => progress =
+                                                a.toDouble() / b.toDouble(),
+                                          ),
+                                        ),
+                                ),
+                              );
+                            },
+                          )
+                        : SliverLayoutBuilder(
+                            builder: (context, constraints) => SliverGrid(
+                              delegate: SliverChildBuilderDelegate((
+                                BuildContext context,
+                                int index,
+                              ) {
+                                final file = fileBrowserState.files[index];
+                                double? progress;
+                                return StatefulBuilder(
+                                  builder: (context, setState) =>
+                                      SizedBox.expand(
+                                        child: CupertinoButton(
+                                          key: ValueKey(
+                                            'remote-entry-${file.name}',
+                                          ),
+                                          minimumSize: Size.zero,
+                                          padding: EdgeInsets.zero,
+                                          onPressed: busy
+                                              ? null
+                                              : () => notifier
+                                                    .onRemoteFileItemTapped(
+                                                      file,
+                                                      (a, b) => setState(
+                                                        () => progress =
+                                                            a.toDouble() /
+                                                            b.toDouble(),
+                                                      ),
+                                                    ),
+                                          child: SizedBox.expand(
+                                            child: RemoteFileItem(
+                                              file: file,
+                                              progress: progress,
+                                              inactive: busy,
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  );
-                                },
-                          );
-                        }, childCount: fileBrowserState.files.length),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount:
-                              ((constraints.crossAxisExtent + AppSpacing.sm) /
-                                      (40 +
-                                          MediaQuery.textScalerOf(
-                                                context,
-                                              ).scale(12) *
-                                              3 +
-                                          AppSpacing.sm))
-                                  .floor()
-                                  .clamp(1, 6),
-                          childAspectRatio: 1,
-                          mainAxisSpacing: AppSpacing.sm,
-                          crossAxisSpacing: AppSpacing.sm,
-                        ),
-                      ),
-                    ),
+                                );
+                              }, childCount: fileBrowserState.files.length),
+                              gridDelegate: remoteEntryGridDelegate(
+                                context,
+                                constraints.crossAxisExtent,
+                              ),
+                            ),
+                          ),
                   )
                 else if (!isLoading && fileBrowserState != null)
                   SliverFillRemaining(
@@ -392,11 +483,13 @@ class _OAuthConnectionDetails extends StatelessWidget {
         trailingActions: [
           _ConnectionInfoButton(protocol: protocol),
           AdaptiveIconButton(
+            tooltip: syncText(context, '检查连接', 'Check connection'),
+            semanticLabel: syncText(context, '检查连接', 'Check connection'),
             icon: Icon(
               adaptiveIcon(
                 context,
                 material: Icons.refresh,
-                cupertino: CupertinoIcons.refresh,
+                cupertino: CupertinoIcons.arrow_clockwise,
               ),
             ),
             onPressed: onTestConnection,
@@ -485,12 +578,12 @@ class _ConnectionInfoButton extends StatelessWidget {
   }
 }
 
+/// A remote file or folder in the browser's tile layout.
 class RemoteFileItem extends StatelessWidget {
   final WebdavFile file;
   final double? progress;
 
-  /// The browser is busy, so the tile cannot be opened right now. The glyph
-  /// keeps its own colour and the card is faded instead of turning grey.
+  /// The browser is busy, so the tile cannot be opened right now.
   final bool inactive;
 
   const RemoteFileItem({
@@ -501,96 +594,12 @@ class RemoteFileItem extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final platform = Theme.of(context).platform;
-    final isApple =
-        platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
-
-    final radius = BorderRadius.circular(AppRadii.medium);
-    final textColor = Theme.of(context).textTheme.bodyMedium?.color;
-    final content = DecoratedBox(
-      decoration: BoxDecoration(
-        color: context.appGroupedSurface.withValues(alpha: 0.82),
-        borderRadius: radius,
-        border: Border.all(
-          color: context.appSeparator.withValues(
-            alpha: AppOpacity.groupedBorder,
-          ),
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xs),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    file.isDir
-                        ? (isApple ? CupertinoIcons.folder_solid : Icons.folder)
-                        : (isApple
-                              ? CupertinoIcons.doc_text_fill
-                              : Icons.description),
-                    size: 26,
-                    // Explicit colour so a disabled parent button cannot
-                    // repaint the glyph with its own grey.
-                    color: file.isDir
-                        ? context.appPrimary
-                        : context.appSecondaryLabel,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    file.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      height: 1.15,
-                    ).copyWith(color: textColor),
-                  ),
-                ],
-              ),
-              if (progress != null && progress! < 1.0)
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withAlpha(187),
-                    borderRadius: radius,
-                  ),
-                  child: Center(
-                    child: Stack(
-                      fit: StackFit.loose,
-                      alignment: Alignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          value: progress,
-                          color: Colors.white,
-                        ),
-                        Text(
-                          '${(progress! * 100).toInt()}%',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-    // Always the same widget shape: swapping the root widget type would unmount
-    // and rebuild the whole tile (and its text elements) on every refresh, which
-    // is exactly the flicker the loading state must avoid.
-    return Opacity(opacity: inactive ? AppOpacity.disabled : 1, child: content);
-  }
+  Widget build(BuildContext context) => RemoteEntryTile(
+    name: file.name,
+    isDir: file.isDir,
+    progress: progress,
+    inactive: inactive,
+  );
 }
 
 /// Maps transport failures from the WebDAV file browser to short,
@@ -779,6 +788,15 @@ bool _isConnectionRefused(Object? cause) {
       code == 111 ||
       code == 10061 ||
       cause.message.toLowerCase().contains('connection refused');
+}
+
+/// Size and last change of a file, for the list layout.
+String? _fileDetail(WebdavFile file) {
+  final parts = [
+    if (file.size != null) AppFormat.bytes(file.size),
+    if (file.modified != null) AppFormat.stamp(file.modified),
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
 }
 
 /// Absolute WebDAV path of a profile folder inside [connection], or null when

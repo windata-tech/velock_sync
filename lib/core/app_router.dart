@@ -263,7 +263,10 @@ GoRouter createAppRouter({
     WdRoute(
       name: AppRoutes.protocols.name,
       path: AppRoutes.protocols.path,
-      builder: (context, state) => Protocols(returnTo: _setupReturnTo(state)),
+      builder: (context, state) => Protocols(
+        returnTo: _setupReturnTo(state),
+        forPlainFolders: state.uri.queryParameters['for'] == 'plain',
+      ),
     ),
     WdRoute(
       name: AppRoutes.connectionHelp.name,
@@ -321,6 +324,8 @@ GoRouter createAppRouter({
           providerType: provider.single,
           replacementConnectionId: state.uri.queryParameters['replace'],
           returnTo: _setupReturnTo(state),
+          fullDriveAccess:
+              state.uri.queryParameters['access'] == oauthFullDriveAccess,
         );
       },
     ),
@@ -391,6 +396,10 @@ class WDShellPage extends StatelessWidget {
 /// `true` once the connection was saved". A backup that failed with 401 opens
 /// the editor this way so it can offer a retry right after the fix.
 const connectionEditorPopBack = 'back';
+
+/// `access=` value of the OAuth sign-in route asking Google Drive for full
+/// Drive access, as file sync needs (see [OAuthProtocolModel.fullDriveAccess]).
+const oauthFullDriveAccess = 'full';
 
 /// Leaves a connection editor after a successful save.
 void leaveConnectionEditor(BuildContext context, String? returnTo) {

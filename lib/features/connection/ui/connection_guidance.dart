@@ -579,8 +579,8 @@ ConnectionHelpDocument _googleDriveDocument(
           title: syncText(context, '确认访问范围', 'Check the access scope'),
           body: syncText(
             context,
-            '应用只申请 drive.file 与 drive.appdata 两个范围：可以访问它自己创建的文件、你明确授权的文件，以及 Google 为应用保留的隐藏空间，看不到网盘里的其他文件。',
-            'The app asks only for the drive.file and drive.appdata scopes: it can reach files it creates, files you grant it, and the hidden space Google keeps for the app, but none of your other Drive files.',
+            '在“连接”页添加、用于格间备份的连接只申请 drive.file 与 drive.appdata：可以访问它自己创建的文件、你明确授权的文件，以及 Google 为应用保留的隐藏空间，看不到网盘里的其他文件。在文件同步里添加的连接要读写你选的普通文件夹，会申请完整的 drive 范围（可以访问全部文件）；它属于 Google 的受限范围，授权页保持“测试”状态时只有测试用户能登录，Google 也会提示应用未经验证。',
+            'A connection added on the Connections page for Velock backups asks only for drive.file and drive.appdata: it can reach files it creates, files you grant it, and the hidden space Google keeps for the app, but none of your other Drive files. A connection added from file sync reads and writes the ordinary folder you choose, so it asks for the full drive scope (all of your files). That is a restricted scope: while the consent screen is in Testing only test users can sign in, and Google warns that the app is unverified.',
           ),
         ),
       ],

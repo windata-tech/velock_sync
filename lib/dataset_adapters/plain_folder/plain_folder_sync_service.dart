@@ -94,6 +94,14 @@ typedef PlainFolderRemoteFactory =
       required String? password,
     });
 
+/// Builds the folder-tree view of a cloud-drive connection that
+/// [RemoteObjectStoreFactory.supportsPlainFolders] accepts.
+typedef PlainFolderOAuthRemoteFactory =
+    RemoteObjectStore Function(
+      OAuthProtocolModel protocol,
+      List<String> remoteRootSegments,
+    );
+
 /// Runs one plain folder location: scan both sides, compare against the local
 /// baseline, then copy the differences in the configured direction.
 ///
@@ -107,6 +115,7 @@ class PlainFolderSyncService {
     AndroidDocumentTreeAccess? androidDocumentTrees,
     AppleSecurityScopedFolderAccess? appleFolders,
     PlainFolderRemoteFactory? remoteFactory,
+    PlainFolderOAuthRemoteFactory? oauthRemoteFactory,
     MirrorPlanner? planner,
     MirrorVerificationBudget verificationBudget =
         const MirrorVerificationBudget(),
@@ -120,6 +129,10 @@ class PlainFolderSyncService {
        _appleFolders =
            appleFolders ?? const MethodChannelAppleSecurityScopedFolderAccess(),
        _remoteFactory = remoteFactory ?? _defaultRemoteFactory,
+       _oauthRemoteFactory =
+           oauthRemoteFactory ??
+           ((protocol, segments) =>
+               plainMirrorForOAuth(connections, protocol, segments)),
        _planner = planner ?? const MirrorPlanner(),
        _verificationBudget = verificationBudget,
        _uuid = uuid ?? const Uuid(),
@@ -131,6 +144,7 @@ class PlainFolderSyncService {
   final AndroidDocumentTreeAccess _androidDocumentTrees;
   final AppleSecurityScopedFolderAccess _appleFolders;
   final PlainFolderRemoteFactory _remoteFactory;
+  final PlainFolderOAuthRemoteFactory _oauthRemoteFactory;
   final MirrorPlanner _planner;
   final MirrorVerificationBudget _verificationBudget;
   final Uuid _uuid;
@@ -1294,8 +1308,9 @@ class PlainFolderSyncService {
     }
   }
 
-  /// Plain file sync is WebDAV-only: the other providers expose an object API
-  /// without real file names, which cannot mirror a user folder.
+  /// Plain file sync needs real file names and folders on the remote: WebDAV,
+  /// OneDrive, Baidu Netdisk, Aliyun Drive, and Google Drive when signed in
+  /// with full Drive access (a backup connection sees only its own files).
   Future<RemoteObjectStore> _remoteFor(PlainFolderSyncProfile profile) async {
     final connection = await _connections.getConnectionById(
       profile.connectionId,
@@ -1310,24 +1325,56 @@ class PlainFolderSyncService {
         ),
       );
     }
-    final scopedProtocol = RemoteObjectStoreFactory.scopeProtocol(
-      connection.protocol,
-      profile.remoteRootSegments,
-    );
-    return switch (scopedProtocol) {
-      WebDavProtocolModel(:final credentialRef) => _remoteFactory(
-        protocol: scopedProtocol,
-        password: await _connections.readWebDavPassword(credentialRef),
-      ),
-      OAuthProtocolModel() => throw const PlainFolderSyncException(
+    if (!RemoteObjectStoreFactory.supportsPlainFolders(connection.protocol)) {
+      throw const PlainFolderSyncException(
         SyncFailure(
           errorCode: 'plain_folder.remote_unsupported',
           category: SyncErrorCategory.unsupportedProtocol,
           retryable: false,
-          suggestedAction: '文件夹同步目前只支持 WebDAV（NAS）。云盘连接暂不支持。',
+          suggestedAction:
+              '文件夹同步支持 WebDAV（NAS）、OneDrive、百度网盘、阿里云盘，以及在添加同步位置时新建、允许访问全部文件的 Google Drive 连接。',
         ),
+      );
+    }
+    return switch (connection.protocol) {
+      final WebDavProtocolModel protocol => _remoteFactory(
+        protocol:
+            RemoteObjectStoreFactory.scopeProtocol(
+                  protocol,
+                  profile.remoteRootSegments,
+                )
+                as WebDavProtocolModel,
+        password: await _connections.readWebDavPassword(protocol.credentialRef),
+      ),
+      final OAuthProtocolModel protocol => _oauthRemoteFactory(
+        protocol,
+        profile.remoteRootSegments,
       ),
     };
+  }
+
+  /// The folder-tree store for a cloud drive that supports plain folders.
+  static RemoteObjectStore plainMirrorForOAuth(
+    ConnectionRepository connections,
+    OAuthProtocolModel protocol,
+    List<String> remoteRootSegments,
+  ) {
+    if (RemoteObjectStoreFactory.supportsPlainFolders(protocol)) {
+      return RemoteObjectStoreFactory.plainMirror(
+        connections,
+        protocol,
+        remoteRootSegments,
+      );
+    }
+    throw const PlainFolderSyncException(
+      SyncFailure(
+        errorCode: 'plain_folder.remote_unsupported',
+        category: SyncErrorCategory.unsupportedProtocol,
+        retryable: false,
+        suggestedAction:
+            '文件夹同步支持 WebDAV（NAS）、OneDrive、百度网盘、阿里云盘，以及在添加同步位置时新建、允许访问全部文件的 Google Drive 连接。',
+      ),
+    );
   }
 
   static RemoteObjectStore _defaultRemoteFactory({

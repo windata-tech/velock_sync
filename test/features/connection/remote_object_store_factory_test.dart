@@ -81,6 +81,86 @@ void main() {
     );
   });
 
+  test('a Baidu Netdisk scope extends the real root path', () {
+    final protocol = ProtocolModel.oauth(
+      providerType: RemoteProviderType.baiduNetdisk,
+      clientId: 'public-client-id',
+      credentialRef: 'opaque-ref',
+      rootId: '/apps/Velock Sync/',
+    );
+    final scoped =
+        RemoteObjectStoreFactory.scopeProtocol(protocol, const ['照片', '2026'])
+            as OAuthProtocolModel;
+    expect(scoped.rootId, '/apps/Velock Sync/照片/2026');
+    expect((protocol as OAuthProtocolModel).rootId, '/apps/Velock Sync/');
+    expect(RemoteObjectStoreFactory.supportsPlainFolders(protocol), isTrue);
+  });
+
+  test('every drive with real paths holds plain folders', () {
+    for (final type in RemoteProviderType.values) {
+      if (type == RemoteProviderType.webDav) continue;
+      final protocol = ProtocolModel.oauth(
+        providerType: type,
+        clientId: 'c',
+        credentialRef: 'r',
+        rootId: 'root',
+      );
+      expect(
+        RemoteObjectStoreFactory.supportsPlainFolders(protocol),
+        type != RemoteProviderType.googleDrive,
+        reason: type.name,
+      );
+    }
+  });
+
+  test('Google Drive holds plain folders only with full Drive access', () {
+    ProtocolModel google({required bool full, String rootId = 'root'}) =>
+        ProtocolModel.oauth(
+          providerType: RemoteProviderType.googleDrive,
+          clientId: 'c',
+          credentialRef: 'r',
+          rootId: rootId,
+          fullDriveAccess: full,
+        );
+    expect(
+      RemoteObjectStoreFactory.supportsPlainFolders(google(full: true)),
+      isTrue,
+    );
+    expect(
+      RemoteObjectStoreFactory.supportsPlainFolders(
+        google(full: true, rootId: 'folder-id'),
+      ),
+      isTrue,
+    );
+    // A backup connection: only its own files and the hidden app folder.
+    expect(
+      RemoteObjectStoreFactory.supportsPlainFolders(google(full: false)),
+      isFalse,
+    );
+    expect(
+      RemoteObjectStoreFactory.supportsPlainFolders(
+        google(full: true, rootId: 'appDataFolder'),
+      ),
+      isFalse,
+    );
+  });
+
+  test('older saved connections read as without full Drive access', () {
+    final protocol = ProtocolModel.fromJson({
+      'runtimeType': 'oauth',
+      'providerType': 'googleDrive',
+      'clientId': 'c',
+      'credentialRef': 'r',
+      'rootId': 'root',
+    });
+    expect((protocol as OAuthProtocolModel).fullDriveAccess, isFalse);
+    expect(RemoteObjectStoreFactory.supportsPlainFolders(protocol), isFalse);
+    final saved = ProtocolModel.fromJson(
+      protocol.copyWith(fullDriveAccess: true).toJson(),
+    );
+    expect((saved as OAuthProtocolModel).fullDriveAccess, isTrue);
+  });
+
   for (final invalid in <String>['', '.', '..', 'a/b', 'a\\b', 'a\nb']) {
     test('rejects invalid scope segment ${invalid.codeUnits}', () {
       expect(

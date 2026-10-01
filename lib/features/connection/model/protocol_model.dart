@@ -26,6 +26,11 @@ sealed class ProtocolModel with _$ProtocolModel {
     @JsonKey(name: 'credentialRef') required String credentialRef,
     @JsonKey(name: 'rootId') required String rootId,
     @JsonKey(name: 'accountLabel') String? accountLabel,
+
+    /// Google Drive only: signed in with the full `drive` scope, so ordinary
+    /// folders of My Drive can be read and written as a plain file-sync
+    /// location. Older connections and backup connections keep false.
+    @JsonKey(name: 'fullDriveAccess') @Default(false) bool fullDriveAccess,
   }) = OAuthProtocolModel;
 
   // 未来可以轻松扩展其他协议

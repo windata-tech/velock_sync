@@ -11,12 +11,15 @@ import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_provisioner.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_scope_guard.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
-import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/plain_sync/model/plain_location_presentation.dart';
 import 'package:velock_sync/features/plain_sync/local_folder_open.dart';
 import 'package:velock_sync/core/app_router.dart';
+import 'package:velock_sync/features/plain_sync/state/plain_remote_folders.dart';
+import 'package:velock_sync/features/plain_sync/ui/add_plain_location.dart'
+    show backupOverlapMessage;
+import 'package:velock_sync/features/plain_sync/ui/plain_remote_folder_picker.dart';
 import 'package:velock_sync/features/plain_sync/state/plain_sync_providers.dart';
 import 'package:velock_sync/features/plain_sync/ui/plain_location_run.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
@@ -310,26 +313,24 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
   Future<void> _changeRemoteFolder(PlainLocationView view) async {
     final connection = view.connection;
     if (_busy || connection == null) return;
-    final protocol = connection.protocol;
-    if (protocol is! WebDavProtocolModel) return;
+    if (!RemoteObjectStoreFactory.supportsPlainFolders(connection.protocol)) {
+      return;
+    }
     setState(() => _busy = true);
     try {
-      final loader = ref.read(backupFolderLoaderProvider);
-      final picked = await Navigator.of(context).push<List<String>>(
-        MaterialPageRoute(
-          builder: (_) => BackupFolderPicker(
-            connectionName: connection.name,
-            basePath: RemoteObjectStoreFactory.webDavDisplayAddress(protocol),
-            forSync: true,
-            initialSegments: view.profile.remoteRootSegments,
-            loadFolders: (relative) =>
-                loader(protocol: protocol, relativeSegments: relative),
-            createFolder: (parent, name) => ref.read(
-              backupFolderCreatorProvider,
-            )(protocol: protocol, relativeSegments: parent, name: name),
-          ),
-        ),
+      final folders = ref.read(plainRemoteFoldersProvider);
+      final result = await pickPlainRemoteFolder(
+        context,
+        ref,
+        connection,
+        initialSegments: view.profile.remoteRootSegments,
       );
+      if (result != null && result.connection != connection) {
+        // Edited inside the picker: the page shows the saved connection.
+        ref.invalidate(plainLocationViewsProvider);
+      }
+      final picked = result?.segments;
+      final chosen = result?.connection ?? connection;
       if (picked == null || !mounted) return;
       if (picked.isEmpty) {
         showPlatformMessage(
@@ -352,10 +353,7 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
           connectionId: view.profile.connectionId,
           segments: picked,
           childFolderNames: () async => [
-            for (final folder in await loader(
-              protocol: protocol,
-              relativeSegments: picked,
-            ))
+            for (final folder in await folders.list(chosen, picked))
               folder.name,
           ],
         );
@@ -368,20 +366,7 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
         );
       } on BackupFolderOverlapException catch (failure) {
         if (!mounted) return;
-        showPlatformMessage(
-          context,
-          failure.backupName.isEmpty
-              ? syncText(
-                  context,
-                  '这个文件夹里有格间的加密备份，明文同步不能用它。',
-                  'That folder holds a Velock encrypted backup. Plain sync cannot use it.',
-                )
-              : syncText(
-                  context,
-                  '这个文件夹属于格间备份（${failure.backupName}），明文同步不能用它。',
-                  'That folder belongs to the backup “${failure.backupName}”. Plain sync cannot use it.',
-                ),
-        );
+        showPlatformMessage(context, backupOverlapMessage(context, failure));
         return;
       } on PlainLocationOverlapException catch (failure) {
         if (!mounted) return;
@@ -492,11 +477,6 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
             onPressed: _busy ? null : () => _saveDraft(view),
             child: Text(syncText(context, '保存', 'Save')),
           ),
-        AdaptiveIconButton(
-          tooltip: syncText(context, '刷新', 'Refresh'),
-          onPressed: _refresh,
-          icon: const Icon(CupertinoIcons.refresh),
-        ),
       ],
       body: view == null
           ? (locations.hasError
@@ -590,11 +570,14 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
                   ? null
                   : AdaptiveTrailingGroup(
                       children: [
-                        _FolderAction(
-                          widgetKey: const Key('plain-remote-open'),
-                          label: syncText(context, '打开', 'Open'),
-                          onTap: _busy ? null : () => _openRemoteFolder(view),
-                        ),
+                        // The connection browser can jump straight to a folder
+                        // only on WebDAV, where folders are plain paths.
+                        if (view.connection?.protocol is WebDavProtocolModel)
+                          _FolderAction(
+                            widgetKey: const Key('plain-remote-open'),
+                            label: syncText(context, '打开', 'Open'),
+                            onTap: _busy ? null : () => _openRemoteFolder(view),
+                          ),
                         _FolderAction(
                           widgetKey: const Key('plain-remote-change'),
                           label: syncText(context, '更改', 'Change'),

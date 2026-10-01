@@ -27,6 +27,7 @@ class LocalDataManager {
     AppKeys.syncTask,
     AppKeys.connections,
     AppKeys.protocols,
+    AppKeys.folderViewMode,
     // 确保所有在 AppKeys 中定义的、你需要同步访问的键都添加到这里
   };
 

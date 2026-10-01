@@ -58,7 +58,7 @@ void main() {
     );
   });
 
-  Future<ConnectionModel> save(String draftName) async {
+  Future<ConnectionModel> save(String draftName, {String? typed}) async {
     final repository = _Repository();
     final container = ProviderContainer(
       overrides: [
@@ -74,7 +74,7 @@ void main() {
         .prepareNewConnection(name: draftName, source: '格间', target: null);
     await container
         .read(connectionCreationProvider.notifier)
-        .setProtocolAndFinalize(protocolModel: webDav);
+        .setProtocolAndFinalize(protocolModel: webDav, name: typed);
     return repository.saved.single;
   }
 
@@ -86,6 +86,11 @@ void main() {
 
   test('a name the user typed is kept', () async {
     expect((await save('家里的 NAS')).name, '家里的 NAS');
+  });
+
+  test('the name field of the form wins over the draft name', () async {
+    expect((await save('新建连接', typed: '  书房 NAS ')).name, '书房 NAS');
+    expect((await save('新建连接', typed: '')).name, '192.168.1.20:5005');
   });
 }
 

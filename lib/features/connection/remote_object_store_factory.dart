@@ -1,8 +1,13 @@
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
+import 'package:velock_sync/providers/aliyun_drive/aliyun_drive_object_store.dart';
+import 'package:velock_sync/providers/baidu_netdisk/baidu_netdisk_object_store.dart';
+import 'package:velock_sync/providers/google_drive/google_drive_object_store.dart';
+import 'package:velock_sync/providers/one_drive/one_drive_object_store.dart';
 import 'package:velock_sync/providers/webdav/webdav_object_store.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
+import 'package:velock_sync/sync_core/model/sync_models.dart';
 import 'package:velock_sync/infrastructure/network/sync_http.dart';
 
 /// Builds the provider-neutral remote store for one connection.
@@ -30,6 +35,74 @@ abstract final class RemoteObjectStoreFactory {
     };
   }
 
+  /// Whether a connection can hold a plain file-sync folder: one whose files
+  /// keep their real names and folders, so the remote stays readable to people
+  /// and other programs.
+  static bool supportsPlainFolders(ProtocolModel protocol) =>
+      switch (protocol) {
+        WebDavProtocolModel() => true,
+        // A Google connection made for Velock backups may only see its own
+        // files and the hidden app folder; file sync needs one signed in with
+        // full Drive access, rooted at an ordinary folder.
+        OAuthProtocolModel(
+          providerType: RemoteProviderType.googleDrive,
+          :final fullDriveAccess,
+          :final rootId,
+        ) =>
+          fullDriveAccess && rootId != 'appDataFolder',
+        OAuthProtocolModel(:final providerType) =>
+          plainFolderProviders.contains(providerType),
+      };
+
+  /// Cloud drives that can hold a plain sync folder. A Google Drive
+  /// connection additionally needs full Drive access (see
+  /// [supportsPlainFolders]); file-sync setup signs in with it.
+  static const plainFolderProviders = [
+    RemoteProviderType.googleDrive,
+    RemoteProviderType.oneDrive,
+    RemoteProviderType.baiduNetdisk,
+    RemoteProviderType.aliyunDrive,
+  ];
+
+  /// The folder-tree view of a cloud drive that [supportsPlainFolders],
+  /// scoped to [remoteRootSegments] below the connection's root.
+  static RemoteObjectStore plainMirror(
+    ConnectionRepository connections,
+    OAuthProtocolModel protocol,
+    List<String> remoteRootSegments,
+  ) {
+    final segments = _validatedRemoteRootSegments(remoteRootSegments);
+    switch (protocol.providerType) {
+      case RemoteProviderType.baiduNetdisk:
+        final store = connections.createOAuthRemote(
+          scopeProtocol(protocol, segments) as OAuthProtocolModel,
+        );
+        if (store is BaiduNetdiskObjectStore) return store.asMirror();
+      case RemoteProviderType.oneDrive:
+        final store = connections.createOAuthRemote(protocol);
+        if (store is OneDriveObjectStore) {
+          return store.asMirror(scope: segments);
+        }
+      case RemoteProviderType.aliyunDrive:
+        final store = connections.createOAuthRemote(protocol);
+        if (store is AliyunDriveObjectStore) {
+          return store.asMirror(scope: segments);
+        }
+      case RemoteProviderType.googleDrive:
+        if (!supportsPlainFolders(protocol)) break;
+        final store = connections.createOAuthRemote(protocol);
+        if (store is GoogleDriveObjectStore) {
+          return store.asMirror(scope: segments);
+        }
+      default:
+    }
+    throw ArgumentError.value(
+      protocol,
+      'protocol',
+      'plain folder sync needs a drive that keeps real paths',
+    );
+  }
+
   /// Adds one profile-specific relative path scope to a copied protocol.
   ///
   /// The supplied protocol is never mutated. Resetting [WebDavProtocolModel.path]
@@ -41,11 +114,20 @@ abstract final class RemoteObjectStoreFactory {
   ) {
     final segments = _validatedRemoteRootSegments(remoteRootSegments);
     if (segments.isEmpty) return protocol;
+    // Baidu Netdisk addresses folders by real path, so a scope is just a
+    // longer root path. The other cloud drives root at an opaque item ID.
+    if (protocol case OAuthProtocolModel(
+      providerType: RemoteProviderType.baiduNetdisk,
+      :final rootId,
+    )) {
+      final base = BaiduNetdiskObjectStore.normaliseRootPath(rootId);
+      return protocol.copyWith(rootId: '$base/${segments.join('/')}');
+    }
     if (protocol is! WebDavProtocolModel) {
       throw ArgumentError.value(
         protocol,
         'protocol',
-        'remote root scopes are supported only for WebDAV',
+        'remote root scopes are supported only for WebDAV and Baidu Netdisk',
       );
     }
 

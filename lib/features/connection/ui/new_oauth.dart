@@ -39,11 +39,19 @@ class NewOAuthConnection extends HookConsumerWidget {
     required this.providerType,
     this.replacementConnectionId,
     this.returnTo,
+    this.fullDriveAccess = false,
   });
 
   final RemoteProviderType providerType;
   final String? replacementConnectionId;
   final String? returnTo;
+
+  /// Google Drive for file sync: signs in with full Drive access and saves
+  /// an ordinary folder of My Drive, never the hidden app folder.
+  final bool fullDriveAccess;
+
+  bool get _fullDrive =>
+      fullDriveAccess && providerType == RemoteProviderType.googleDrive;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -60,7 +68,7 @@ class NewOAuthConnection extends HookConsumerWidget {
     );
     final rootController = useTextEditingController(
       text: switch (providerType) {
-        RemoteProviderType.googleDrive => 'appDataFolder',
+        RemoteProviderType.googleDrive => _fullDrive ? 'root' : 'appDataFolder',
         RemoteProviderType.baiduNetdisk => baiduAppFolder,
         _ => 'root',
       },
@@ -87,6 +95,9 @@ class NewOAuthConnection extends HookConsumerWidget {
       providerType,
     )) {
       config = OAuthPublicClientConfiguration.forProvider(providerType);
+    }
+    if (config != null && _fullDrive) {
+      config = config.withGoogleFullDriveAccess();
     }
 
     Future<bool> saveOwnRegistration(
@@ -162,9 +173,34 @@ class NewOAuthConnection extends HookConsumerWidget {
           callbackReceiver: oauthCallbackLinkReceiver,
         );
         if (!context.mounted) return;
+        // Google's consent screen lets the user untick a permission; without
+        // full Drive access a sync folder could not be read or written.
+        if (_fullDrive) {
+          final granted = await ref
+              .read(credentialStoreProvider)
+              .readOAuthTokens(credentialRef);
+          if (!context.mounted) return;
+          if (!OAuthAuthorizationConfig.grantsGoogleFullDriveAccess(granted)) {
+            await showAdaptiveNotice(
+              context: context,
+              title: syncText(
+                context,
+                '没有拿到 Google Drive 的访问权限',
+                'Google Drive access was not granted',
+              ),
+              message: syncText(
+                context,
+                '文件同步需要读写你在 Google Drive 里选的文件夹。请重新登录，在 Google 的授权页上勾选“查看、修改、创建和删除您的所有 Google 云端硬盘文件”后再继续。',
+                'File sync needs to read and write the folder you choose in Google Drive. Sign in again and, on Google’s consent page, tick “See, edit, create, and delete all of your Google Drive files” before continuing.',
+              ),
+            );
+            return;
+          }
+        }
         final selectedRootId = await _selectRemoteFolder(
           context: context,
           providerType: providerType,
+          offersAppFolder: !_fullDrive,
           baiduAppFolder: baiduAppFolder,
           credentialStore: ref.read(credentialStoreProvider),
           target: OAuthRemoteTargetConfig(
@@ -184,6 +220,7 @@ class NewOAuthConnection extends HookConsumerWidget {
           accountLabel: accountController.text.trim().isEmpty
               ? null
               : accountController.text.trim(),
+          fullDriveAccess: _fullDrive,
         );
         // Plain probe: avoids the Riverpod 3 UnmountedRefException race that
         // an autoDispose provider's `.future` can hit when the provider is
@@ -258,13 +295,21 @@ class NewOAuthConnection extends HookConsumerWidget {
           ),
         ),
         trailingActions: [
-          AdaptiveTextButton(
-            padding: EdgeInsets.zero,
+          AdaptiveIconButton(
+            key: const Key('oauth-help'),
+            icon: Icon(
+              adaptiveIcon(
+                context,
+                material: Icons.help_outline,
+                cupertino: CupertinoIcons.question_circle,
+              ),
+            ),
+            semanticLabel: syncText(context, '配置说明', 'Setup help'),
+            tooltip: syncText(context, '配置说明', 'Setup help'),
             onPressed: () => context.pushNamed(
               AppRoutes.connectionHelp.name,
               queryParameters: {'provider': providerType.name},
             ),
-            child: Text(syncText(context, '帮助', 'Help')),
           ),
         ],
       ),
@@ -318,6 +363,21 @@ class NewOAuthConnection extends HookConsumerWidget {
                           height: 1.5,
                         ),
                       ),
+                      if (_fullDrive) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          key: const Key('oauth-google-full-access-note'),
+                          syncText(
+                            context,
+                            '文件同步要读写你在 Google Drive 里选的普通文件夹，所以会申请“所有 Google 云端硬盘文件”的权限。用自己的应用密钥时，Google 会提示应用未经验证，点“继续”即可；在授权页请勾选全部权限。授权页还在“测试”状态时，Google 大约每 7 天会要求重新登录一次。',
+                            'File sync reads and writes the ordinary Google Drive folder you choose, so it asks for access to all of your Google Drive files. With your own app key Google warns that the app is unverified; choose Continue, and tick every permission on the consent page. While your consent screen is in Testing, Google asks you to sign in again about every 7 days.',
+                          ),
+                          style: TextStyle(
+                            color: context.appSecondaryLabel,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       AdaptiveElevatedButton(
                         key: const Key('oauth-sign-in'),
@@ -405,6 +465,7 @@ class NewOAuthConnection extends HookConsumerWidget {
 Future<String?> _selectRemoteFolder({
   required BuildContext context,
   required RemoteProviderType providerType,
+  required bool offersAppFolder,
   required String baiduAppFolder,
   required CredentialStore credentialStore,
   required OAuthRemoteTargetConfig target,
@@ -413,6 +474,7 @@ Future<String?> _selectRemoteFolder({
   isScrollControlled: true,
   builder: (_) => _OAuthFolderPickerSheet(
     providerType: providerType,
+    offersAppFolder: offersAppFolder,
     baiduAppFolder: baiduAppFolder,
     picker: OAuthRemoteFolderPicker(credentialStore: credentialStore),
     target: target,
@@ -422,12 +484,16 @@ Future<String?> _selectRemoteFolder({
 class _OAuthFolderPickerSheet extends StatefulWidget {
   const _OAuthFolderPickerSheet({
     required this.providerType,
+    required this.offersAppFolder,
     required this.baiduAppFolder,
     required this.picker,
     required this.target,
   });
 
   final RemoteProviderType providerType;
+
+  /// Whether Google's hidden app folder is offered (backup connections).
+  final bool offersAppFolder;
   final String baiduAppFolder;
   final OAuthRemoteFolderPicker picker;
   final OAuthRemoteTargetConfig target;
@@ -503,6 +569,7 @@ class _OAuthFolderPickerSheetState extends State<_OAuthFolderPickerSheet> {
               ),
             ),
             if (widget.providerType == RemoteProviderType.googleDrive &&
+                widget.offersAppFolder &&
                 _parentId == null)
               ListTile(
                 leading: const Icon(Icons.lock_outline),

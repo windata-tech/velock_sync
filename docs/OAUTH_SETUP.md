@@ -78,6 +78,19 @@ Drive and OneDrive are public clients and never take a secret.
   Google review. Leave it in “Testing” and only listed test users can sign
   in, and each sign-in expires after about 7 days. Google may still show an
   “unverified app” notice for your own project; choose Continue.
+
+  A Google Drive connection added from **file sync** asks for the full
+  `drive` scope instead, because it reads and writes an ordinary, visible My
+  Drive folder that the app did not create. `drive` is a *restricted* scope:
+  in “Testing” it works for the listed test users (with the unverified-app
+  notice and the ~7-day sign-in), but publishing it to production requires
+  Google's verification and security assessment. The connection records
+  `fullDriveAccess: true`; the app checks the granted scopes after sign-in and
+  refuses the connection if the user unticked Drive access. Backup
+  connections keep `drive.file` + `drive.appdata` and are not offered for file
+  sync. A folder holding several items with the same name stops the sync with
+  `provider.google.duplicate_name`; Google Docs, Sheets and shortcuts have no
+  file content and are skipped.
 - **OneDrive** — register a public client app in Microsoft Entra, add the
   redirect under “Mobile and desktop applications”, and enter the Application
   (client) ID. Scopes used: `Files.ReadWrite`, `offline_access`.

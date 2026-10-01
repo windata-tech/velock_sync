@@ -1,5 +1,5 @@
+import 'package:velock_sync/widgets/app_dialog.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_snapshot_recovery.dart';
-import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace_shared.dart';
@@ -68,7 +68,7 @@ Widget host(
 );
 
 Finder alertFor(TargetPlatform platform) => platform == TargetPlatform.iOS
-    ? find.byType(CupertinoAlertDialog)
+    ? find.byType(AppDialog)
     : find.byType(AlertDialog);
 
 /// Asserts the full persistent-failure contract:

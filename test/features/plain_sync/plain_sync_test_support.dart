@@ -38,6 +38,7 @@ import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/connection/state/protocol_provider.dart';
 import 'package:velock_sync/features/plain_sync/local_folder_open.dart';
+import 'package:velock_sync/features/plain_sync/state/plain_remote_folders.dart';
 import 'package:velock_sync/features/plain_sync/state/plain_sync_providers.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/sync_core/contracts/remote_object_store.dart';
@@ -66,22 +67,28 @@ ConnectionModel webDavConnection({
 const _webDavAddress = 'https://nas.example.test';
 
 /// A WebDAV connection that is *not* WebDAV: folder sync must refuse to use it.
-ConnectionModel oAuthConnection({String id = 'oauth-1', String name = '网盘'}) =>
-    ConnectionModel(
-      id: id,
-      name: name,
-      source: '文件同步',
-      target: 'oauth://provider',
-      protocol: const OAuthProtocolModel(
-        providerType: RemoteProviderType.webDav,
-        clientId: 'public-client',
-        credentialRef: 'secure-ref',
-        rootId: 'root',
-      ),
-      createdAt: DateTime.utc(2026, 9, 27),
-      updatedAt: DateTime.utc(2026, 9, 27),
-      status: ConnectionStatus.active,
-    );
+ConnectionModel oAuthConnection({
+  String id = 'oauth-1',
+  String name = '网盘',
+  RemoteProviderType providerType = RemoteProviderType.googleDrive,
+  String rootId = 'root',
+  bool fullDriveAccess = false,
+}) => ConnectionModel(
+  id: id,
+  name: name,
+  source: '文件同步',
+  target: 'oauth://provider',
+  protocol: OAuthProtocolModel(
+    providerType: providerType,
+    clientId: 'public-client',
+    credentialRef: 'secure-ref',
+    rootId: rootId,
+    fullDriveAccess: fullDriveAccess,
+  ),
+  createdAt: DateTime.utc(2026, 9, 27),
+  updatedAt: DateTime.utc(2026, 9, 27),
+  status: ConnectionStatus.active,
+);
 
 /// The local folder the fake authorizer hands back.
 ///
@@ -288,6 +295,22 @@ Future<PlainSyncWorld> pumpPlainSyncApp(
         return await folderListing?.call(relativeSegments) ??
             const <WebDavBackupFolder>[];
       }),
+      // Cloud drives browse through the same fake listing as WebDAV, so no
+      // test ever reaches a real provider API.
+      plainRemoteFoldersProvider.overrideWith(
+        (ref) => _FakeRemoteFolders(
+          connections: ref.watch(connectionRepositoryProvider),
+          webDavLoader: ref.watch(backupFolderLoaderProvider),
+          webDavCreator: ref.watch(backupFolderCreatorProvider),
+          listCloud: (segments) async {
+            loadedFolders.add(List<String>.of(segments));
+            return await folderListing?.call(segments) ??
+                const <WebDavBackupFolder>[];
+          },
+          createCloud: (segments, name) async =>
+              createdFolders.add([...segments, name]),
+        ),
+      ),
       backupFolderCreatorProvider.overrideWithValue(({
         required WebDavProtocolModel protocol,
         required List<String> relativeSegments,
@@ -522,4 +545,36 @@ Future<void> scrollAndTap(
   await tester.pumpAndSettle();
   await tester.tap(finder);
   await tester.pumpAndSettle();
+}
+
+/// Routes cloud-drive folder browsing to the test's fake listing; WebDAV keeps
+/// going through the overridden loader and creator.
+class _FakeRemoteFolders extends PlainRemoteFolders {
+  const _FakeRemoteFolders({
+    required super.connections,
+    required super.webDavLoader,
+    required super.webDavCreator,
+    required this.listCloud,
+    required this.createCloud,
+  });
+
+  final Future<List<WebDavBackupFolder>> Function(List<String>) listCloud;
+  final Future<void> Function(List<String>, String) createCloud;
+
+  @override
+  Future<List<WebDavBackupFolder>> list(
+    ConnectionModel connection,
+    List<String> relativeSegments,
+  ) => connection.protocol is WebDavProtocolModel
+      ? super.list(connection, relativeSegments)
+      : listCloud(relativeSegments);
+
+  @override
+  Future<void> create(
+    ConnectionModel connection,
+    List<String> parentSegments,
+    String name,
+  ) => connection.protocol is WebDavProtocolModel
+      ? super.create(connection, parentSegments, name)
+      : createCloud(parentSegments, name);
 }
