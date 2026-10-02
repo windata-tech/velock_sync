@@ -1,0 +1,22 @@
+Velock Sync brengt de gegevens op je apparaat naar cloudopslag die van jou is: je NAS thuis, elke WebDAV-dienst of je eigen Google Drive, OneDrive, Baidu Netdisk of Aliyun Drive. Er zit geen server van ons tussen en je hoeft geen account aan te maken.
+
+BESTANDSSYNCHRONISATIE
+• Koppel een map op je apparaat aan een map in de cloud, zo vaak als je wilt
+• Tweerichtings, alleen uploaden of alleen downloaden, per locatie in te stellen
+• Is hetzelfde bestand aan beide kanten gewijzigd, dan blijven standaard beide kopieën bewaard. Er wordt niets ongemerkt overschreven
+• Grote verwijderingen worden gepauzeerd en eerst aan je voorgelegd, zodat een vergissing zich niet verspreidt
+• De kopie in de cloud bestaat uit gewone bestanden die elke computer, NAS of app kan openen
+• Blader in de app door je cloudmappen en maak nieuwe aan
+
+VERSLEUTELDE VELOCK-BACK-UP
+• Cloudback-up voor de Velock-app: bestanden, foto's, accounts, kaarten, notities en documenten
+• Velock versleutelt alles op je apparaat voordat Sync het verstuurt. Sync noch de clouddienst kan het lezen
+• Herstel op een nieuwe of gereset telefoon met je Velock-herstelkaart
+• Uploads worden teruggelezen en gecontroleerd, en elke overdracht staat in de geschiedenis
+
+PRIVACY
+• Geen gegevensverzameling, geen advertenties, geen analyses, geen tracking
+• Wachtwoorden en inlogtokens worden bewaard in de sleutelhanger van het systeem
+• Bestandssynchronisatie slaat onversleutelde bestanden op in de cloud, en de app meldt dat voordat je een locatie aanmaakt
+
+Je hebt een WebDAV-dienst nodig (zoals een NAS of Nextcloud) of een cloudopslagaccount waarbij je inlogt met je eigen app-sleutel voor ontwikkelaars. Voor de Velock-back-up is de Velock-app nodig.

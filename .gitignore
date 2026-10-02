@@ -142,3 +142,6 @@ tool/local_webdav/*.local.env
 
 # Private settings for tool/ios_ui_test/sim (password, simulator UDID)
 /tool/ios_ui_test/sim/local.env
+
+# Generated App Store screenshots (rebuild with tool/store/all_shots.sh)
+tool/store/screenshots/

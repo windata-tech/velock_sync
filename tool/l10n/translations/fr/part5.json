@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "Connectez-vous avec une clé d’app que vous avez enregistrée sur Google Cloud.",
+ "Sign in with an app key you registered on Microsoft Entra.": "Connectez-vous avec une clé d’app que vous avez enregistrée sur Microsoft Entra.",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "Connectez-vous avec une clé d’app que vous avez enregistrée sur la plateforme développeurs de Baidu Netdisk.",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "Connectez-vous avec une clé d’app que vous avez enregistrée sur la plateforme développeurs de Aliyun Drive.",
+ "or": "ou",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "La synchronisation de fichiers envoie, télécharge et même supprime chaque fichier du dossier choisi comme un fichier ordinaire, ce qui endommagerait la sauvegarde chiffrée de Velock. Il ne peut donc pas être utilisé."
+}

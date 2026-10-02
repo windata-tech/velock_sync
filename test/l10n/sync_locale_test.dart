@@ -24,7 +24,7 @@ import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
 import 'package:velock_sync/widgets/app_format.dart';
 
 const _delegates = [...GlobalMaterialLocalizations.delegates];
-const _locales = [Locale('zh', 'CN'), Locale('en')];
+final _locales = SyncLanguage.supportedLocales;
 
 class _LanguageHost extends ConsumerWidget {
   const _LanguageHost({required this.child});
@@ -41,9 +41,9 @@ class _LanguageHost extends ConsumerWidget {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('unset and unknown settings keep Chinese; system is explicit', () {
-    expect(SyncLanguage.fromStored(null), SyncLanguage.chinese);
-    expect(SyncLanguage.fromStored('invalid'), SyncLanguage.chinese);
+  test('unset and unknown settings follow the device', () {
+    expect(SyncLanguage.fromStored(null), SyncLanguage.system);
+    expect(SyncLanguage.fromStored('invalid'), SyncLanguage.system);
     expect(SyncLanguage.fromStored('zh_Hans'), SyncLanguage.chinese);
     expect(SyncLanguage.fromStored('en-US'), SyncLanguage.english);
     expect(SyncLanguage.fromStored('en'), SyncLanguage.english);
@@ -92,6 +92,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            syncLanguageBootstrapProvider.overrideWithValue(
+              SyncLanguage.chinese,
+            ),
             syncLanguageWriterProvider.overrideWithValue((value) async {
               saved.add(value);
             }),
@@ -105,7 +108,7 @@ void main() {
       expect(
         find.text('语言'),
         findsOneWidget,
-      ); // Default remains Chinese on English test host.
+      ); // Starts from a saved Chinese preference on an English host.
       await tester.tap(find.byKey(const Key('sync-language-setting')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('sync-language-en')));
@@ -162,6 +165,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            syncLanguageBootstrapProvider.overrideWithValue(
+              SyncLanguage.chinese,
+            ),
             syncLanguageWriterProvider.overrideWithValue((_) async {
               throw StateError('write failed');
             }),
@@ -201,11 +207,11 @@ void main() {
       expect(find.text('Start backup'), findsOneWidget);
       expect(find.byKey(const Key('velock-backup-enable')), findsOneWidget);
       await tester.pumpWidget(
-        const MaterialApp(
-          locale: Locale('en'),
+        MaterialApp(
+          locale: const Locale('en'),
           supportedLocales: _locales,
           localizationsDelegates: _delegates,
-          home: NewSyncProfile(),
+          home: const NewSyncProfile(),
         ),
       );
       await tester.pumpAndSettle();

@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "Meld u aan met een app-sleutel die u bij Google Cloud hebt geregistreerd.",
+ "Sign in with an app key you registered on Microsoft Entra.": "Meld u aan met een app-sleutel die u bij Microsoft Entra hebt geregistreerd.",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "Meld u aan met een app-sleutel die u bij het Baidu Netdisk-ontwikkelaarsplatform hebt geregistreerd.",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "Meld u aan met een app-sleutel die u bij het Aliyun Drive-ontwikkelaarsplatform hebt geregistreerd.",
+ "or": "of",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "Bestandssynchronisatie uploadt, downloadt en verwijdert zelfs elk bestand in de gekozen map als gewoon bestand. Daardoor zou de versleutelde Velock-back-up beschadigd raken, dus deze map kan niet worden gebruikt."
+}

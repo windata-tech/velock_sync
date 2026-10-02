@@ -1927,6 +1927,69 @@ final class CrossAppUITests: XCTestCase {
         failWithTree("Backup did not complete; last status: \(last.isEmpty ? "<none>" : last)")
     }
 
+    /// Step driver for apps whose UI the scripted tests don't know (e.g. an
+    /// old release in the upgrade check). E2E_STEPS is "||"-separated:
+    /// launch | activate | unlock | tap:<label> | tapid:<id> | tapxy:<x>,<y>
+    /// | type:<text> | wait:<s> | dump. A dump (debugDescription + PNG) is
+    /// always written at the end into E2E_DRIVE_DIR.
+    func testDriveSteps() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let steps = env["E2E_STEPS"], let dir = env["E2E_DRIVE_DIR"] else {
+            throw XCTSkip("Explicit driver only")
+        }
+        let app: XCUIApplication = env["E2E_DRIVE_BUNDLE"].map { XCUIApplication(bundleIdentifier: $0) } ?? velockApp!
+        var n = 0
+        func dump() {
+            n += 1
+            try? app.debugDescription.write(toFile: "\(dir)/\(n).txt", atomically: true, encoding: .utf8)
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: "\(dir)/\(n).png"))
+        }
+        for raw in steps.components(separatedBy: "||") {
+            let step = raw.trimmingCharacters(in: .whitespaces)
+            let (cmd, arg): (String, String) = {
+                guard let i = step.firstIndex(of: ":") else { return (step, "") }
+                return (String(step[..<i]), String(step[step.index(after: i)...]))
+            }()
+            switch cmd {
+            case "launch": app.launch(); _ = app.wait(for: .runningForeground, timeout: 20)
+            case "activate": app.activate(); _ = app.wait(for: .runningForeground, timeout: 20)
+            case "unlock": tutorialUnlock()
+            case "tap", "tapany":
+                let node = app.descendants(matching: .any).matching(
+                    NSPredicate(format: "label == %@ OR identifier == %@", arg, arg)).firstMatch
+                let loose = app.descendants(matching: .any).matching(
+                    NSPredicate(format: "label BEGINSWITH %@", arg)).firstMatch
+                if node.waitForExistence(timeout: 8) { node.tap() }
+                else if loose.waitForExistence(timeout: 2) { loose.tap() }
+                else if cmd == "tap" { dump(); XCTFail("missing: \(arg)"); return }
+            case "tapxy":
+                let xy = arg.split(separator: ",").compactMap { Double($0) }
+                app.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: xy[0], dy: xy[1])).tap()
+            case "press":
+                let xy = arg.split(separator: ",").compactMap { Double($0) }
+                app.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: xy[0], dy: xy[1])).press(forDuration: 1.2)
+            case "keys":
+                // Taps software-keyboard keys one by one, for inputs that
+                // XCTest cannot focus (e.g. the Quill editor).
+                for ch in arg {
+                    let label = ch == "\n" ? "return" : String(ch).uppercased()
+                    let match = NSPredicate(format: "label ==[c] %@", label)
+                    let key = app.keys.matching(match).firstMatch.exists
+                        ? app.keys.matching(match).firstMatch : app.buttons.matching(match).firstMatch
+                    if key.waitForExistence(timeout: 3) { key.tap() } else { XCTFail("no key \(label)"); return }
+                }
+            case "type": app.typeText(arg)
+            case "wait": RunLoop.current.run(until: Date().addingTimeInterval(Double(arg) ?? 1))
+            case "dump": dump()
+            default: XCTFail("unknown step \(step)"); return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        }
+        dump()
+    }
+
     func testSeedVelockBusinessData() {
         ensureVelockInitializedAndPairingEnabled(enablePairing: false)
         seedVelockBusinessDataIfRequested()
@@ -4071,5 +4134,753 @@ final class CrossAppUITests: XCTestCase {
             text("保存位置").exists,
             "Cancelling left the storage page")
         capture("relocation-cancelled")
+    }
+
+
+    // MARK: - Whole-app tour of Sync (runs after the backup stage of e2e.sh)
+
+    /// Walks every user-facing area of Sync on top of a finished Velock backup:
+    /// backup details/manage/history, a plain two-way file sync location from
+    /// creation to removal (both directions plus a propagated deletion, checked
+    /// on the real files), connection management, every settings entry, and a
+    /// final backup. File evidence is checked here on the host paths and again
+    /// by app_tour.sh. Requires E2E_WEBDAV_ROOT and E2E_PLAIN_LOCAL_DIR.
+    func testSyncAppTour() {
+        let env = ProcessInfo.processInfo.environment
+        guard let webdavRoot = env["E2E_WEBDAV_ROOT"], let localDir = env["E2E_PLAIN_LOCAL_DIR"],
+              let plainRoot = env["E2E_PLAIN_WEBDAV_ROOT"] else {
+            XCTFail("E2E_WEBDAV_ROOT, E2E_PLAIN_WEBDAV_ROOT and E2E_PLAIN_LOCAL_DIR are required")
+            return
+        }
+        // File sync goes to a second server: the Velock backup owns the first
+        // server's root, and a plain mirror may never overlap a backup folder.
+        let plainPort = env["E2E_PLAIN_PORT"] ?? "18992"
+        let remoteName = env["E2E_PLAIN_REMOTE_NAME"] ?? "plain-e2e"
+        let localFolderName = URL(fileURLWithPath: localDir).lastPathComponent
+        let remoteDir = URL(fileURLWithPath: plainRoot).appendingPathComponent(remoteName)
+        let local = URL(fileURLWithPath: localDir)
+
+        syncApp.launch()
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+
+        // E2E_TOUR_FROM=B|C|D resumes a failed tour at a later area.
+        let from = env["E2E_TOUR_FROM"] ?? "A"
+        if from <= "A" {
+        // ── A. 格间备份：首页、详情、记录、管理、诊断
+        tourStep("A1 backup home")
+        waitLabel(["上次备份已完成"], "backup home is not in the completed state", timeout: 60)
+        tourBackupNow()
+        tourTap(syncApp.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'velock-backup-details-'")).firstMatch, "details")
+        tourStep("A2 backup details")
+        tourTap(tourBegins("云端保存位置"), "cloud location")
+        tourWait(element(syncApp, "folder-view-toggle"), "backup folder browser")
+        tourWait(syncApp.buttons["velock-sync"], "the velock-sync folder in the backup location")
+        tourStep("A2 backup folder browser")
+        tourTap(element(syncApp, "folder-view-toggle"), "list view")
+        tourStep("A2 list view")
+        tourTap(element(syncApp, "folder-view-toggle"), "grid view")
+        tourTap(element(syncApp, "connection-info"), "connection info")
+        tourStep("A2 connection info")
+        tourDismissSheet()
+        tourBack()
+        tourTap(tourBegins("传输记录"), "transfer history")
+        let run = syncApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'history-run-'")).firstMatch
+        tourWait(run, "a history row")
+        tourStep("A3 history")
+        tourTap(run, "history row")
+        tourStep("A3 run details")
+        tourDismissSheet()
+        tourBack()
+        tourTap(tourBegins("管理"), "manage")
+        tourStep("A4 manage")
+        tourTap(element(syncApp, "manage-change-location"), "change location")
+        tourWait(element(syncApp, "use-backup-folder"), "backup folder picker")
+        tourStep("A4 backup folder picker")
+        tourCreateRemoteFolder("tour-backup-candidate", button: "new-backup-folder")
+        waitLabel(["已进入新文件夹"], "created-folder note", contains: true)
+        tourStep("A4 created folder (not used)")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: URL(fileURLWithPath: webdavRoot)
+            .appendingPathComponent("tour-backup-candidate").path), "new backup folder missing on the server")
+        tourBack() // up to the connection root
+        tourBack() // leave the picker without choosing
+        tourWait(element(syncApp, "manage-change-location"), "back on manage")
+        tourBack()
+        tourTap(tourBegins("暂停备份"), "pause backup")
+        waitLabel(["已暂停", "继续备份"], "backup did not pause")
+        tourStep("A5 paused")
+        tourTap(tourBegins("继续备份"), "resume backup")
+        tourWait(tourBegins("暂停备份"), "backup did not resume")
+        tourTap(element(syncApp, "backup-diagnostics"), "diagnostics")
+        waitLabel(["已同步的数据"], "diagnostics page")
+        tourStep("A6 diagnostics")
+        tourBack()
+        tourBack()
+        tourTap(element(syncApp, "velock-cloud-restore"), "restore guide")
+        tourStep("A7 restore guide (entry only)")
+        tourBack()
+
+        }
+        if from <= "B" {
+        // ── B. 文件同步：新建位置、首次双向、增量双向、详情、草稿、暂停、删除传播、删除位置
+        tourTab("文件同步")
+        // A resumed tour may find the location of a failed attempt; it owns the
+        // local folder, so remove it first (keeps both sides' files).
+        let leftover = syncApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'plain-location-open-'")).firstMatch
+        if leftover.waitForExistence(timeout: 3) {
+            leftover.tap()
+            tourScrollTo(element(syncApp, "plain-remove"))
+            tourTap(element(syncApp, "plain-remove"), "remove leftover location")
+            tourTap(element(syncApp, "plain-remove-confirm"), "confirm leftover removal")
+        }
+        tourStep("B1 file sync empty")
+        tourTap(element(syncApp, "plain-location-create"), "add location")
+        tourTap(element(syncApp, "plain-pick-local"), "pick local folder")
+        tourPickHostFolder(localFolderName)
+        waitLabel([localFolderName + "\n已选择"], "local folder not selected")
+        tourStep("B2 step 1 done")
+        tourTap(element(syncApp, "plain-wizard-next-1"), "next 1")
+        tourTap(element(syncApp, "plain-add-another-connection"), "add a connection from the wizard")
+        tourWait(element(syncApp, "protocol-webDav"), "protocols for file sync")
+        tourStep("B3 protocols for file sync")
+        tourAddWebDAV(port: plainPort, name: "E2E Files")
+        let connection = syncApp.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH 'plain-remote-' AND label BEGINSWITH 'E2E Files'")).firstMatch
+        tourWait(connection, "the new connection back in the wizard", timeout: 30)
+        tourStep("B3 new connection in the wizard")
+        tourTap(connection, "the file sync connection")
+        tourWait(element(syncApp, "use-backup-folder"), "remote folder picker")
+        tourStep("B3 remote picker")
+        tourCreateRemoteFolder(remoteName, button: "new-backup-folder")
+        waitLabel(["已进入新文件夹"], "created remote folder", contains: true)
+        // Something only the remote has, so the first sync also downloads.
+        tourWrite(remoteDir.appendingPathComponent("from-remote.txt"), "made on the server before the first sync")
+        tourStep("B3 created remote folder")
+        tourTap(element(syncApp, "use-backup-folder"), "use remote folder")
+        tourStep("B4 step 2 done")
+        tourTap(element(syncApp, "plain-wizard-next-2"), "next 2")
+        tourWait(tourOption("双向同步"), "direction options")
+        tourStep("B5 step 3")
+        tourTap(element(syncApp, "plain-wizard-create"), "create")
+        tourWaitFiles("first sync",
+                      present: [remoteDir.appendingPathComponent("hello.txt"),
+                                remoteDir.appendingPathComponent("docs/readme.md"),
+                                remoteDir.appendingPathComponent("photos/proof.png"),
+                                local.appendingPathComponent("from-remote.txt")])
+        waitLabel(["已是最新", "同步完成"], "first sync did not finish", timeout: 60)
+        tourStep("B6 first sync done")
+        tourCompareBytes(local.appendingPathComponent("photos/proof.png"), remoteDir.appendingPathComponent("photos/proof.png"))
+
+        tourWrite(local.appendingPathComponent("local-later.txt"), "added on the phone after the first sync")
+        tourWrite(remoteDir.appendingPathComponent("docs/remote-later.txt"), "added on the server after the first sync")
+        tourTap(syncApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'plain-location-run-'")).firstMatch, "sync now")
+        tourWaitFiles("second sync",
+                      present: [remoteDir.appendingPathComponent("local-later.txt"),
+                                local.appendingPathComponent("docs/remote-later.txt")])
+        waitLabel(["已是最新", "同步完成"], "second sync did not finish", timeout: 60)
+        tourStep("B7 second sync done")
+
+        // Both sides edit the same file: keep-both renames the phone's copy.
+        tourWrite(local.appendingPathComponent("hello.txt"), "edited on the phone")
+        tourWrite(remoteDir.appendingPathComponent("hello.txt"), "edited on the server")
+        tourTap(syncApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'plain-location-run-'")).firstMatch, "sync a conflict")
+        let conflictDeadline = Date().addingTimeInterval(90)
+        func conflictCopies() -> [String] {
+            ((try? FileManager.default.contentsOfDirectory(atPath: local.path)) ?? []).filter { $0.hasPrefix("hello (") }
+        }
+        while conflictCopies().isEmpty && Date() < conflictDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        }
+        XCTAssertEqual(conflictCopies().count, 1, "keep-both did not save the phone's copy")
+        XCTAssertEqual(try? String(contentsOf: local.appendingPathComponent("hello.txt"), encoding: .utf8), "edited on the server")
+        if let copy = conflictCopies().first {
+            XCTAssertEqual(try? String(contentsOf: local.appendingPathComponent(copy), encoding: .utf8), "edited on the phone")
+        }
+        waitLabel(["冲突 1"], "conflict badge on the card", timeout: 30)
+        tourStep("B7 conflict kept both")
+
+        tourTap(syncApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'plain-location-open-'")).firstMatch, "location details")
+        tourWait(element(syncApp, "plain-local-folder"), "location detail page")
+        tourStep("B8 location details")
+        tourTap(syncApp.staticTexts.matching(NSPredicate(format: "label == '打开'")).element(boundBy: 1), "open remote folder")
+        tourWait(tourEntry("local-later.txt"), "remote folder in the in-app browser")
+        tourStep("B8 remote folder opened")
+        tourBackUntil(element(syncApp, "plain-local-folder"), "back on location details")
+        syncApp.staticTexts.matching(NSPredicate(format: "label == '打开'")).element(boundBy: 0).tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(3))
+        tourStep("B8 local folder opened (system Files)")
+        if syncApp.state != .runningForeground {
+            syncApp.activate()
+            XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 10))
+        } else {
+            tourDismissSheet()
+        }
+        tourWait(element(syncApp, "plain-local-folder"), "location details after opening the local folder")
+
+        tourTap(tourOption("仅上传"), "upload only (draft)")
+        tourWait(syncApp.buttons.matching(NSPredicate(format: "label == '保存'")).firstMatch, "save button for the draft")
+        tourStep("B9 draft")
+        tourBack()
+        tourTap(syncApp.buttons.matching(NSPredicate(format: "identifier == 'plain-draft-save' OR label == '保存'")).element(boundBy: 0), "save on leave")
+        waitLabel(["仅上传"], "saved direction is not shown on the card")
+        tourStep("B9 saved upload only")
+        tourTap(syncApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'plain-location-open-'")).firstMatch, "location details")
+        tourTap(tourOption("双向同步"), "two-way (draft)")
+        tourTap(syncApp.buttons.matching(NSPredicate(format: "label == '保存'")).firstMatch, "save")
+        tourGone(syncApp.buttons.matching(NSPredicate(format: "label == '保存'")).firstMatch, "save button stays after saving")
+        tourStep("B9 back to two-way")
+
+        tourTap(element(syncApp, "plain-detail-pause"), "pause")
+        waitLabel(["继续同步"], "location did not pause")
+        tourStep("B10 paused")
+        tourTap(element(syncApp, "plain-detail-run"), "resume")
+        tourWait(element(syncApp, "plain-detail-pause"), "location did not resume")
+
+        tourScrollTo(element(syncApp, "plain-conflicts"))
+        tourTap(element(syncApp, "plain-conflicts"), "conflict history")
+        tourStep("B11 conflict history")
+        tourTap(syncApp.buttons.matching(NSPredicate(format: "identifier == 'plain-conflicts-clear' OR label == '清除记录'")).firstMatch, "clear conflict records")
+        tourGone(element(syncApp, "plain-conflicts"), "conflict records were not cleared")
+        tourStep("B11 conflict records cleared")
+
+        try? FileManager.default.removeItem(at: local.appendingPathComponent("local-later.txt"))
+        tourScrollTo(element(syncApp, "plain-detail-run"), up: true)
+        tourTap(element(syncApp, "plain-detail-run"), "sync after a local deletion")
+        let deletionReview = element(syncApp, "plain-confirm-deletions")
+        let deadline = Date().addingTimeInterval(60)
+        while FileManager.default.fileExists(atPath: remoteDir.appendingPathComponent("local-later.txt").path) && Date() < deadline {
+            if deletionReview.exists { tourStep("B12 deletion review"); deletionReview.tap() }
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: remoteDir.appendingPathComponent("local-later.txt").path),
+                       "a local deletion did not reach the server")
+        waitLabel(["已是最新", "同步完成"], "deletion sync did not finish", timeout: 60)
+        tourStep("B12 deletion synced")
+
+        tourScrollTo(element(syncApp, "plain-remove"))
+        tourTap(element(syncApp, "plain-remove"), "delete location")
+        tourStep("B13 delete location?")
+        tourTap(element(syncApp, "plain-remove-confirm"), "confirm delete location")
+        tourWait(element(syncApp, "plain-location-create"), "empty file sync page after removal")
+        tourStep("B13 location removed")
+        for kept in [remoteDir.appendingPathComponent("hello.txt"), local.appendingPathComponent("hello.txt")] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path), "removing the location deleted \(kept.lastPathComponent)")
+        }
+
+        }
+        if from <= "C" {
+        // ── C. 设置：连接、传输记录、语言、后台、诊断、关于
+        tourTab("设置")
+        tourStep("C1 settings")
+        tourTap(element(syncApp, "manage-cloud-locations"), "connections")
+        let row = syncApp.buttons.matching(NSPredicate(format: "label CONTAINS %@", "127.0.0.1:\(webDAVPort)")).firstMatch
+        let filesRow = syncApp.buttons.matching(NSPredicate(format: "label CONTAINS %@", "127.0.0.1:\(plainPort)")).firstMatch
+        tourWait(row, "WebDAV connection row")
+        tourStep("C2 connections")
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        tourTap(tourExact(["连接说明"], buttons: false), "connection info (menu)")
+        tourStep("C2 connection info")
+        tourDismissSheet()
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        tourTap(tourExact(["修改连接"], buttons: false), "edit connection")
+        tourTap(element(syncApp, "webdav_name"), "name field")
+        let current = (element(syncApp, "webdav_name").value as? String) ?? ""
+        syncApp.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 2))
+        syncApp.typeText("E2E Backup")
+        tourStep("C3 renamed")
+        tourTap(element(syncApp, "webdav-save"), "save connection")
+        let renamed = syncApp.buttons.matching(NSPredicate(format: "label BEGINSWITH 'E2E Backup'")).firstMatch
+        tourWait(renamed, "renamed connection", timeout: 30)
+        tourStep("C3 renamed connection")
+        tourWait(filesRow, "file sync connection row")
+        filesRow.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).tap()
+        tourWait(element(syncApp, "folder-view-toggle"), "connection browser")
+        tourStep("C4 connection browser")
+        tourTap(element(syncApp, "folder-view-toggle"), "list view")
+        tourStep("C4 list view")
+        tourTap(element(syncApp, "folder-view-toggle"), "grid view")
+        tourCreateRemoteFolder("tour-folder", button: "remote-browser-new-folder")
+        tourWait(tourEntry("tour-folder"), "new folder in the browser")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: URL(fileURLWithPath: plainRoot)
+            .appendingPathComponent("tour-folder").path), "browser folder missing on the server")
+        tourStep("C4 created folder")
+        tourTap(tourEntry("\(remoteName)"), "open the sync folder")
+        tourWait(tourEntry("hello.txt"), "synced files in the browser")
+        tourStep("C4 synced folder on the server")
+        tourTap(element(syncApp, "remote-browser-reload"), "reload")
+        tourBack() // parent folder
+        tourWait(tourEntry("tour-folder"), "connection root")
+        tourBack()
+        tourTap(syncApp.buttons["检查连接状态"].firstMatch, "check connections")
+        waitLabel(["\n已连接\n"], "connection is not reported as connected", timeout: 20, contains: true)
+        tourTap(syncApp.buttons["新建连接"].firstMatch, "new connection")
+        for name in ["WebDAV", "Google Drive", "OneDrive", "百度网盘", "阿里云盘"] {
+            waitLabel([name], "protocol \(name) is missing", contains: true)
+        }
+        tourStep("C5 protocols")
+        tourBack()
+        tourBack()
+        tourTap(tourExact(["所有传输记录"], buttons: false), "all history")
+        waitLabel(["最近同步"], "activity page")
+        tourStep("C6 activity")
+        tourBack()
+        tourTap(element(syncApp, "sync-language-setting"), "language")
+        tourTap(element(syncApp, "sync-language-en"), "English")
+        tourBack()
+        waitLabel(["Settings"], "English UI did not apply")
+        tourStep("C7 English")
+        tourTap(element(syncApp, "sync-language-setting"), "language")
+        tourTap(element(syncApp, "sync-language-zh"), "简体中文")
+        tourBack()
+        waitLabel(["设置"], "Chinese UI did not come back")
+        tourTap(element(syncApp, "global-background-enabled"), "background off")
+        tourStep("C8 background toggled")
+        tourTap(element(syncApp, "global-background-enabled"), "background on")
+        tourDismissSheet()
+        tourScrollTo(tourExact(["导出脱敏诊断"], buttons: false))
+        tourTap(tourBegins("导出脱敏诊断"), "diagnostics")
+        tourWait(element(syncApp, "copy-sanitized-diagnostics"), "sanitized diagnostics")
+        tourStep("C9 sanitized diagnostics")
+        tourTap(tourExact(["完成"], buttons: true), "done")
+        tourScrollTo(tourBegins("关于与开源许可"))
+        tourTap(tourBegins("关于与开源许可"), "licenses")
+        waitLabel(["Velock Sync"], "license page")
+        tourStep("C10 licenses")
+        tourBack()
+
+        }
+        // ── D. 改名后的连接仍能备份
+        tourTab("格间")
+        tourBackupNow()
+        tourStep("D1 final backup")
+    }
+
+    /// A file or folder tile/row in the remote browsers (labelled by its name).
+    private func tourEntry(_ name: String) -> XCUIElement {
+        syncApp.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + "\n")).firstMatch
+    }
+
+    /// A PlainOptionRow (title, newline, full description).
+    private func tourOption(_ title: String) -> XCUIElement {
+        syncApp.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", title + "\n")).firstMatch
+    }
+
+    private func tourStep(_ name: String) {
+        print("TOUR_STEP \(name)")
+        attachScreenshot("tour-" + name)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+    }
+
+    private func tourBegins(_ prefix: String) -> XCUIElement {
+        syncApp.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+    }
+
+    private func tourExact(_ labels: [String], buttons: Bool) -> XCUIElement {
+        (buttons ? syncApp.buttons : syncApp.descendants(matching: .any))
+            .matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+    }
+
+    private func tourWait(_ target: XCUIElement, _ what: String, timeout: TimeInterval = 15) {
+        if !target.waitForExistence(timeout: timeout) { failWithTree("TOUR missing: \(what)") }
+    }
+
+    private func tourGone(_ target: XCUIElement, _ what: String, timeout: TimeInterval = 10) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while target.exists && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.3)) }
+        if target.exists { failWithTree("TOUR: \(what)") }
+    }
+
+    private func tourTap(_ target: XCUIElement, _ what: String, timeout: TimeInterval = 15) {
+        tourWait(target, what, timeout: timeout)
+        if !target.isHittable { tourScrollTo(target) }
+        target.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    private func waitLabel(_ labels: [String], _ message: String, timeout: TimeInterval = 15, contains: Bool = false) {
+        let predicates = labels.map {
+            contains ? NSPredicate(format: "label CONTAINS %@", $0)
+                     : NSPredicate(format: "label == %@ OR label BEGINSWITH %@", $0, $0 + "\n")
+        }
+        let target = syncApp.descendants(matching: .any)
+            .matching(NSCompoundPredicate(orPredicateWithSubpredicates: predicates)).firstMatch
+        if !target.waitForExistence(timeout: timeout) { failWithTree("TOUR: \(message)") }
+    }
+
+    private func tourTab(_ label: String) {
+        let tab = syncApp.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label))
+            .allElementsBoundByIndex.last { $0.frame.minY > syncApp.frame.height * 0.85 }
+        guard let tab else { failWithTree("TOUR: tab \(label) missing"); return }
+        tab.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    /// The header back control (返回 / 上一步 / Back), whichever is showing.
+    private func tourBack() {
+        let back = syncApp.buttons.matching(NSPredicate(
+            format: "identifier == 'app-back' OR label BEGINSWITH '返回' OR label BEGINSWITH '上一步' OR label BEGINSWITH 'Back' OR label BEGINSWITH 'Parent folder'")).firstMatch
+        tourTap(back, "back button")
+    }
+
+    /// Steps back (folder browsers go up a level first) until [target] shows.
+    private func tourBackUntil(_ target: XCUIElement, _ what: String) {
+        for _ in 0..<4 {
+            if target.waitForExistence(timeout: 2) { return }
+            tourBack()
+        }
+        tourWait(target, what)
+    }
+
+    /// Closes whatever dialog or sheet is up through its own close button.
+    private func tourDismissSheet() {
+        let close = syncApp.buttons.matching(NSPredicate(
+            format: "label IN %@", ["完成", "关闭", "知道了", "好", "取消", "Done", "Close", "OK"])).firstMatch
+        if close.waitForExistence(timeout: 3) {
+            close.tap()
+        } else {
+            syncApp.swipeDown(velocity: .fast)
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    private func tourScrollTo(_ target: XCUIElement, up: Bool = false) {
+        for _ in 0..<8 {
+            if target.exists && target.isHittable { return }
+            up ? syncApp.swipeDown(velocity: .slow) : syncApp.swipeUp(velocity: .slow)
+            // Let the scroll settle; a tap during momentum is swallowed.
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        }
+    }
+
+    private func tourCreateRemoteFolder(_ name: String, button: String) {
+        tourTap(element(syncApp, button), "new folder button")
+        // The name field opens focused (keyboard up); it has no AX identifier.
+        tourWait(element(syncApp, "confirm-new-backup-folder"), "new folder dialog")
+        tourWait(syncApp.keyboards.firstMatch, "keyboard for the folder name")
+        syncApp.typeText(name)
+        tourStep("new folder dialog \(name)")
+        tourTap(element(syncApp, "confirm-new-backup-folder"), "create folder")
+    }
+
+    private func tourAddWebDAV(port: String, name: String, host: String = "127.0.0.1") {
+        tourTap(element(syncApp, "protocol-webDav"), "WebDAV")
+        tourTap(element(syncApp, "webdav_https"), "https switch")
+        tourTap(element(syncApp, "webdav-allow-http"), "allow http", timeout: 5)
+        tourTap(element(syncApp, "webdav_address"), "address")
+        syncApp.typeText(host)
+        tourTap(element(syncApp, "webdav_port"), "port")
+        syncApp.typeText(port)
+        tourScrollTo(element(syncApp, "webdav_name"))
+        tourTap(element(syncApp, "webdav_name"), "name")
+        syncApp.typeText(name)
+        tourStep("WebDAV form \(name)")
+        tourScrollTo(element(syncApp, "webdav-save"))
+        tourTap(element(syncApp, "webdav-save"), "save WebDAV")
+    }
+
+    private func tourBackupNow() {
+        tourTap(element(syncApp, "backup-primary-action"), "backup now")
+        waitForCompletedBackup(timeout: 120)
+        tourStep("backup completed")
+    }
+
+    /// System folder picker → 我的iPhone → CrossAppUITestHost → [folder] → 打开.
+    private func tourPickHostFolder(_ folder: String) {
+        // iPhone: the picker opens on Recents and needs 浏览 twice to reach the
+        // sidebar. iPad: the sidebar is already showing and there is no 浏览.
+        let browse = syncApp.buttons.matching(NSPredicate(format: "label IN %@", ["浏览", "Browse"])).firstMatch
+        let sidebar = syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'DOC.sidebar.item.'")).firstMatch
+        let deadline = Date().addingTimeInterval(20)
+        while !browse.exists && !sidebar.exists && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        if browse.exists {
+            browse.tap()
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+            browse.tap()
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        } else if !sidebar.exists {
+            failWithTree("TOUR missing: system folder picker")
+        }
+        tourTap(syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'DOC.sidebar.item.' AND (label CONTAINS 'iPhone' OR label CONTAINS 'iPad')")).firstMatch,
+                "On My iPhone")
+        tourTap(syncApp.cells.matching(NSPredicate(format: "label BEGINSWITH 'CrossAppUITestHost'")).firstMatch, "host app folder")
+        tourTap(syncApp.cells.matching(NSPredicate(format: "label BEGINSWITH %@", folder + ",")).firstMatch, "local folder \(folder)")
+        tourStep("B2 system picker inside \(folder)")
+        tourTap(syncApp.buttons["DOCPicker.actionButton"], "open (choose folder)")
+    }
+
+    private func tourWrite(_ url: URL, _ text: String) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        XCTAssertNoThrow(try Data(text.utf8).write(to: url), "could not write \(url.lastPathComponent)")
+    }
+
+    private func tourWaitFiles(_ what: String, present: [URL], timeout: TimeInterval = 90) {
+        let deadline = Date().addingTimeInterval(timeout)
+        let failure = syncApp.descendants(matching: .any).matching(
+            NSPredicate(format: "label IN %@", ["同步没有完成", "上次同步失败"])).firstMatch
+        while Date() < deadline {
+            if present.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) { return }
+            if failure.exists { failWithTree("TOUR: \(what) failed in the app") ; return }
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        }
+        let missing = present.filter { !FileManager.default.fileExists(atPath: $0.path) }.map(\.path)
+        failWithTree("TOUR: \(what) did not produce \(missing)")
+    }
+
+    private func tourCompareBytes(_ a: URL, _ b: URL) {
+        XCTAssertEqual(try? Data(contentsOf: a), try? Data(contentsOf: b), "\(a.lastPathComponent) differs between the two sides")
+    }
+
+
+    // MARK: - App Store screenshots (store_shots.sh)
+
+    /// Builds the demo state for one language and saves raw App Store
+    /// screenshots into E2E_SHOT_DIR. E2E_SHOT_LOCATIONS lists the sync
+    /// locations as "localFolder>remoteFolder>two|up|down;…"; E2E_SHOT_WIZARD is
+    /// "localFolder>remoteFolder" for the step-3 screenshot; E2E_SHOT_VELOCK=0
+    /// skips the Velock screens (iPad has no paired Velock). The remote
+    /// connection is the one whose name is E2E_SHOT_CLOUD_NAME; it is added
+    /// (E2E_SHOT_CLOUD_HOST / _PORT) when missing.
+    func testStoreShots() {
+        let env = ProcessInfo.processInfo.environment
+        let out = URL(fileURLWithPath: env["E2E_SHOT_DIR"] ?? "/tmp/store-shots")
+        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        // E2E_SHOT_LANG is the app's language storage value (zh, en, ja, zh-Hant…).
+        // Every label the test waits for arrives translated through E2E_SHOT_L_*
+        // (store_shots.sh looks them up), so nothing below is language-specific.
+        let lang = env["E2E_SHOT_LANG"] ?? "zh"
+        let rtl = env["E2E_SHOT_RTL"] == "1"
+        let velock = env["E2E_SHOT_VELOCK"] != "0"
+        let cloudName = env["E2E_SHOT_CLOUD_NAME"] ?? "Nextcloud"
+        func labels(_ key: String) -> [String] {
+            (env["E2E_SHOT_L_" + key] ?? "").split(separator: "|").map(String.init)
+        }
+        func label(_ key: String) -> String { labels(key).first ?? key }
+        func shot(_ name: String) {
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: out.appendingPathComponent(name + ".png"))
+            attachScreenshot("shot-" + name)
+        }
+        // Tabs by position (0 Velock, 1 Files, 2 Settings), mirrored while the
+        // app is in a right-to-left language (it may still be in the previous
+        // run's language until the language step below).
+        var mirrored = false
+        func selectedTab() -> XCUIElement? {
+            syncApp.descendants(matching: .any).matching(NSPredicate(format: "selected == true"))
+                .allElementsBoundByIndex.first { $0.frame.minY > syncApp.frame.height * 0.85 }
+        }
+        func anyTab(_ index: Int) {
+            let frame = syncApp.frame
+            let pad = UIDevice.current.userInterfaceIdiom == .pad
+            let column = mirrored ? 2 - index : index
+            let x = frame.width * (CGFloat(column) + 0.5) / 3
+            // A tap right after launch can be swallowed: retry until the tab
+            // in that column reports itself selected.
+            for _ in 0..<4 {
+                syncApp.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: x, dy: frame.height - (pad ? 45 : 59)))
+                    .tap()
+                RunLoop.current.run(until: Date().addingTimeInterval(1))
+                let selected = syncApp.descendants(matching: .any)
+                    .matching(NSPredicate(format: "selected == true")).allElementsBoundByIndex
+                    .contains { $0.frame.minY > frame.height * 0.85 && $0.frame.minX <= x && $0.frame.maxX >= x }
+                if selected { return }
+            }
+            failWithTree("tab \(index) did not open")
+        }
+        func done(_ message: String) {
+            waitLabel(labels("DONE"), message, timeout: 90)
+        }
+
+        syncApp.launch()
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+
+        // Language first, so every later label is in the target language.
+        // The app opens on the Velock tab: on the right means right-to-left.
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        if let tab = selectedTab() { mirrored = tab.frame.midX > syncApp.frame.width / 2 }
+        anyTab(2)
+        tourTap(element(syncApp, "sync-language-setting"), "language")
+        let choice = element(syncApp, "sync-language-" + lang)
+        tourScrollTo(choice)
+        tourTap(choice, "pick language")
+        mirrored = rtl
+        tourBack()
+
+        // Start from no sync locations.
+        anyTab(1)
+        let open = syncApp.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'plain-location-open-'")).firstMatch
+        while open.waitForExistence(timeout: 3) {
+            open.tap()
+            tourScrollTo(element(syncApp, "plain-remove"))
+            tourTap(element(syncApp, "plain-remove"), "remove location")
+            tourTap(element(syncApp, "plain-remove-confirm"), "confirm removal")
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        }
+
+        func startWizard(local: String, remote: String) {
+            let add = element(syncApp, "plain-location-add")
+            tourTap(add, "add location")
+            tourTap(element(syncApp, "plain-pick-local"), "pick local folder")
+            tourPickHostFolder(local)
+            tourTap(element(syncApp, "plain-wizard-next-1"), "next 1")
+            let connection = syncApp.descendants(matching: .any).matching(NSPredicate(
+                format: "identifier BEGINSWITH 'plain-remote-' AND label BEGINSWITH %@", cloudName)).firstMatch
+            if !connection.waitForExistence(timeout: 5) {
+                // With no connection yet the wizard shows plain-add-connection instead.
+                let first = element(syncApp, "plain-add-connection")
+                tourTap(first.exists ? first : element(syncApp, "plain-add-another-connection"), "add connection")
+                tourAddWebDAV(port: env["E2E_SHOT_CLOUD_PORT"] ?? "8080", name: cloudName,
+                              host: env["E2E_SHOT_CLOUD_HOST"] ?? "cloud.local")
+            }
+            tourTap(connection, "cloud connection", timeout: 30)
+            tourTap(tourEntry(remote), "remote folder \(remote)", timeout: 20)
+            tourTap(element(syncApp, "use-backup-folder"), "use remote folder")
+            tourTap(element(syncApp, "plain-wizard-next-2"), "next 2")
+        }
+        let directions = ["up": label("UP"), "down": label("DOWN")]
+        for spec in (env["E2E_SHOT_LOCATIONS"] ?? "").split(separator: ";") {
+            let parts = spec.split(separator: ">").map(String.init)
+            startWizard(local: parts[0], remote: parts[1])
+            if let d = directions[parts[2]] {
+                tourTap(tourOption(d), "direction \(parts[2])")
+            }
+            // Longer languages push the button below the fold.
+            tourScrollTo(element(syncApp, "plain-wizard-create"))
+            tourTap(element(syncApp, "plain-wizard-create"), "create")
+            done("first sync of \(parts[0])")
+            RunLoop.current.run(until: Date().addingTimeInterval(2))
+        }
+
+        // 1 · Velock backup home, 2 · file sync home
+        if velock {
+            anyTab(0)
+            waitLabel(labels("BACKUP_DONE"), "backup is not completed", timeout: 30)
+            shot("1-velock-home")
+        }
+        anyTab(1)
+        done("locations")
+        shot("2-file-sync")
+
+        // 4 · location details (first location)
+        anyTab(1)
+        tourTap(open, "location details")
+        tourWait(element(syncApp, "plain-local-folder"), "location details")
+        shot("4-location-detail")
+        tourBack()
+
+        // 5 · cloud folder browser, 6 · storage types
+        anyTab(2)
+        tourTap(element(syncApp, "manage-cloud-locations"), "connections")
+        let row = syncApp.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", cloudName)).firstMatch
+        tourWait(row, "cloud connection row")
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).tap()
+        if let folder = env["E2E_SHOT_BROWSE"] {
+            tourTap(tourEntry(folder), "browse \(folder)", timeout: 20)
+        }
+        // List rows show sizes and dates and keep long names on one line.
+        let toggle = element(syncApp, "folder-view-toggle")
+        tourWait(toggle, "view toggle")
+        if labels("LIST").contains(where: { toggle.label.hasPrefix($0) }) { toggle.tap() }
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        shot("5-browser")
+        tourBackUntil(element(syncApp, "connection-new"), "connections list")
+        shot("6-connections")
+        tourTap(element(syncApp, "connection-new"), "new connection")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        shot("7-protocols")
+        tourBack(); tourBack()
+
+        // 8 · Velock backup details
+        if velock {
+            anyTab(0)
+            tourTap(syncApp.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'velock-backup-details-'")).firstMatch, "details")
+            shot("8-velock-detail")
+            tourBack()
+        }
+
+        // Last, so nothing has to back out of the wizard.
+        // 3 · wizard step 3
+        if let wizard = env["E2E_SHOT_WIZARD"] {
+            anyTab(1)
+            let parts = wizard.split(separator: ">").map(String.init)
+            startWizard(local: parts[0], remote: parts[1])
+            tourWait(tourOption(label("TWO")), "step 3")
+            shot("3-wizard")
+        }
+    }
+
+    /// Developer probe: replays E2E_PROBE steps (";"-separated: id:<identifier>,
+    /// label:<contains>, exact:<label>, type:<text>, wait:<seconds>, xy:<x>,<y>,
+    /// relaunch) on the running Sync app without relaunching it, then writes the
+    /// filtered tree and a screenshot under E2E_PROBE_OUT.
+    func testProbeSyncSteps() {
+        let env = ProcessInfo.processInfo.environment
+        let out = URL(fileURLWithPath: env["E2E_PROBE_OUT"] ?? "/tmp/sync-probe")
+        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        if syncApp.state == .runningForeground || syncApp.state == .runningBackground {
+            syncApp.activate()
+        } else {
+            syncApp.launch()
+        }
+        XCTAssertTrue(syncApp.wait(for: .runningForeground, timeout: 20))
+        var log = ""
+        for raw in (env["E2E_PROBE"] ?? "").split(separator: ";") {
+            let step = String(raw)
+            let (kind, arg) = step.firstIndex(of: ":").map {
+                (String(step[..<$0]), String(step[step.index(after: $0)...]))
+            } ?? (step, "")
+            var target: XCUIElement?
+            switch kind {
+            case "id": target = element(syncApp, arg)
+            case "label":
+                target = syncApp.descendants(matching: .any).matching(
+                    NSPredicate(format: "label CONTAINS %@", arg)).firstMatch
+            case "begins":
+                target = syncApp.descendants(matching: .any).matching(
+                    NSPredicate(format: "label BEGINSWITH %@", arg)).firstMatch
+            case "back":
+                target = syncApp.buttons.matching(
+                    NSPredicate(format: "label BEGINSWITH '返回' OR label BEGINSWITH 'Back'")).firstMatch
+            case "exact":
+                target = syncApp.descendants(matching: .any).matching(
+                    NSPredicate(format: "label == %@", arg)).firstMatch
+            case "type": syncApp.typeText(arg)
+            case "wait": RunLoop.current.run(until: Date().addingTimeInterval(Double(arg) ?? 1))
+            case "relaunch": syncApp.terminate(); syncApp.launch()
+            case "xy":
+                let parts = arg.split(separator: ",").compactMap { Double($0) }
+                syncApp.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: parts[0], dy: parts[1])).tap()
+            default: log += "unknown step \(step)\n"
+            }
+            if let target {
+                if target.waitForExistence(timeout: 10) {
+                    target.tap()
+                    log += "tapped \(step)\n"
+                } else {
+                    log += "MISSING \(step)\n"
+                    break
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(1.2))
+        }
+        var tree = ""
+        func walk(_ node: XCUIElementSnapshot) {
+            if !node.identifier.isEmpty || !node.label.isEmpty {
+                let f = node.frame
+                let label = node.label.replacingOccurrences(of: "\n", with: "⏎")
+                tree += "\(node.elementType.rawValue) | \(label.prefix(80)) | \(node.identifier) | \(Int(f.midX)),\(Int(f.midY))\n"
+            }
+            node.children.forEach(walk)
+        }
+        for app in [syncApp!, XCUIApplication(bundleIdentifier: "com.apple.springboard")] {
+            if let snap = try? app.snapshot() { walk(snap) }
+            tree += "----\n"
+        }
+        try? (log + tree).write(to: out.appendingPathComponent("tree.txt"), atomically: true, encoding: .utf8)
+        try? XCUIScreen.main.screenshot().pngRepresentation.write(to: out.appendingPathComponent("screen.png"))
     }
 }

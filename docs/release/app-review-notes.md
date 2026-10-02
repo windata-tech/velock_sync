@@ -18,27 +18,33 @@ Velock Sync has two independent jobs, in two tabs:
    files, and the app says so before a location is created.
 
 Nothing is sent to us: there is no account, no analytics and no server of ours.
-The user supplies their own WebDAV server.
+The user supplies their own storage.
 
 ## Supported storage in 1.0
 
-WebDAV is the only storage type in version 1.0. Google Drive, OneDrive, Baidu
-Netdisk and Aliyun Drive are not offered in this build and do not appear when
-adding a connection.
+* **WebDAV** — any WebDAV server (NAS, Nextcloud, …). This is the path to review.
+* **Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive** — listed when adding a
+  connection, but this open-source app ships **no built-in developer keys**. The
+  user registers their own app on that provider's developer platform and pastes
+  its key into the form ("use your own app key"); sign-in then runs in the system
+  browser sheet. Without a key the form explains where to register. Reviewing
+  these needs a provider developer account, so please use WebDAV.
 
 ## The 格间 / Velock tab needs Velock 2.0.7 or later
 
-The Velock backup tab only works together with Velock **2.0.7 or later**, which
-is not yet released at the time of this submission (the current public Velock
-version is 2.0.6). With an older Velock, or without Velock installed, the tab
-shows a notice that Velock must be updated; backup and restore cannot start
-from it. This is expected for this submission. The Files tab does not depend on
-Velock and can be reviewed fully on its own.
+The Velock backup tab only works together with the Velock app, version **2.0.7 or
+later** (on the App Store; submit Sync only after it is live). Without Velock, or
+with an older one, the tab shows a notice that Velock must be installed or
+updated; backup and restore cannot start from it. The Files tab does not depend
+on Velock and can be reviewed fully on its own.
 
 ## How to review file sync (WebDAV)
 
-Test server for review: **<fill in before submission: https URL, user name,
-password>** — or any WebDAV endpoint (a Nextcloud instance, a NAS, or a local
+Test server for review: a dedicated, throwaway HTTPS WebDAV account on our own
+web server. The URL, user name and password are entered **only** in App Store
+Connect → App Review Information (sign-in required) and kept in a private file
+outside this public repository — never write them here. Any other WebDAV
+endpoint also works (a Nextcloud instance, a NAS, or a local
 WebDAV server). Plain-HTTP endpoints on a local network are supported; the form
 asks for an explicit confirmation before accepting `http://`.
 
@@ -117,6 +123,7 @@ app cancels the task.
 
 ## Known limitations worth knowing while reviewing
 
-* Only WebDAV servers can be used in 1.0 (see above).
+* Cloud drives need the user's own developer app key (see above); WebDAV needs
+  nothing beyond the server's address and account.
 * The Velock backup tab needs Velock 2.0.7 or later to authorize a device; until
   that version is available it shows the update notice described above.

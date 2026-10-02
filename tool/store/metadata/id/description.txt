@@ -1,0 +1,22 @@
+Velock Sync memindahkan data di perangkat Anda ke penyimpanan cloud milik Anda sendiri: NAS di rumah, layanan WebDAV apa pun, atau Google Drive, OneDrive, Baidu Netdisk, maupun Aliyun Drive Anda sendiri. Tidak ada server kami di tengahnya dan tidak perlu mendaftar akun.
+
+SINKRONISASI FILE
+• Pasangkan folder di perangkat dengan folder di cloud, sebanyak yang Anda mau
+• Dua arah, hanya unggah, atau hanya unduh, diatur untuk setiap lokasi
+• Jika file yang sama berubah di kedua sisi, secara default kedua salinan disimpan. Tidak ada yang ditimpa diam-diam
+• Penghapusan dalam jumlah besar dijeda dan meminta konfirmasi terlebih dahulu, agar kesalahan tidak menyebar
+• Salinan di cloud berupa file biasa yang bisa dibuka komputer, NAS, atau aplikasi apa pun
+• Jelajahi folder cloud Anda di dalam aplikasi dan buat folder baru
+
+CADANGAN VELOCK TERENKRIPSI
+• Cadangan cloud untuk aplikasi Velock: file, foto, akun, kartu, catatan, dan dokumen
+• Velock mengenkripsi semuanya di perangkat Anda sebelum Sync membawanya. Baik Sync maupun layanan cloud tidak dapat membacanya
+• Pulihkan di ponsel baru atau yang telah direset dengan kartu pemulihan Velock Anda
+• Unggahan dibaca ulang dan diperiksa, dan setiap transfer tercantum di riwayat
+
+PRIVASI
+• Tanpa pengumpulan data, tanpa iklan, tanpa analitik, tanpa pelacakan
+• Kata sandi dan token masuk disimpan di Rantai Kunci sistem
+• Sinkronisasi file menyimpan file tanpa enkripsi di cloud, dan aplikasi memberitahukannya sebelum Anda membuat lokasi
+
+Anda memerlukan layanan WebDAV (seperti NAS atau Nextcloud), atau akun penyimpanan cloud yang masuk dengan kunci aplikasi pengembang milik Anda sendiri. Cadangan Velock memerlukan aplikasi Velock.

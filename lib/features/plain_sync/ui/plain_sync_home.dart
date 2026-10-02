@@ -310,18 +310,25 @@ class _LocationCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.xs),
-            _PathRow(
-              icon: CupertinoIcons.device_phone_portrait,
-              label: syncText(context, '本机', 'This device'),
-              value: view.profile.localDisplayName,
-            ),
-            const SizedBox(height: 2),
-            _PathRow(
-              icon: CupertinoIcons.cloud,
-              label: syncText(context, '远端', 'Remote'),
-              value: view.connection == null
-                  ? syncText(context, '远端连接已删除', 'Remote connection deleted')
-                  : '${view.connectionName}${view.remotePath}',
+            _PathTable(
+              rows: [
+                (
+                  CupertinoIcons.device_phone_portrait,
+                  syncText(context, '本机', 'This device'),
+                  view.profile.localDisplayName,
+                ),
+                (
+                  CupertinoIcons.cloud,
+                  syncText(context, '远端', 'Remote'),
+                  view.connection == null
+                      ? syncText(
+                          context,
+                          '远端连接已删除',
+                          'Remote connection deleted',
+                        )
+                      : '${view.connectionName}${view.remotePath}',
+                ),
+              ],
             ),
             const SizedBox(height: AppSpacing.sm),
             Wrap(
@@ -394,38 +401,58 @@ class _LocationCard extends StatelessWidget {
   }
 }
 
-class _PathRow extends StatelessWidget {
-  const _PathRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+/// Icon · label · value rows. The label column takes the width of the
+/// longest label, so "This device" never breaks inside a word and both
+/// values start at the same x.
+class _PathTable extends StatelessWidget {
+  const _PathTable({required this.rows});
 
-  final IconData icon;
-  final String label;
-  final String value;
+  final List<(IconData, String, String)> rows;
 
   @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => Table(
+    columnWidths: const {
+      0: IntrinsicColumnWidth(),
+      1: IntrinsicColumnWidth(),
+      2: FlexColumnWidth(),
+    },
+    defaultVerticalAlignment: TableCellVerticalAlignment.top,
     children: [
-      Icon(icon, size: 15, color: context.appSecondaryLabel),
-      const SizedBox(width: AppSpacing.xs),
-      SizedBox(
-        width: 34,
-        child: Text(
-          label,
-          style: AppType.footnote.copyWith(color: context.appSecondaryLabel),
+      for (final (index, (icon, label, value)) in rows.indexed)
+        TableRow(
+          children: [
+            Padding(
+              padding: EdgeInsets.only(
+                top: index == 0 ? 0 : 2,
+                right: AppSpacing.xs,
+              ),
+              child: Icon(icon, size: 15, color: context.appSecondaryLabel),
+            ),
+            Padding(
+              padding: EdgeInsets.only(
+                top: index == 0 ? 0 : 2,
+                right: AppSpacing.xs,
+              ),
+              child: Text(
+                label,
+                maxLines: 1,
+                softWrap: false,
+                style: AppType.footnote.copyWith(
+                  color: context.appSecondaryLabel,
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.only(top: index == 0 ? 0 : 2),
+              child: Text(
+                value,
+                style: AppType.rowSubtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
-      ),
-      Expanded(
-        child: Text(
-          value,
-          style: AppType.rowSubtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
     ],
   );
 }

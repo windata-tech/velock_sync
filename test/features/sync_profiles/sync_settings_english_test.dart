@@ -51,10 +51,11 @@ void main() {
   ) async {
     await _pumpSettings(tester, locale: const Locale('en'));
 
-    // The language row is on screen from the first frame. Its own script name
-    // is the only Chinese the page may show; anything else already fails the
-    // scan below.
-    expect(_pickerCjkTexts(tester), {_languageEndonym});
+    // The language row is on screen from the first frame. It names only the
+    // current choice (here “Follow system”); the endonyms live on its own
+    // page. A chosen 简体中文 would be the one Chinese text allowed.
+    expect(_pickerCjkTexts(tester), isEmpty);
+    expect(find.text('Follow system'), findsOneWidget);
 
     final seen = await _scanWholePage(tester);
 

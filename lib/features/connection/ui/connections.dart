@@ -74,6 +74,7 @@ class Connections extends HookConsumerWidget {
       actions: [
         if (isApplePlatform(context))
           AdaptiveIconButton(
+            key: const ValueKey('connection-new'),
             tooltip: syncText(context, '新建连接', 'New Connection'),
             onPressed: createConnection,
             icon: const Icon(CupertinoIcons.add),
@@ -161,7 +162,7 @@ class Connections extends HookConsumerWidget {
             message: syncText(
               context,
               '添加 ${availability.describe(chinese: true)} 连接，用于格间备份或文件同步。',
-              'Add a ${availability.describe(chinese: false)} connection for Velock backup or file sync.',
+              'Add a ${availability.describe(chinese: false, or: syncText(context, '或', 'or'))} connection for Velock backup or file sync.',
             ),
             action: CupertinoButton.filled(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),

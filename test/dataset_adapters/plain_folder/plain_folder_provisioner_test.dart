@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_provisioner.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_scope_guard.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_local_folder_guard.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_access_authorizer.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
@@ -67,12 +69,35 @@ void main() {
     expect(await profiles.list(), hasLength(1));
   });
 
+  Future<PlainFolderSyncProfile> createAt(
+    Directory folder, {
+    String name = '照片',
+    List<String> segments = const ['photos'],
+  }) => provisioner().create(
+    grant: FolderAccessGrant.localPath(folder),
+    displayName: name,
+    localDisplayName: p.basename(folder.path),
+    connectionId: 'conn-1',
+    deviceId: 'device-1',
+    remoteRootSegments: segments,
+    direction: MirrorDirection.bidirectional,
+    conflictPolicy: MirrorConflictPolicy.keepBoth,
+  );
+
+  Matcher inUse(PlainLocalFolderRelation relation, {bool paused = false}) =>
+      throwsA(
+        isA<PlainLocalFolderInUseException>()
+            .having((e) => e.relation, 'relation', relation)
+            .having((e) => e.existingDisplayName, 'existingDisplayName', '照片')
+            .having((e) => e.existingPaused, 'existingPaused', paused),
+      );
+
   test('refuses the exact same binding twice', () async {
     final first = await create();
 
     await expectLater(
       create(name: '手机照片'),
-      throwsA(isA<DuplicatePlainLocationException>()),
+      inUse(PlainLocalFolderRelation.same),
     );
     // Nothing was written, so the list still holds only the first location.
     final all = await profiles.list();
@@ -80,12 +105,60 @@ void main() {
     expect(all.single.profileId, first.profileId);
   });
 
-  test('allows the same local folder on a different remote folder', () async {
+  test('refuses the same local folder on a different remote folder', () async {
     await create();
-    final other = await create(name: '另一个远端', segments: ['backup']);
 
-    expect(other.remoteRootSegments, ['backup']);
+    // One local folder fanned out to two remotes would replay a deletion that
+    // arrives through one remote to the other, and forward conflict copies.
+    await expectLater(
+      create(name: '另一个远端', segments: const ['backup']),
+      inUse(PlainLocalFolderRelation.same),
+    );
+    expect(await profiles.list(), hasLength(1));
+  });
+
+  test('refuses a local folder inside or around another location', () async {
+    await create();
+    final inner = await Directory(p.join(localFolder.path, '2026')).create();
+    await expectLater(
+      createAt(inner, name: '子文件夹', segments: const ['inner']),
+      inUse(PlainLocalFolderRelation.inside),
+    );
+
+    final parent = await Directory.systemTemp.createTemp('plain-parent');
+    addTearDown(() => parent.delete(recursive: true));
+    final child = await Directory(p.join(parent.path, 'child')).create();
+    await profiles.remove((await profiles.list()).single.profileId);
+    await createAt(child, segments: const ['child']);
+    await expectLater(
+      createAt(parent, name: '上级', segments: const ['parent']),
+      inUse(PlainLocalFolderRelation.contains),
+    );
+    // A sibling folder is fine.
+    final sibling = await Directory(p.join(parent.path, 'sibling')).create();
+    await createAt(sibling, name: '兄弟', segments: const ['sibling']);
     expect(await profiles.list(), hasLength(2));
+  });
+
+  test('a paused location still owns its local folder', () async {
+    final first = await create();
+    await profiles.pause(first.profileId);
+
+    // Resuming it would run both locations over the same files.
+    await expectLater(
+      create(name: '重新添加', segments: const ['other']),
+      inUse(PlainLocalFolderRelation.same, paused: true),
+    );
+    expect(await profiles.list(), hasLength(1));
+  });
+
+  test('re-picking its own folder never blocks a location', () async {
+    final first = await create();
+
+    await provisioner().assertLocalFolderUnused(
+      FolderAccessGrant.localPath(localFolder),
+      selfProfileId: first.profileId,
+    );
   });
 
   test('allows the same remote folder from a different local folder', () async {
@@ -96,52 +169,23 @@ void main() {
     // Documented multi-device usage: two local folders keep the same remote
     // folder in step. Each side sees the other's uploads as remote changes, so
     // both local folders converge — that is the intent, not corruption.
-    final profile = await provisioner().create(
-      grant: FolderAccessGrant.localPath(second),
-      displayName: '另一台设备',
-      localDisplayName: 'photos-2',
-      connectionId: 'conn-1',
-      deviceId: 'device-1',
-      remoteRootSegments: const ['photos'],
-      direction: MirrorDirection.bidirectional,
-      conflictPolicy: MirrorConflictPolicy.keepBoth,
-    );
+    final profile = await createAt(second, name: '另一台设备');
 
     expect(profile.remoteRootSegments, const ['photos']);
     expect(await profiles.list(), hasLength(2));
   });
 
-  test('refuses the same local folder twice on one remote folder', () async {
-    await create();
-
-    // Same local folder + same remote scope is a duplicate binding: two
-    // baselines over the same files, and a deletion on one side would be
-    // re-downloaded by the other for ever.
-    await expectLater(
-      provisioner().create(
-        grant: FolderAccessGrant.localPath(localFolder),
-        displayName: '重复',
-        localDisplayName: 'photos',
-        connectionId: 'conn-1',
-        deviceId: 'device-1',
-        remoteRootSegments: const ['photos'],
-        direction: MirrorDirection.bidirectional,
-        conflictPolicy: MirrorConflictPolicy.keepBoth,
-      ),
-      throwsA(isA<DuplicatePlainLocationException>()),
-    );
-    expect(await profiles.list(), hasLength(1));
-  });
-
   test('refuses a remote scope nested inside another location', () async {
     await create(segments: const ['photos']);
+    final second = await Directory.systemTemp.createTemp('plain-provision-3');
+    addTearDown(() => second.delete(recursive: true));
 
     await expectLater(
-      create(name: '子目录', segments: const ['photos', '2026']),
+      createAt(second, name: '子目录', segments: const ['photos', '2026']),
       throwsA(isA<PlainLocationOverlapException>()),
     );
     await expectLater(
-      create(name: '父目录', segments: const []),
+      createAt(second, name: '父目录', segments: const []),
       throwsA(isA<PlainLocationOverlapException>()),
     );
     expect(await profiles.list(), hasLength(1));
@@ -197,13 +241,4 @@ void main() {
       );
     },
   );
-
-  test('a paused duplicate does not block a fresh location', () async {
-    final first = await create();
-    await profiles.pause(first.profileId);
-
-    final again = await create(name: '重新添加');
-    expect(again.profileId, isNot(first.profileId));
-    expect(await profiles.list(), hasLength(2));
-  });
 }

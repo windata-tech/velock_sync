@@ -1,0 +1,22 @@
+Velock Sync przenosi dane z Twojego urządzenia do chmury, która należy do Ciebie: domowego serwera NAS, dowolnej usługi WebDAV albo Twojego własnego Google Drive, OneDrive, Baidu Netdisk lub Aliyun Drive. Pośrodku nie ma żadnego naszego serwera ani konta do założenia.
+
+SYNCHRONIZACJA PLIKÓW
+• Łącz folder na urządzeniu z folderem w chmurze, tyle razy, ile chcesz
+• Dwukierunkowo, tylko wysyłanie lub tylko pobieranie – osobno dla każdej lokalizacji
+• Gdy ten sam plik zmieniono po obu stronach, domyślnie zachowywane są obie kopie. Nic nie zostaje po cichu nadpisane
+• Duże usunięcia są wstrzymywane i najpierw wymagają potwierdzenia, by pomyłka się nie rozprzestrzeniła
+• Kopia w chmurze to zwykłe pliki, które otworzy każdy komputer, NAS czy aplikacja
+• Przeglądaj foldery w chmurze w aplikacji i twórz nowe
+
+SZYFROWANA KOPIA ZAPASOWA VELOCK
+• Kopia zapasowa w chmurze dla aplikacji Velock: pliki, zdjęcia, konta, karty, notatki i dokumenty
+• Velock szyfruje wszystko na urządzeniu, zanim Sync to przeniesie. Ani Sync, ani usługa chmurowa nie mogą tego odczytać
+• Przywracanie na nowym lub zresetowanym telefonie za pomocą karty odzyskiwania Velock
+• Przesłane dane są odczytywane ponownie i sprawdzane, a każdy transfer widnieje w historii
+
+PRYWATNOŚĆ
+• Bez zbierania danych, bez reklam, bez analityki, bez śledzenia
+• Hasła i tokeny logowania są przechowywane w systemowym pęku kluczy
+• Synchronizacja plików zapisuje w chmurze niezaszyfrowane pliki, a aplikacja informuje o tym przed utworzeniem lokalizacji
+
+Potrzebujesz usługi WebDAV (np. NAS lub Nextcloud) albo konta w chmurze, do którego logujesz się własnym kluczem aplikacji deweloperskiej. Kopia zapasowa Velock wymaga aplikacji Velock.

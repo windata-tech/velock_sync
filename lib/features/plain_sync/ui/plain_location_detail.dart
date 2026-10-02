@@ -11,6 +11,7 @@ import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_provisioner.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_scope_guard.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_local_folder_guard.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
 import 'package:velock_sync/features/plain_sync/model/plain_location_presentation.dart';
@@ -282,6 +283,21 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
       );
       final grant = await provisioner.pickLocalFolder();
       if (grant == null || !mounted) return;
+      try {
+        await provisioner.assertLocalFolderUnused(
+          grant,
+          selfProfileId: view.profile.profileId,
+        );
+      } on PlainLocalFolderInUseException catch (failure) {
+        if (!mounted) return;
+        await showAdaptiveNotice(
+          context: context,
+          title: syncText(context, '不能使用这个文件夹', 'Can’t use this folder'),
+          message: plainLocalFolderInUseMessage(context, failure),
+        );
+        return;
+      }
+      if (!mounted) return;
       final label = await provisioner.resolveLocalDisplayName(grant);
       if (!mounted) return;
       final confirmed = await showAdaptiveConfirmation(
@@ -361,7 +377,6 @@ class _PlainLocationDetailState extends ConsumerState<PlainLocationDetail> {
           profiles: ref.read(plainFolderProfilesProvider),
           connectionId: view.profile.connectionId,
           segments: picked,
-          localRootReference: view.profile.localRootReference,
           selfProfileId: view.profile.profileId,
         );
       } on BackupFolderOverlapException catch (failure) {

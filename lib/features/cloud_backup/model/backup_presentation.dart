@@ -21,6 +21,9 @@ enum BackupStage {
 enum BackupAction {
   transfer,
   openVelock,
+
+  /// Velock is not installed: open its App Store page.
+  getVelock,
   resume,
   manage,
   resolve,
@@ -85,7 +88,12 @@ class BackupPresentation {
               availability == VelockWizardAvailability.configurationMissing);
       return BackupPresentation(
         BackupStage.needsVelock,
-        canOpen ? BackupAction.openVelock : BackupAction.manage,
+        availability == VelockWizardAvailability.appNotInstalled &&
+                state != SyncProfileState.accessRequired
+            ? BackupAction.getVelock
+            : canOpen
+            ? BackupAction.openVelock
+            : BackupAction.manage,
         availability: availability,
       );
     }

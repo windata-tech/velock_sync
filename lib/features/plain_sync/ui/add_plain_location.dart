@@ -13,6 +13,7 @@ import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_provisioner.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_scope_guard.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_local_folder_guard.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_access_authorizer.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
@@ -95,11 +96,18 @@ class AddPlainLocation extends HookConsumerWidget {
         );
         final picked = await provisioner.pickLocalFolder();
         if (picked == null || !context.mounted) return;
+        // Refuse a folder another location owns right away, not at the last
+        // step. The earlier pick (if any) is kept so the user can go on.
+        await provisioner.assertLocalFolderUnused(picked);
         final label = await provisioner.resolveLocalDisplayName(picked);
         if (!context.mounted) return;
         grant.value = picked;
         localName.value = label;
         if (name.value.trim().isEmpty) name.value = label;
+      } on PlainLocalFolderInUseException catch (failure, stackTrace) {
+        loge('Local folder already in use: $failure', stackTrace: stackTrace);
+        if (!context.mounted) return;
+        error.value = plainLocalFolderInUseMessage(context, failure);
       } on Object catch (failure, stackTrace) {
         loge('Local folder pick failed: $failure', stackTrace: stackTrace);
         error.value = syncText(
@@ -215,7 +223,6 @@ class AddPlainLocation extends HookConsumerWidget {
           profiles: ref.read(plainFolderProfilesProvider),
           connectionId: pickedConnection.id,
           segments: pickedSegments,
-          localRootReference: pickedGrant.rootReference,
         );
         // Prove the chosen remote folder exists and accepts a write before the
         // location is created: a missing or read-only folder must be a setup
@@ -287,17 +294,17 @@ class AddPlainLocation extends HookConsumerWidget {
         if (!context.mounted) return;
         error.value = syncText(
           context,
-          '这个远端文件夹和另一个同步位置是同一个位置（或互相包含）：${failure.existingDisplayName}。两个同步位置覆盖同一批文件会互相覆盖，请换一个文件夹。',
-          'This remote folder is the same as — or contains, or sits inside — another sync location: ${failure.existingDisplayName}. Two locations over the same files would overwrite each other, so pick a different folder.',
+          '这个远端文件夹和另一个同步位置的远端文件夹互相包含：${failure.existingDisplayName}。两个同步位置覆盖同一批文件会互相覆盖，请换一个文件夹。',
+          'This remote folder contains, or sits inside, the remote folder of another sync location: ${failure.existingDisplayName}. Two locations over the same files would overwrite each other, so pick a different folder.',
         );
-      } on DuplicatePlainLocationException catch (failure, stackTrace) {
-        loge('Plain location duplicate: $failure', stackTrace: stackTrace);
+      } on PlainLocalFolderInUseException catch (failure, stackTrace) {
+        // Another location took this local folder while the wizard was open.
+        loge(
+          'Plain location local folder in use: $failure',
+          stackTrace: stackTrace,
+        );
         if (!context.mounted) return;
-        error.value = syncText(
-          context,
-          '这个同步位置已经存在（同一个本机文件夹 + 同一个远端文件夹）：${failure.existingDisplayName}。请直接使用它，或者换一个本机/远端文件夹。',
-          'This location already exists (same local folder and same remote folder): ${failure.existingDisplayName}. Use it, or pick a different local or remote folder.',
-        );
+        error.value = plainLocalFolderInUseMessage(context, failure);
       } on FolderRootUnavailableException catch (failure, stackTrace) {
         loge(
           'Plain location local folder lost: $failure',
@@ -674,7 +681,9 @@ class AddPlainLocation extends HookConsumerWidget {
         syncText(
           context,
           '已保存的连接 $names 不在这里：它只能访问 Sync 自己建的文件和隐藏的专用文件夹，用于格间备份。要同步 Google Drive 里的普通文件夹，请点“添加新的云端连接”，新建一个允许访问全部文件的 Google Drive 连接。',
-          'Your saved connection${unsupported.length == 1 ? '' : 's'} $englishNames ${unsupported.length == 1 ? 'is' : 'are'} not listed: ${unsupported.length == 1 ? 'it' : 'they'} can only reach Sync’s own files and its hidden app folder, for Velock backups. To sync an ordinary Google Drive folder, choose “Add a new connection” and add a Google Drive connection with access to all files.',
+          unsupported.length == 1
+              ? 'Your saved connection $englishNames is not listed: it can only reach Sync’s own files and its hidden app folder, for Velock backups. To sync an ordinary Google Drive folder, choose “Add a new connection” and add a Google Drive connection with access to all files.'
+              : 'Your saved connections $englishNames are not listed: they can only reach Sync’s own files and its hidden app folder, for Velock backups. To sync an ordinary Google Drive folder, choose “Add a new connection” and add a Google Drive connection with access to all files.',
         ),
         style: AppType.footnote.copyWith(color: context.appSecondaryLabel),
       ),
@@ -804,14 +813,17 @@ String backupOverlapMessage(
   String path(List<String> segments) => '/${segments.join('/')}';
   final chosen = path(failure.chosenSegments);
   final backupSegments = failure.backupSegments;
-  const zhWhy = '文件同步会把选中文件夹里的所有文件当成普通文件来上传、下载甚至删除，格间的加密备份会被弄坏，所以不能选它。';
-  const enWhy =
-      'File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.';
+  // Translated on its own, so every language gets it inside the messages below.
+  final why = syncText(
+    context,
+    '文件同步会把选中文件夹里的所有文件当成普通文件来上传、下载甚至删除，格间的加密备份会被弄坏，所以不能选它。',
+    'File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.',
+  );
   if (failure.backupName.isEmpty || backupSegments == null) {
     return syncText(
       context,
-      '你选的文件夹 $chosen 里有格间的加密备份（或它本身就在一份备份里）。$zhWhy请换一个文件夹，或者新建一个专门用于同步的文件夹。',
-      'The folder you chose, $chosen, holds a Velock encrypted backup or sits inside one. $enWhy Choose another folder, or create a new one just for syncing.',
+      '你选的文件夹 $chosen 里有格间的加密备份（或它本身就在一份备份里）。$why请换一个文件夹，或者新建一个专门用于同步的文件夹。',
+      'The folder you chose, $chosen, holds a Velock encrypted backup or sits inside one. $why Choose another folder, or create a new one just for syncing.',
     );
   }
   final backup = path(backupSegments);
@@ -820,20 +832,20 @@ String backupOverlapMessage(
     final child = backupSegments[failure.chosenSegments.length];
     return syncText(
       context,
-      '你选的文件夹 $chosen 里面，有格间备份「$name」用的文件夹 $backup。$zhWhy请选一个里面不含「$child」的文件夹，或者在这里新建一个专门用于同步的文件夹。',
-      'The folder you chose, $chosen, contains $backup, the folder of the Velock backup “$name”. $enWhy Choose a folder that does not contain “$child”, or create a new folder here just for syncing.',
+      '你选的文件夹 $chosen 里面，有格间备份「$name」用的文件夹 $backup。$why请选一个里面不含「$child」的文件夹，或者在这里新建一个专门用于同步的文件夹。',
+      'The folder you chose, $chosen, contains $backup, the folder of the Velock backup “$name”. $why Choose a folder that does not contain “$child”, or create a new folder here just for syncing.',
     );
   }
   if (failure.insideBackup) {
     return syncText(
       context,
-      '你选的文件夹 $chosen 在格间备份「$name」用的文件夹 $backup 里面。$zhWhy请选备份文件夹以外的位置。',
-      'The folder you chose, $chosen, is inside $backup, the folder of the Velock backup “$name”. $enWhy Choose a place outside the backup folder.',
+      '你选的文件夹 $chosen 在格间备份「$name」用的文件夹 $backup 里面。$why请选备份文件夹以外的位置。',
+      'The folder you chose, $chosen, is inside $backup, the folder of the Velock backup “$name”. $why Choose a place outside the backup folder.',
     );
   }
   return syncText(
     context,
-    '你选的文件夹 $chosen 就是格间备份「$name」用的文件夹。$zhWhy请换一个文件夹，或者新建一个专门用于同步的文件夹。',
-    'The folder you chose, $chosen, is the folder of the Velock backup “$name”. $enWhy Choose another folder, or create a new one just for syncing.',
+    '你选的文件夹 $chosen 就是格间备份「$name」用的文件夹。$why请换一个文件夹，或者新建一个专门用于同步的文件夹。',
+    'The folder you chose, $chosen, is the folder of the Velock backup “$name”. $why Choose another folder, or create a new one just for syncing.',
   );
 }

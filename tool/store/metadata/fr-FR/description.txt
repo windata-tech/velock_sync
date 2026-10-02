@@ -1,0 +1,22 @@
+Velock Sync transfère les données de votre appareil vers un stockage cloud qui vous appartient : votre NAS à la maison, n'importe quel service WebDAV, ou votre propre Google Drive, OneDrive, Baidu Netdisk ou Aliyun Drive. Aucun serveur à nous entre les deux, aucun compte à créer.
+
+SYNCHRONISATION DE FICHIERS
+• Associez un dossier de votre appareil à un dossier dans le cloud, autant de fois que vous le souhaitez
+• Bidirectionnel, envoi seul ou réception seule, à régler pour chaque emplacement
+• Quand le même fichier a été modifié des deux côtés, les deux copies sont conservées par défaut. Rien n'est écrasé en silence
+• Les suppressions importantes sont mises en pause et vous demandent d'abord confirmation, pour qu'une erreur ne se propage pas
+• La copie dans le cloud se compose de fichiers ordinaires que n'importe quel ordinateur, NAS ou app peut ouvrir
+• Parcourez vos dossiers cloud dans l'app et créez-en de nouveaux
+
+SAUVEGARDE CHIFFRÉE VELOCK
+• Sauvegarde cloud pour l'app Velock : fichiers, photos, comptes, cartes, notes et documents
+• Velock chiffre tout sur votre appareil avant que Sync ne le transporte. Ni Sync ni le service cloud ne peuvent le lire
+• Restaurez sur un téléphone neuf ou réinitialisé avec votre carte de récupération Velock
+• Les envois sont relus et vérifiés, et chaque transfert figure dans l'historique
+
+CONFIDENTIALITÉ
+• Aucune collecte de données, aucune publicité, aucune analyse, aucun pistage
+• Les mots de passe et jetons de connexion sont conservés dans le trousseau du système
+• La synchronisation de fichiers stocke des fichiers non chiffrés dans le cloud, et l'app vous le signale avant que vous ne créiez un emplacement
+
+Il vous faut un service WebDAV (par exemple un NAS ou Nextcloud), ou un compte de stockage cloud connecté avec votre propre clé d'app de développeur. La sauvegarde Velock nécessite l'app Velock.

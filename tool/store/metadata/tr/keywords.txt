@@ -1,0 +1,1 @@
+eşitleme,senkronizasyon,dosya,webdav,klasör,yedekleme,çift yönlü,şifreli,nextcloud,depolama,ayna

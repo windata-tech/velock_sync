@@ -35,11 +35,11 @@ class _SyncLanguageSettingState extends ConsumerState<_SyncLanguageChoices> {
         for (final language in SyncLanguage.values)
           AdaptiveListTile(
             widgetKey: Key('sync-language-${language.storageValue}'),
-            title: Text(switch (language) {
-              SyncLanguage.chinese => '简体中文',
-              SyncLanguage.english => 'English',
-              SyncLanguage.system => syncText(context, '跟随系统', 'Follow system'),
-            }),
+            title: Text(
+              language == SyncLanguage.system
+                  ? syncText(context, '跟随系统', 'Follow system')
+                  : language.nativeName,
+            ),
             trailing: selected == language ? const Icon(Icons.check) : null,
             enabled: !_saving,
             onTap: _saving
@@ -77,11 +77,11 @@ class SyncLanguageSetting extends ConsumerWidget {
         AdaptiveListTile(
           widgetKey: const Key('sync-language-setting'),
           title: Text(syncText(context, '语言', 'Language')),
-          subtitle: Text(switch (selected) {
-            SyncLanguage.chinese => '简体中文',
-            SyncLanguage.english => 'English',
-            SyncLanguage.system => syncText(context, '跟随系统', 'Follow system'),
-          }),
+          subtitle: Text(
+            selected == SyncLanguage.system
+                ? syncText(context, '跟随系统', 'Follow system')
+                : selected.nativeName,
+          ),
           showChevron: true,
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute<void>(

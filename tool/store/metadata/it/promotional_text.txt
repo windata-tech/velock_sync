@@ -1,0 +1,1 @@
+Sincronizza le cartelle dell'iPhone con NAS, WebDAV o cloud e dai a Velock un backup cifrato end-to-end. Niente registrazione, intermediari o raccolta di dati.

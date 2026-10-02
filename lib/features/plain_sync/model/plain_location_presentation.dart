@@ -2,9 +2,48 @@ import 'package:flutter/widgets.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_local_folder_guard.dart';
 import 'package:velock_sync/features/plain_sync/state/plain_sync_providers.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/widgets/app_format.dart';
+
+/// Why a picked local folder cannot be used, naming the location that owns it.
+///
+/// One local folder belongs to one location; the message says which location,
+/// how the folders relate, and what to do instead.
+String plainLocalFolderInUseMessage(
+  BuildContext context,
+  PlainLocalFolderInUseException failure,
+) {
+  final name = failure.existingDisplayName;
+  final folder = failure.existingLocalName;
+  final paused = failure.existingPaused
+      ? syncText(context, '（已暂停）', ' (paused)')
+      : '';
+  final relation = switch (failure.relation) {
+    PlainLocalFolderRelation.same => syncText(
+      context,
+      '这个本机文件夹已经属于同步位置「$name」$paused。',
+      'This local folder already belongs to the sync location “$name”$paused.',
+    ),
+    PlainLocalFolderRelation.contains => syncText(
+      context,
+      '这个本机文件夹里面包含同步位置「$name」$paused使用的文件夹「$folder」。',
+      'This local folder contains “$folder”, which the sync location “$name”$paused uses.',
+    ),
+    PlainLocalFolderRelation.inside => syncText(
+      context,
+      '这个本机文件夹在同步位置「$name」$paused使用的文件夹「$folder」里面。',
+      'This local folder is inside “$folder”, which the sync location “$name”$paused uses.',
+    ),
+  };
+  final advice = syncText(
+    context,
+    '一个本机文件夹只能属于一个同步位置，否则两个位置会互相传递删除和冲突副本。请换一个本机文件夹；如果要换远端，请到「$name」的详情页更改远端文件夹。',
+    'A local folder can belong to only one sync location; otherwise the two would pass deletions and conflict copies to each other. Pick another local folder, or change the remote folder in “$name” instead.',
+  );
+  return '$relation${syncText(context, '', ' ')}$advice';
+}
 
 /// User-facing wording for the mirror direction. The deletion semantics are
 /// spelled out because they differ per direction.

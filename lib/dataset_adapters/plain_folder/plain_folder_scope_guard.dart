@@ -146,7 +146,11 @@ class PlainLocationOverlapException implements Exception {
   String toString() => 'Plain sync locations overlap: $existingDisplayName';
 }
 
-/// Refuses a scope that contains, sits inside, or equals another location's.
+/// Refuses a remote scope that contains or sits inside another location's.
+///
+/// Exactly the same remote folder is allowed: the local folders are guaranteed
+/// to differ by `assertPlainLocalFolderUnused`, and two local folders feeding
+/// one remote folder is the documented multi-device usage.
 ///
 /// [selfProfileId] is excluded so re-saving an existing location (rename,
 /// direction change, re-picking the same folder) is never blocked by itself.
@@ -154,7 +158,6 @@ Future<void> assertPlainScopeAvoidsOtherLocations({
   required PlainFolderSyncProfileRepository profiles,
   required String connectionId,
   required Iterable<String> segments,
-  String? localRootReference,
   String? selfProfileId,
 }) async {
   final wanted = PlainFolderSyncProfile.canonicalPlainRemoteRootSegments(
@@ -169,18 +172,13 @@ Future<void> assertPlainScopeAvoidsOtherLocations({
           existing.remoteRootSegments,
         );
     if (!remoteScopesOverlap(wanted, existingScope)) continue;
-    // Exactly the same remote folder is allowed from a DIFFERENT local folder
-    // (two devices, or two local folders feeding one share: the documented
-    // multi-device usage). One scope inside the other is not: those two
-    // locations would mirror each other's files through independent baselines
-    // and fight over every deletion.
+    // One scope inside the other is refused: those two locations would mirror
+    // each other's files through independent baselines and fight over every
+    // deletion.
     final sameScope =
         wanted.length == existingScope.length &&
         wanted.join('/') == existingScope.join('/');
-    final sameLocal =
-        localRootReference != null &&
-        localRootReference == existing.localRootReference;
-    if (sameScope && !sameLocal) continue;
+    if (sameScope) continue;
     throw PlainLocationOverlapException(existing.displayName);
   }
 }

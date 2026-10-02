@@ -1,0 +1,22 @@
+Velock Sync, cihazınızdaki verileri size ait bir bulut depolamaya taşır: evinizdeki NAS, herhangi bir WebDAV hizmeti ya da kendi Google Drive, OneDrive, Baidu Netdisk veya Aliyun Drive hesabınız. Arada bize ait bir sunucu yok, kaydolmanız gereken bir hesap da yok.
+
+DOSYA EŞİTLEME
+• Cihazınızdaki bir klasörü buluttaki bir klasörle eşleştirin, istediğiniz kadar
+• Çift yönlü, yalnızca yükleme veya yalnızca indirme; her konum için ayrı ayarlanır
+• Aynı dosya iki tarafta da değiştiyse varsayılan olarak iki kopya da saklanır. Hiçbir şeyin üzerine sessizce yazılmaz
+• Toplu silmeler duraklatılır ve önce onayınız istenir, böylece bir hata yayılmaz
+• Buluttaki kopya, her bilgisayarın, NAS'ın veya uygulamanın açabileceği sıradan dosyalardır
+• Bulut klasörlerinize uygulamanın içinden göz atın ve yenilerini oluşturun
+
+ŞİFRELİ VELOCK YEDEĞİ
+• Velock uygulaması için bulut yedeği: dosyalar, fotoğraflar, hesaplar, kartlar, notlar ve belgeler
+• Velock, Sync taşımadan önce her şeyi cihazınızda şifreler. Ne Sync ne de bulut hizmeti bunu okuyabilir
+• Velock kurtarma kartınızla yeni veya sıfırlanmış bir telefona geri yükleyin
+• Yüklemeler geri okunup doğrulanır ve her aktarım geçmişte listelenir
+
+GİZLİLİK
+• Veri toplama, reklam, analiz veya izleme yok
+• Parolalar ve oturum açma belirteçleri sistemin Anahtar Zinciri'nde saklanır
+• Dosya eşitleme bulutta şifrelenmemiş dosyalar saklar ve uygulama, siz bir konum oluşturmadan önce bunu belirtir
+
+Bir WebDAV hizmetine (ör. NAS veya Nextcloud) ya da kendi geliştirici uygulama anahtarınızla oturum açtığınız bir bulut depolama hesabına ihtiyacınız var. Velock yedeği için Velock uygulaması gerekir.

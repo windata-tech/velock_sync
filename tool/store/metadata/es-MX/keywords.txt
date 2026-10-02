@@ -1,0 +1,1 @@
+sincronizar,archivos,webdav,carpeta,respaldo,bidireccional,espejo,cifrado,nextcloud,privado

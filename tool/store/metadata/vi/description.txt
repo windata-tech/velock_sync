@@ -1,0 +1,22 @@
+Velock Sync chuyển dữ liệu trên thiết bị của bạn đến kho lưu trữ đám mây do chính bạn sở hữu: NAS tại nhà, bất kỳ dịch vụ WebDAV nào, hoặc Google Drive, OneDrive, Baidu Netdisk hay Aliyun Drive của riêng bạn. Không có máy chủ nào của chúng tôi ở giữa và không cần đăng ký tài khoản.
+
+ĐỒNG BỘ TỆP
+• Ghép một thư mục trên thiết bị với một thư mục trên đám mây, bao nhiêu lần tùy thích
+• Hai chiều, chỉ tải lên hoặc chỉ tải xuống, đặt riêng cho từng vị trí
+• Khi cùng một tệp bị thay đổi ở cả hai phía, mặc định cả hai bản đều được giữ lại. Không có gì bị ghi đè một cách âm thầm
+• Thao tác xóa số lượng lớn sẽ tạm dừng và hỏi bạn trước, để một sai sót không lan rộng
+• Bản sao trên đám mây là các tệp thông thường mà máy tính, NAS hay ứng dụng nào cũng mở được
+• Duyệt các thư mục đám mây ngay trong ứng dụng và tạo thư mục mới
+
+SAO LƯU VELOCK ĐƯỢC MÃ HÓA
+• Sao lưu đám mây cho ứng dụng Velock: tệp, ảnh, tài khoản, thẻ, ghi chú và tài liệu
+• Velock mã hóa mọi thứ trên thiết bị trước khi Sync chuyển đi. Cả Sync lẫn dịch vụ đám mây đều không đọc được
+• Khôi phục trên điện thoại mới hoặc đã đặt lại bằng thẻ khôi phục Velock của bạn
+• Dữ liệu tải lên được đọc lại và kiểm tra, mọi lần truyền đều được ghi trong lịch sử
+
+QUYỀN RIÊNG TƯ
+• Không thu thập dữ liệu, không quảng cáo, không phân tích, không theo dõi
+• Mật khẩu và mã đăng nhập được lưu trong Chuỗi khóa của hệ thống
+• Đồng bộ tệp lưu tệp không mã hóa trên đám mây, và ứng dụng sẽ nói rõ điều đó trước khi bạn tạo vị trí
+
+Bạn cần một dịch vụ WebDAV (như NAS hoặc Nextcloud), hoặc một tài khoản lưu trữ đám mây đăng nhập bằng khóa ứng dụng nhà phát triển của riêng bạn. Sao lưu Velock cần có ứng dụng Velock.

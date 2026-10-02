@@ -1,0 +1,1089 @@
+{
+  "The remote server cannot handle the request right now. Try again later.": {
+    "zh": "远端服务器暂时无法处理请求，请稍后重试。"
+  },
+  "The remote server certificate could not be verified. Check the certificate configuration and try again.": {
+    "zh": "无法验证远端服务器的安全证书，请检查服务器证书配置后重试。"
+  },
+  "The remote server could not be verified because of a certificate problem. Check the server address and its certificate, or ask the service administrator.": {
+    "zh": "无法验证远端服务器的身份，证书有问题。请检查服务器地址和证书，或联系服务管理员。"
+  },
+  "The remote server did not respond in time. Check your network, or try again later.": {
+    "zh": "远端服务器响应超时。请检查网络状况，或稍后重试。"
+  },
+  "The remote server rejected this account. Enter the username and password again and retry.": {
+    "zh": "远端服务器拒绝了当前账号。请重新输入用户名和密码后再试。"
+  },
+  "The remote server returned HTTP {0}. Check the server configuration and retry.": {
+    "zh": "远端服务器返回 HTTP {0}，请检查服务器配置后重试。",
+    "args": [
+      "code"
+    ]
+  },
+  "The remote server returned a response that could not be recognised. Try again later.": {
+    "zh": "远端服务器返回了无法识别的响应，请稍后重试。"
+  },
+  "The remote service does not support safe writes, so it cannot prove a file is new. The sync stopped instead of overwriting. Use a folder or service with full WebDAV write support.": {
+    "zh": "远端服务不支持安全写入，无法确认文件是不是新建的，已停止以免覆盖已有文件。请换一个支持 WebDAV 完整写入的目录或服务。"
+  },
+  "The remote service is not accepting more requests right now, so the sync did not finish. Wait a few minutes and try again.": {
+    "zh": "远端服务暂时不接受更多请求，本次同步没有完成。请等几分钟再重试。"
+  },
+  "The remote service refused this operation, so the sync did not finish. Check the remote address and folder settings, then try again.": {
+    "zh": "远端服务拒绝了这次操作，本次同步没有完成。请检查远端地址和文件夹设置后重试。"
+  },
+  "The remote service refused this operation, so the sync did not finish. Check the remote folder settings and try again.": {
+    "zh": "远端服务拒绝了这次操作，本次同步没有完成。请检查远端文件夹设置后重试。"
+  },
+  "The remote service returned an error, so the sync did not finish. Try again later; if it keeps failing, check that the service is healthy.": {
+    "zh": "远端服务出错了，本次同步没有完成。请稍后重试；一直失败就检查远端服务是否正常。"
+  },
+  "The remote version keeps the original name and the local version is saved as “name (local conflict date time).ext”. Nothing is lost.": {
+    "zh": "远端版本保留原名，本机版本另存为“文件名 (本机冲突 日期 时间).扩展名”，两份都不会丢。"
+  },
+  "The response failed validation. No changes were applied.": {
+    "zh": "返回值未通过校验，本次改动未应用。"
+  },
+  "The result from Velock failed validation, so the conflict is still unresolved.": {
+    "zh": "Velock 返回结果未通过验证，冲突仍保持未解决。"
+  },
+  "The root is not the sync folder": {
+    "zh": "根目录和同步目录不是一回事"
+  },
+  "The same item was changed on two devices. Choose which version to keep.": {
+    "zh": "两台设备修改了同一份内容，请选择要保留的版本。"
+  },
+  "The saved location is incomplete and cannot be displayed.": {
+    "zh": "保存位置配置不完整，暂时无法显示。"
+  },
+  "The selected location cannot create folders. Open a real folder in the service that this account may write to; read-only entry points, share entries and aggregate views will not work.": {
+    "zh": "当前选中的位置无法创建文件夹。请进入服务里一个真实存在、且这个账号有权限写入的文件夹；只读入口、共享入口或聚合视图都不行。"
+  },
+  "The selected remote connection is unavailable. Verify it on the Connections page first.": {
+    "zh": "所选远端连接当前不可用，请先在连接页验证。"
+  },
+  "The selected remote connection no longer exists. Go back and choose another.": {
+    "zh": "所选远端连接已不存在，请返回重新选择。"
+  },
+  "The server did not accept the saved sign-in. Edit the connection to check the username and password (or authorize the cloud drive again), then retry.": {
+    "zh": "服务器没有接受保存的登录信息。请修改连接，核对用户名和密码（云盘请重新授权）后再试。"
+  },
+  "The server must let this account list, create, upload, download and delete files. A web admin page being open does not mean WebDAV is available.": {
+    "zh": "服务端需要允许当前账号进行目录读取、创建目录、上传、下载和删除操作。只开启网页管理后台，不代表 WebDAV 已经可用。"
+  },
+  "The server refused the connection. Check that this device is on the same network as the server, and check the address, the port and whether the WebDAV service is running.": {
+    "zh": "服务器拒绝了连接。请确认设备与服务器处于同一网络，并检查地址、端口以及 WebDAV 服务是否已启动。"
+  },
+  "The server refused this connection’s account or password. Edit the connection, then try again.": {
+    "zh": "服务器拒绝了这个连接的账号或密码。请修改连接后再试。"
+  },
+  "The server rejected the sign-in": {
+    "zh": "服务器拒绝了登录"
+  },
+  "The switch must match the address. With it on, the address starts with https:// and the port is usually 443; with it off, the address starts with http:// and the port is usually 80.": {
+    "zh": "开关必须和服务器地址的协议一致。开启时地址以 https:// 开头，通常端口为 443；关闭时地址以 http:// 开头，通常端口为 80。"
+  },
+  "The sync could not reach the remote and did not finish. Check the network and the remote service, then try again.": {
+    "zh": "这次同步没能连上远端，没有完成。请检查网络和远端服务后重试。"
+  },
+  "The sync did not finish": {
+    "zh": "同步没有完成"
+  },
+  "The sync did not finish and the cause is not clear. Try again first; if it keeps failing, open Details and check the local and remote folders.": {
+    "zh": "同步没有完成，原因还不明确。请先重试一次；一直失败就打开“详情”检查本机文件夹和远端文件夹。"
+  },
+  "The sync did not finish. Try again; if it keeps failing, open Details and check the local and remote folders.": {
+    "zh": "同步没有完成。请重试一次；一直失败就打开“详情”检查本机文件夹和远端文件夹。"
+  },
+  "The system schedules background work using the network, the battery, and each profile’s own policy.": {
+    "zh": "系统会根据网络、电量和各配置策略安排后台任务。"
+  },
+  "The target folder is missing": {
+    "zh": "看不到目标文件夹"
+  },
+  "The transfer has not finished. Review the connection and details, then try again.": {
+    "zh": "传输还未完成。请查看连接和详细记录，处理后再试。"
+  },
+  "The transfer has not started. Please try again.": {
+    "zh": "本次传输尚未开始，请重试。"
+  },
+  "The {0} cannot contain spaces.": {
+    "zh": "{0} 不能包含空格。",
+    "args": [
+      "secretLabel"
+    ]
+  },
+  "Then connect your original cloud storage": {
+    "zh": "再连接原来的云端"
+  },
+  "Then the port and path": {
+    "zh": "再看端口和路径"
+  },
+  "Then the real connection is tested": {
+    "zh": "再测试实际连接"
+  },
+  "There are no other folders here.": {
+    "zh": "这里没有其他文件夹。"
+  },
+  "There is no network connection. Connect to the internet and try again.": {
+    "zh": "没有网络连接，连上网络后再试。"
+  },
+  "There is nothing to configure here. Backup availability is determined by actual connection and backup checks.": {
+    "zh": "浏览文件夹不需要设置这些项目。能否备份，以实际连接和备份检查为准。"
+  },
+  "These changes have not all been transferred. Continue below.": {
+    "zh": "这些内容还没有全部传完，点下方按钮继续。"
+  },
+  "These describe the connection implementation, not test results for this server.": {
+    "zh": "这些是连接方式的技术说明，不是当前服务器的检测结果。"
+  },
+  "These files were already deleted on one side. Confirming deletes the copy left on the other side": {
+    "zh": "这些文件已经在一边被删除，确认后会把另一边剩下的那份也删除"
+  },
+  "These files were already deleted on the remote. Confirming deletes the copy left on this device": {
+    "zh": "这些文件已经在远端删除，确认后会删除本机剩下的那份"
+  },
+  "These files were already deleted on this device. Confirming deletes the copy left on the remote": {
+    "zh": "这些文件已经在本机删除，确认后会删除远端剩下的那份"
+  },
+  "These options apply only to profiles you create from now on; existing profiles keep their own policy. New sync locations start with background sync off: turn on “Background sync” on the location’s own page.": {
+    "zh": "这些选项只用于此后新建的配置；已有配置保持自己的策略。新建的同步位置默认不开后台同步：还需要在它的详情页打开「后台同步」。"
+  },
+  "This Velock account is already connected. Continue from the existing backup on the home screen.": {
+    "zh": "这个格间账号已经连接，无需重复设置。请从首页查看已有备份。"
+  },
+  "This Velock version cannot connect. Update Velock and Sync, then try again.": {
+    "zh": "当前格间版本不支持连接，请更新格间和 Sync 后重试。"
+  },
+  "This Velock version is too old to connect. Update Velock and try again.": {
+    "zh": "当前的格间版本太旧，无法连接。请更新格间后再试。"
+  },
+  "This account cannot access the remote folder. Check the WebDAV permissions.": {
+    "zh": "当前账号无法访问这个远端目录，请检查 WebDAV 权限设置。"
+  },
+  "This account cannot read or write the remote folder. Choose a folder this account may write to, or use an account that has access.": {
+    "zh": "这个账号没有远端文件夹的读写权限。请换一个这个账号能写入的远端文件夹，或改用有权限的账号。"
+  },
+  "This authorization could not be confirmed. Return to Velock and allow access again.": {
+    "zh": "无法确认这次授权，连接尚未建立。请返回格间重新允许访问。"
+  },
+  "This check found {0} candidates, {1} met the cleanup rules, and {2} objects were deleted.": {
+    "zh": "本次检查 {0} 个候选，{1} 个满足清理条件，已删除 {2} 个对象。",
+    "args": [
+      "gc.candidateCount",
+      "gc.eligibleCandidateCount",
+      "gc.deletedObjectCount"
+    ]
+  },
+  "This cloud drive sign-in is incomplete or has expired. Sign in to the drive again on the Connections page, then sync.": {
+    "zh": "云盘连接的登录不完整或已失效。请在“连接”页重新登录这个网盘后再同步。"
+  },
+  "This connection can reach all of your Google Drive files, to sync the ordinary folder you chose": {
+    "zh": "这个连接可以访问 Google Drive 里的全部文件，用于同步你选的普通文件夹"
+  },
+  "This connection cannot be used for folder sync. Use WebDAV (for example a NAS), OneDrive, Baidu Netdisk or Aliyun Drive; for Google Drive, add a new connection with access to all files while adding the sync location.": {
+    "zh": "这个连接不能用于文件夹同步。请改用 WebDAV（例如 NAS）、OneDrive、百度网盘或阿里云盘；Google Drive 需要在添加同步位置时新建一个允许访问全部文件的连接。"
+  },
+  "This connection cannot move": {
+    "zh": "这个连接不能更改目录"
+  },
+  "This connection may have been deleted. Go back to the connections list to see which ones are available.": {
+    "zh": "这个连接可能已被删除。返回连接列表查看当前可用的连接。"
+  },
+  "This connection no longer exists, so its location cannot be checked.": {
+    "zh": "当前连接已不存在，无法核对保存位置。"
+  },
+  "This connection no longer exists, so the folder cannot be changed.": {
+    "zh": "这个连接已不存在，无法更换目录。"
+  },
+  "This connection no longer exists.": {
+    "zh": "这个连接已不存在。"
+  },
+  "This connection type can’t be opened. Go back and choose again.": {
+    "zh": "无法打开这种连接方式，请返回后重新选择。"
+  },
+  "This could not be verified as a genuine Velock, so Sync stopped to protect your data. Install Velock from the official source.": {
+    "zh": "无法确认这是正版格间，为保护你的数据，已停止连接。请从官方渠道安装格间。"
+  },
+  "This device": {
+    "zh": "本机"
+  },
+  "This device is out of free space, so the sync did not finish. Free up space on this device and try again.": {
+    "zh": "本机剩余空间不足，本次同步没有完成。请清理本机空间后重试。"
+  },
+  "This device wins": {
+    "zh": "以本机覆盖远端"
+  },
+  "This folder can be written. No backup has started.": {
+    "zh": "可以写入，还没有开始备份"
+  },
+  "This folder cannot be written. Choose a folder this account can write to.": {
+    "zh": "这个文件夹不能写入。请换一个这个账号有写入权限的文件夹。"
+  },
+  "This folder is empty": {
+    "zh": "这个目录还是空的"
+  },
+  "This folder read was cancelled. Tap retry to load it again.": {
+    "zh": "本次文件夹读取已取消，点击重试可以重新加载。"
+  },
+  "This full backup has been uploaded and verified. Content added or changed after preparation will be handled by the next backup.": {
+    "zh": "本次完整备份已上传并通过校验。准备备份之后新增或修改的内容，会在下一次备份时处理。"
+  },
+  "This is usually the account, the password or folder permissions. Check again whether the account may use WebDAV, whether an app-specific password is required, and whether the target folder is writable.": {
+    "zh": "这通常是账号、密码或目录权限问题。重新确认账号是否允许 WebDAV，是否需要应用专用密码，以及目标目录是否允许写入。"
+  },
+  "This is where browsing starts after sign-in. The default appDataFolder points to the private space Google keeps for the app, which suits Velock sync items without mixing them into your ordinary Drive files.": {
+    "zh": "这是授权后浏览远端目录的起始位置。默认值 appDataFolder 指向 Google 为应用保留的隐藏安全空间，适合保存 Velock 的同步对象，不会把这些对象混在普通网盘文件中。"
+  },
+  "This is where the folder chooser starts. The default root means the OneDrive root of the signed-in account; you can also enter a known folder ID to start there. The folder you pick after signing in is the one that gets saved.": {
+    "zh": "这是目录选择器开始浏览的位置。默认 root 表示当前账号的 OneDrive 根目录；你也可以填入一个已知目录 ID，让选择器从该位置开始。最终保存的目录以授权后的选择为准。"
+  },
+  "This local folder already belongs to the sync location “{0}”{1}.": {
+    "zh": "这个本机文件夹已经属于同步位置「{0}」{1}。",
+    "args": [
+      "name",
+      "paused"
+    ]
+  },
+  "This local folder contains “{0}”, which the sync location “{1}”{2} uses.": {
+    "zh": "这个本机文件夹里面包含同步位置「{1}」{2}使用的文件夹「{0}」。",
+    "args": [
+      "folder",
+      "name",
+      "paused"
+    ]
+  },
+  "This local folder is inside “{0}”, which the sync location “{1}”{2} uses.": {
+    "zh": "这个本机文件夹在同步位置「{1}」{2}使用的文件夹「{0}」里面。",
+    "args": [
+      "folder",
+      "name",
+      "paused"
+    ]
+  },
+  "This location": {
+    "zh": "这个同步位置"
+  },
+  "This location did not pass the storage check. Backup has not started. Check permissions, available space and the network.": {
+    "zh": "这个位置未通过读写检查，尚未开始备份。请检查权限、空间或网络后再试。"
+  },
+  "This location has not been checked yet. Check its backup history and continue backing up. The previous result remains in Transfer history.": {
+    "zh": "新位置尚待检查。点下方按钮检查备份记录并继续备份；上次结果保留在传输记录中。"
+  },
+  "This location is already syncing. Wait for that run to finish, then try again.": {
+    "zh": "这个同步位置正在同步中，请等这次同步结束后再试。"
+  },
+  "This location is paused. Tap Resume, then start the sync.": {
+    "zh": "这个同步位置已暂停。请先点“继续”，再开始同步。"
+  },
+  "This location was deleted and cannot sync any more. Go back to the list and add the location again.": {
+    "zh": "这个同步位置已被删除，无法继续同步。请返回列表重新添加同步位置。"
+  },
+  "This name is too long. Use a shorter name.": {
+    "zh": "名称太长，请使用短一些的名称。"
+  },
+  "This only points this file-sync task at the folder above. The connection is not changed and nothing in the old folder is deleted or migrated. Sync still has to be started separately.": {
+    "zh": "只把这个文件同步任务的云端保存位置改为上面的文件夹，不改动连接本身，也不会删除或迁移旧文件夹里的数据。保存后仍需另行开始同步。"
+  },
+  "This profile cannot be read safely. Create a new sync profile.": {
+    "zh": "此配置无法安全读取，请重新创建同步配置。"
+  },
+  "This profile is not supported": {
+    "zh": "此配置不受支持"
+  },
+  "This protocol cannot browse files online yet. Go back to the connections list and use the other features.": {
+    "zh": "当前协议还不支持在线浏览文件，请返回连接列表使用其他功能。"
+  },
+  "This remote folder contains, or sits inside, the remote folder of another sync location: {0}. Two locations over the same files would overwrite each other, so pick a different folder.": {
+    "zh": "这个远端文件夹和另一个同步位置的远端文件夹互相包含：{0}。两个同步位置覆盖同一批文件会互相覆盖，请换一个文件夹。",
+    "args": [
+      "failure.existingDisplayName"
+    ]
+  },
+  "This remote folder is missing or this account cannot write to it. Go back one step and choose an existing, writable folder.": {
+    "zh": "这个远端文件夹不存在，或者这个账号不能写入。请返回上一步，选择另一个真实存在、可写入的文件夹。"
+  },
+  "This request has expired. Please start again.": {
+    "zh": "本次请求已过期，请重新发起。"
+  },
+  "This safe cleanup was skipped.": {
+    "zh": "本次安全清理已跳过。"
+  },
+  "This sync location could not be loaded.": {
+    "zh": "找不到这个同步位置。"
+  },
+  "This sync profile is already running.": {
+    "zh": "这个同步配置正在运行。"
+  },
+  "This sync was cancelled before it finished. Start it again when you are ready.": {
+    "zh": "这次同步被取消了，没有全部完成。需要时请重新同步。"
+  },
+  "This task’s folder configuration could not be read, so the location cannot be changed here. Go back and reopen this page from the task.": {
+    "zh": "无法读取这个任务的文件夹配置，因此这里不能更改位置。请返回任务页重新进入。"
+  },
+  "This transfer is complete. Uploaded and received changes were processed.": {
+    "zh": "本次传输已完成，上传和接收的数据已处理。"
+  },
+  "This version cannot back up Velock on Android yet. File sync works as usual.": {
+    "zh": "这个版本暂不支持在 Android 上备份格间。文件同步可以正常使用。"
+  },
+  "This version has no built-in Google app key. Create your own Client ID as described above and enter it. If Google reports redirect_uri_mismatch or invalid_request, check that the client type is “iOS” and the bundle ID matches the one shown on the connection page exactly.": {
+    "zh": "说明这个版本没有内置 Google 的应用密钥。按上面的步骤创建自己的 Client ID 并填入；如果 Google 提示 redirect_uri_mismatch 或 invalid_request，检查客户端类型是否为“iOS”、软件包 ID 是否与连接页显示的完全一致。"
+  },
+  "This version has no built-in OneDrive app key. Register your own app as described above and enter its Application (client) ID — not the Directory (tenant) ID.": {
+    "zh": "说明这个版本没有内置 OneDrive 的应用密钥。按上面的步骤注册自己的应用并填入 Application (client) ID，注意不要填成 Directory (tenant) ID。"
+  },
+  "This version requests Files.ReadWrite and offline_access so it can read and write synced items and refresh the access token later. An administrator may need to approve these permissions.": {
+    "zh": "当前实现请求 Files.ReadWrite 和 offline_access，用于读写同步对象并在下次使用时刷新访问令牌。组织管理员可能需要批准这些权限。"
+  },
+  "To resume": {
+    "zh": "待恢复"
+  },
+  "To start in an ordinary Drive folder, pick it in the folder chooser shown after sign-in. Do not paste the whole browser URL into the root folder ID.": {
+    "zh": "如果要从普通 Drive 文件夹开始，使用授权后提供的目录选择器选择它。不要直接把浏览器地址栏中的整段 URL 粘贴进根目录 ID。"
+  },
+  "Today {0}": {
+    "zh": "今天 {0}",
+    "args": [
+      "_time(local)"
+    ]
+  },
+  "Tokens are held in system secure storage": {
+    "zh": "令牌由系统安全存储保管"
+  },
+  "Tokens stay out of connection settings": {
+    "zh": "令牌不会出现在连接配置里"
+  },
+  "Total transferred": {
+    "zh": "本机累计流量"
+  },
+  "Transfer details": {
+    "zh": "传输明细"
+  },
+  "Transfer history": {
+    "zh": "传输记录"
+  },
+  "Transferred {0}": {
+    "zh": "传输 {0}",
+    "args": [
+      "AppFormat.bytes(stats.bytesTransferred)"
+    ]
+  },
+  "Transferring your data": {
+    "zh": "正在传输，请稍候"
+  },
+  "Transferring, please wait.": {
+    "zh": "正在传输，请稍候。"
+  },
+  "Transferring…": {
+    "zh": "正在传输…"
+  },
+  "Transfers pending": {
+    "zh": "有待传输项目"
+  },
+  "Transfers to resume": {
+    "zh": "待恢复传输"
+  },
+  "Try again": {
+    "zh": "重试"
+  },
+  "Two-way": {
+    "zh": "双向同步"
+  },
+  "Unable to Load": {
+    "zh": "暂时无法加载"
+  },
+  "Unable to delete connection.": {
+    "zh": "无法删除连接。"
+  },
+  "Unable to load": {
+    "zh": "暂时无法加载"
+  },
+  "Unable to load connections.": {
+    "zh": "无法读取连接服务。"
+  },
+  "Unable to save connection. Please try again.": {
+    "zh": "连接保存失败，请重试。"
+  },
+  "Unable to test connections. Check your network and authorization.": {
+    "zh": "无法测试连接，请检查网络和授权。"
+  },
+  "Unavailable": {
+    "zh": "不可用"
+  },
+  "Unavailable sync profile": {
+    "zh": "不可用的同步配置"
+  },
+  "Unexpected remote reply": {
+    "zh": "远端返回异常"
+  },
+  "Unsupported Velock version": {
+    "zh": "Velock 版本不受支持"
+  },
+  "Unsupported platform": {
+    "zh": "平台不支持"
+  },
+  "Unsupported version": {
+    "zh": "版本不支持"
+  },
+  "Up to date": {
+    "zh": "已是最新"
+  },
+  "Update Velock": {
+    "zh": "需要更新格间"
+  },
+  "Update Velock and retry.": {
+    "zh": "请升级 Velock 本体后重试。"
+  },
+  "Update Velock to 2.0.7 or later and open it once.": {
+    "zh": "请把格间更新到 2.0.7 或更高版本，并打开一次。"
+  },
+  "Upload": {},
+  "Upload new backup": {
+    "zh": "上传新备份"
+  },
+  "Upload only": {
+    "zh": "仅上传"
+  },
+  "Upload {0}": {
+    "zh": "上传{0}",
+    "args": [
+      "state"
+    ]
+  },
+  "Upload {0} · Download {1}": {
+    "zh": "上传 {0} · 下载 {1}",
+    "args": [
+      "snapshot.pendingUploadCount",
+      "snapshot.pendingDownloadCount"
+    ]
+  },
+  "Uploaded objects": {
+    "zh": "上传对象"
+  },
+  "Uploaded on this device": {
+    "zh": "本机已上传"
+  },
+  "Uploaded {0} files, downloaded {1} files": {
+    "zh": "上传 {0} 个文件，下载 {1} 个文件",
+    "args": [
+      "stats.uploadedFileCount",
+      "stats.downloadedFileCount"
+    ]
+  },
+  "Uploaded {0} · Downloaded {1}": {
+    "zh": "上传 {0} 项 · 下载 {1} 项",
+    "args": [
+      "kind.uploadedCount",
+      "kind.downloadedCount"
+    ]
+  },
+  "Use HTTP Anyway": {
+    "zh": "仍然使用 HTTP"
+  },
+  "Use Insecure HTTP?": {
+    "zh": "使用不安全的 HTTP？"
+  },
+  "Use Sync’s app folder": {
+    "zh": "推荐使用 Sync 专用文件夹"
+  },
+  "Use after a reinstall or expired access. Cloud data stays.": {
+    "zh": "重装或授权失效后使用，不删除云端数据"
+  },
+  "Use one folder name without slashes, control characters, . or ..": {
+    "zh": "名称不能是 . 或 ..，也不能包含斜杠或控制字符。"
+  },
+  "Use the cloud account that holds your backup, then return here to select its folder.": {
+    "zh": "请使用备份时的云端账号。添加连接后，再回来选择原备份目录。"
+  },
+  "Use this folder": {
+    "zh": "使用这个文件夹"
+  },
+  "Use this folder?": {
+    "zh": "改用这个文件夹？"
+  },
+  "Use your own app key": {
+    "zh": "改用自己的应用密钥"
+  },
+  "Use your own cloud drive, NAS or other WebDAV service. Sync checks safe storage access first.": {
+    "zh": "使用自己的网盘、NAS 或其他 WebDAV 服务，Sync 会先检查它是否可以安全保存数据。"
+  },
+  "Username": {
+    "zh": "用户名"
+  },
+  "Username and password": {
+    "zh": "用户名和密码"
+  },
+  "Using this build’s app key": {
+    "zh": "正在使用此版本内置的应用密钥"
+  },
+  "Using your own app key": {
+    "zh": "正在使用你自己的应用密钥"
+  },
+  "Usually leave this unchanged. Pick a folder after signing in.": {
+    "zh": "一般无需修改，登录后可以直接选择文件夹。"
+  },
+  "Velock": {
+    "zh": "格间"
+  },
+  "Velock allowed a different account. Your existing backup settings are unchanged. Switch to the original account in Velock and retry.": {
+    "zh": "格间允许的是另一个账号，原来的备份设置保持不变。请在格间切换到原来的账号后重试。"
+  },
+  "Velock app not found": {
+    "zh": "未找到 Velock App"
+  },
+  "Velock backup": {
+    "zh": "格间备份"
+  },
+  "Velock backup counts encrypted objects (batches / blobs / commits). Original filenames are only visible in Velock.": {
+    "zh": "格间备份以加密对象为单位（批次 / 数据块 / 提交）；原始文件名只在格间 App 内可见。"
+  },
+  "Velock backup is not available": {
+    "zh": "暂不支持格间备份"
+  },
+  "Velock backup is not available on this device yet. File sync works as usual.": {
+    "zh": "这台设备暂不支持备份格间。文件同步可以正常使用。"
+  },
+  "Velock backup needs Velock 2.0.7 or later. Update Velock in the App Store, open it once, then come back. File sync is not affected.": {
+    "zh": "格间备份需要格间 2.0.7 或更高版本。请在 App Store 更新格间，并打开一次后再回来。文件同步不受影响。"
+  },
+  "Velock backups are encrypted by Velock before upload. File sync writes ordinary files that anyone with access to the account can view and change.": {
+    "zh": "格间备份的内容在上传前由格间加密。文件同步写入的是普通文件，能访问该账号的人都能查看和修改。"
+  },
+  "Velock batches awaiting upload": {
+    "zh": "格间待上传批次"
+  },
+  "Velock cannot be reached right now. Open and unlock it, then try again. Nothing was saved.": {
+    "zh": "暂时连不上格间。请打开并解锁格间，再回来重试；没有保存任何设置。"
+  },
+  "Velock connected": {
+    "zh": "Velock 连接正常"
+  },
+  "Velock connection is not supported on this platform": {
+    "zh": "当前平台不支持 Velock 连接"
+  },
+  "Velock connection not authorized": {
+    "zh": "Velock 连接未授权"
+  },
+  "Velock connection temporarily unavailable": {
+    "zh": "Velock 连接暂不可用"
+  },
+  "Velock could not hand its changes to Sync last time. Open Velock, then back up again.": {
+    "zh": "格间上次没能把改动交给 Sync。请打开格间，改动交接后再立即备份。"
+  },
+  "Velock data": {
+    "zh": "格间数据"
+  },
+  "Velock disconnected": {
+    "zh": "Velock 连接已断开"
+  },
+  "Velock has new changes, a failed hand-over, or conflicts waiting for your choice. Open Velock, then come back to back up.": {
+    "zh": "格间里有新改动、上次交接失败，或有需要你选择版本的冲突。打开格间处理后，再回来备份。"
+  },
+  "Velock has prepared your backup": {
+    "zh": "格间已准备好备份内容"
+  },
+  "Velock identity verification failed": {
+    "zh": "Velock 身份验证失败"
+  },
+  "Velock is already connected": {
+    "zh": "这台设备已经连接格间"
+  },
+  "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": {
+    "zh": "格间是本地加密的隐私保险箱。装上格间后，Sync 就能把它加密备份到你自己的 NAS 或网盘，换手机也能找回来。"
+  },
+  "Velock is connected": {
+    "zh": "已连接格间"
+  },
+  "Velock is not installed; disconnected": {
+    "zh": "Velock 本体未安装，连接已断开"
+  },
+  "Velock is not on this device yet. Install and open it, then come back.": {
+    "zh": "这台设备上还没有格间。请先安装并打开格间，再回来继续。"
+  },
+  "Velock is not ready to connect yet. Open Velock → Settings → Cloud backup, turn on “Allow Sync to connect”, then come back.": {
+    "zh": "格间还没有准备好连接。请打开格间 → 设置 → 云备份，打开「允许 Sync 连接」，再回来继续。"
+  },
+  "Velock is not supported on this platform.": {
+    "zh": "当前平台不支持 Velock 本体。"
+  },
+  "Velock is open. When it finishes, come back here and choose “Open in Velock” again.": {
+    "zh": "已打开 Velock；处理完成后回到这里再次选择“在 Velock 中处理”。"
+  },
+  "Velock is temporarily inaccessible.": {
+    "zh": "Velock 本体暂时无法访问。"
+  },
+  "Velock is the data source. Velock Sync continuously backs up its encrypted, authenticated data to your remote storage. After switching devices, reinstalling, or losing a device, recover your Velock account and connect to the same remote storage.": {
+    "zh": "格间是数据源，Velock Sync 只负责持续把已加密和认证的数据备份到你的远端。换机、重装或设备丢失后，恢复格间账号并连接同一远端即可恢复。"
+  },
+  "Velock keeps control of encryption. Choose cloud storage next.": {
+    "zh": "你的数据仍由格间加密和解密。下一步选择云端位置。"
+  },
+  "Velock not authorized": {
+    "zh": "本体未授权"
+  },
+  "Velock not installed": {
+    "zh": "本体未安装"
+  },
+  "Velock revoked access": {
+    "zh": "Velock 已撤销授权"
+  },
+  "Velock revoked sync access": {
+    "zh": "Velock 已撤销同步授权"
+  },
+  "Velock revoked the previous authorization. Reconnect in Manage. Existing cloud data will not be deleted.": {
+    "zh": "格间已撤销此前的授权。请在管理中重新连接，已有云端数据不会因此删除。"
+  },
+  "Velock revoked this authorization. Allow Sync access again, then retry.": {
+    "zh": "格间已撤销本次授权。请重新允许 Sync 访问后再试。"
+  },
+  "Velock secure space": {
+    "zh": "Velock 安全空间"
+  },
+  "Velock still has changes to hand over": {
+    "zh": "格间还有内容没交给 Sync"
+  },
+  "Velock still holds {0} changes it has not handed to Sync, so nothing is waiting here yet. Opening Velock hands them over.": {
+    "zh": "格间还有 {0} 项改动没交给 Sync，所以这里暂时没有要上传的内容。打开格间后会自动交接。",
+    "args": [
+      "status.unpackagedChanges"
+    ]
+  },
+  "Velock temporarily unavailable": {
+    "zh": "本体暂不可用"
+  },
+  "Velock unavailable": {
+    "zh": "本体不可用"
+  },
+  "Velock was not found on this device. Install it, then return to connect.": {
+    "zh": "这台设备上还没有找到格间。请先安装格间，再回来连接。"
+  },
+  "Velock was reset or access expired. Remove this profile and pair again.": {
+    "zh": "格间已重置或授权已失效，请移除本配置后重新配对。"
+  },
+  "Velock was reset or access revoked. Remove this profile and pair again.": {
+    "zh": "格间已重置或授权被撤销，请移除本配置后重新配对。"
+  },
+  "Velock will prepare a full backup of the content on this device. Return here when it is ready to upload.": {
+    "zh": "格间会生成当前本机内容的完整备份。准备好后，请返回这里继续上传。"
+  },
+  "Velock withdrew this Sync’s permission. Connect to Velock again and allow it there.": {
+    "zh": "格间已取消对这台设备上 Sync 的授权。请重新连接格间，并在格间里再次允许。"
+  },
+  "Velock’s identity could not be verified. Transfers stopped to protect your data. Use trusted versions of both apps.": {
+    "zh": "无法验证格间的身份，已停止传输以保护数据。请使用可信的格间和 Sync 版本。"
+  },
+  "Verification failed": {
+    "zh": "身份验证失败"
+  },
+  "Verified backup content": {
+    "zh": "已校验的备份内容"
+  },
+  "Verify the port with the WebDAV address the server gave you. If you get a 404 or a missing folder, check that the subpath is the WebDAV root rather than a web admin path.": {
+    "zh": "用服务端提供的 WebDAV 地址验证端口；如果返回 404 或找不到目录，检查子路径是否是 WebDAV 根路径，而不是网页后台路径。"
+  },
+  "Version & Licenses": {
+    "zh": "版本与许可"
+  },
+  "View Detailed Setup Instructions": {
+    "zh": "查看详细配置说明"
+  },
+  "View Instructions": {
+    "zh": "查看说明"
+  },
+  "View backup": {
+    "zh": "查看备份"
+  },
+  "View cloud files": {
+    "zh": "查看云端文件"
+  },
+  "View connection": {
+    "zh": "查看连接"
+  },
+  "View existing backup": {
+    "zh": "查看现有备份"
+  },
+  "View pending transfers": {
+    "zh": "查看等待传输的内容"
+  },
+  "View the account and folder": {
+    "zh": "查看当前账号和文件夹"
+  },
+  "Wait for the connection check": {
+    "zh": "等待连接检查完成"
+  },
+  "Waiting for Velock to allow": {
+    "zh": "还没收到格间的允许"
+  },
+  "Waiting for confirmation": {
+    "zh": "等待确认"
+  },
+  "Waiting to retry": {
+    "zh": "等待重试"
+  },
+  "We check safe cloud access before starting. Automatic backup uses Wi-Fi when allowed by the system. Change this later in settings.": {
+    "zh": "先检查云端能否安全读写，再开始备份。自动备份仅在 Wi-Fi 和系统允许时运行，之后可在管理中调整。"
+  },
+  "We will first look for the original account’s backup. Unlock Velock after downloading to finish restoring.": {
+    "zh": "先检查这里是否有原账号的备份。数据下载后，还需在格间解锁完成恢复。"
+  },
+  "WebDAV works with a NAS, Nextcloud or another compatible service. Make sure this device can reach the server first, then fill in the form.": {
+    "zh": "WebDAV 适合连接 NAS、Nextcloud 或其他兼容服务。请先确认当前设备能访问服务器，再填写表单。"
+  },
+  "WebDAV, OneDrive, Google Drive, Baidu Netdisk or Aliyun Drive": {
+    "zh": "WebDAV、OneDrive、Google Drive、百度网盘或阿里云盘"
+  },
+  "What each remote service needs beforehand, how to fill in the fields, what happens after saving, and where to start when something fails.": {
+    "zh": "这里说明每个远端服务需要提前准备什么、字段怎么填写、保存后会发生什么，以及遇到错误时从哪里开始排查。"
+  },
+  "What happens when you save": {
+    "zh": "保存时会发生什么"
+  },
+  "What the fields mean": {
+    "zh": "页面字段怎么理解"
+  },
+  "When creating the “iOS” client, enter tech.windata.velock.sync as the bundle ID (you can copy it from the connection page). Google derives the redirect from the Client ID, so there is nothing else to register.": {
+    "zh": "创建“iOS”客户端时，软件包 ID（Bundle ID）填写 tech.windata.velock.sync（连接页可以直接复制）。回调地址由 Google 根据 Client ID 自动生成，不需要另外登记。"
+  },
+  "When sign-in expires": {
+    "zh": "授权失效"
+  },
+  "When the same file changed on both sides, this setting decides. Keeping both is the default and never silently overwrites.": {
+    "zh": "两边同时改过同一个文件时按这里的设置处理；默认保留两份，不会静默覆盖。"
+  },
+  "When you delete a connection the app tries to revoke the sign-in and clear local credentials. If the network is down, do not delete and recreate in a loop; retrying later is safer.": {
+    "zh": "删除连接时应用会尝试撤销远端授权并清理本地凭据；如果网络暂时不可用，先不要反复删除重建，稍后重试更安全。"
+  },
+  "When you share a screenshot, hide the private parts of the server address, the username and anything that identifies your home network. Passwords are never shown on screen.": {
+    "zh": "分享问题截图时遮住服务器地址中的私密信息、用户名和所有可能识别家庭网络的内容。密码不会显示在页面上。"
+  },
+  "Where is your backup?": {
+    "zh": "从哪里恢复？"
+  },
+  "Where should we save?": {
+    "zh": "保存到哪里？"
+  },
+  "Where to save": {
+    "zh": "保存到哪里"
+  },
+  "While the consent screen is in “Testing”, only listed test users can sign in and each sign-in lasts about 7 days. Publish it to “In production”; the two scopes this app uses need no Google review.": {
+    "zh": "同意屏幕停在“测试”状态时，只有加入测试用户的账号能登录，而且大约 7 天后就要重新授权。把它发布为“正式版”即可；本应用用到的两个访问范围不需要 Google 审核。"
+  },
+  "With your own Client ID, sign-in appears in the system sign-in sheet inside the app and closes itself when done. If the sheet sits on a blank page, close it, sign in again and check that the Client ID belongs to an “iOS” client.": {
+    "zh": "使用自己的 Client ID 时，登录页显示在应用内的系统登录窗口里，完成后会自动关闭；如果窗口停在空白页，关闭后重新登录，并检查 Client ID 是否属于“iOS”类型的客户端。"
+  },
+  "With your own app, the system browser returns to the app through velocksync://oauth/callback when sign-in finishes. The “Mobile and desktop applications” redirect in the Entra app registration must match this address (you can copy it from the connection page).": {
+    "zh": "使用自己的应用时，授权完成后系统浏览器通过 velocksync://oauth/callback 回到应用。Entra 应用注册中的“移动和桌面应用程序”回调必须与这个地址一致（连接页可以直接复制）。"
+  },
+  "Without a built-in key: use your own app": {
+    "zh": "没有内置密钥时：使用自己的应用"
+  },
+  "Work or school accounts can be limited by tenant administrators, conditional access and data location policies. The app cannot bypass them; the settings have to be completed in Entra.": {
+    "zh": "工作或学校账号可能受到租户管理员、条件访问和数据位置策略限制。应用无法绕过这些策略，需要在 Entra 管理端完成配置。"
+  },
+  "Yes": {},
+  "Yesterday {0}": {
+    "zh": "昨天 {0}",
+    "args": [
+      "_time(local)"
+    ]
+  },
+  "You declined this connection in Velock. Existing data is unchanged. You can allow access again whenever you are ready.": {
+    "zh": "你已在格间拒绝本次连接。已有数据不会改变，可随时重新授权。"
+  },
+  "You do not have permission to create folders here. Choose another location.": {
+    "zh": "这个位置没有新建文件夹的权限，请选择其他位置。"
+  },
+  "You sign in on Baidu’s own page, and Sync never sees your Baidu password": {
+    "zh": "在百度的登录页授权，Sync 不接触你的百度密码"
+  },
+  "Your attention is needed": {
+    "zh": "有一件事需要你处理"
+  },
+  "Your backup settings changed, so this reconnection was not saved. Go back to the backup and try again.": {
+    "zh": "原来的备份设置已经变化，这次重新连接没有保存。请返回备份详情后再试。"
+  },
+  "Your changes to direction and conflict handling are not saved yet.": {
+    "zh": "同步方向和冲突处理的修改还没有保存。"
+  },
+  "Your cloud location is ready. Start now to transfer your data.": {
+    "zh": "保存位置已选好。现在开始，让数据真正传到云端。"
+  },
+  "Your first backup is next": {
+    "zh": "还没有完成首次备份"
+  },
+  "Your new folder is open. Use the button below to select it. Backup has not started.": {
+    "zh": "已进入新文件夹。点下方按钮即可选择它，尚未开始备份。"
+  },
+  "Your new folder is open. Use the button below to select it. Sync has not started.": {
+    "zh": "已进入新文件夹。点下方按钮即可选择它，尚未开始同步。"
+  },
+  "Your own Client ID is kept only in this device’s system secure storage and is never uploaded.": {
+    "zh": "你自己的 Client ID 只保存在这台设备的系统安全存储中，不会上传。"
+  },
+  "Your saved connection {0} is not listed: it can only reach Sync’s own files and its hidden app folder, for Velock backups. To sync an ordinary Google Drive folder, choose “Add a new connection” and add a Google Drive connection with access to all files.": {
+    "zh": "已保存的连接 {0} 不在这里：它只能访问 Sync 自己建的文件和隐藏的专用文件夹，用于格间备份。要同步 Google Drive 里的普通文件夹，请点“添加新的云端连接”，新建一个允许访问全部文件的 Google Drive 连接。",
+    "args": [
+      "englishNames"
+    ]
+  },
+  "Your saved connections {0} are not listed: they can only reach Sync’s own files and its hidden app folder, for Velock backups. To sync an ordinary Google Drive folder, choose “Add a new connection” and add a Google Drive connection with access to all files.": {
+    "zh": "已保存的连接 {0} 不在这里：它只能访问 Sync 自己建的文件和隐藏的专用文件夹，用于格间备份。要同步 Google Drive 里的普通文件夹，请点“添加新的云端连接”，新建一个允许访问全部文件的 Google Drive 连接。",
+    "args": [
+      "englishNames"
+    ]
+  },
+  "cancelled": {
+    "zh": "已取消"
+  },
+  "deleted {0}": {
+    "zh": "删除 {0}",
+    "args": [
+      "stats.deletedLocalCount + stats.deletedRemoteCount"
+    ]
+  },
+  "done": {
+    "zh": "完成"
+  },
+  "down {0}": {
+    "zh": "下载 {0}",
+    "args": [
+      "stats.downloadedFileCount"
+    ]
+  },
+  "e.g. / or /path/to/webdav": {
+    "zh": "例如：/ 或者 /path/to/webdav"
+  },
+  "e.g. 8888": {
+    "zh": "例如：8888"
+  },
+  "e.g. Photos": {
+    "zh": "例如：照片"
+  },
+  "e.g. Velock backup": {
+    "zh": "例如：格间备份"
+  },
+  "e.g. https://example.com/webdav": {
+    "zh": "例如：https://example.com/webdav"
+  },
+  "failed": {
+    "zh": "失败"
+  },
+  "in progress": {
+    "zh": "进行中"
+  },
+  "no": {},
+  "or": {
+    "zh": "或"
+  },
+  "paused": {
+    "zh": "已暂停"
+  },
+  "queued": {
+    "zh": "排队中"
+  },
+  "root is only a starting point for browsing; it does not mean data is written to the OneDrive root. After signing in, confirm the folder you really want to sync in the chooser.": {
+    "zh": "root 只是浏览起点，不代表应用一定把数据写在 OneDrive 根目录。完成授权后，请在目录选择器中确认真正要用于同步的位置。"
+  },
+  "up {0}": {
+    "zh": "上传 {0}",
+    "args": [
+      "stats.uploadedFileCount"
+    ]
+  },
+  "waiting to retry": {
+    "zh": "等待重试"
+  },
+  "yes": {},
+  "{0}": {
+    "zh": "{0} 个",
+    "args": [
+      "_queue!.outboxReadyCount"
+    ]
+  },
+  "{0}\n…and {1} more": {
+    "zh": "{0}\n…还有 {1} 项",
+    "args": [
+      "listed",
+      "remaining"
+    ]
+  },
+  "{0} app key": {
+    "zh": "{0} 应用密钥",
+    "args": [
+      "provider"
+    ]
+  },
+  "{0} changes need review": {
+    "zh": "{0} 项内容需要你选择",
+    "args": [
+      "widget.conflicts.length"
+    ]
+  },
+  "{0} conflicts": {
+    "zh": "冲突 {0}",
+    "args": [
+      "view.conflictCount"
+    ]
+  },
+  "{0} conflicts handled by your conflict setting; neither side was silently lost.": {
+    "zh": "冲突 {0} 个：已按当前冲突设置处理，两端都不会静默丢失。",
+    "args": [
+      "stats.conflictCount"
+    ]
+  },
+  "{0} conflicts recorded": {
+    "zh": "有 {0} 个冲突记录",
+    "args": [
+      "view.conflictCount"
+    ]
+  },
+  "{0} conflicts to resolve": {
+    "zh": "{0} 个冲突待处理",
+    "args": [
+      "activity.unresolvedConflictCount"
+    ]
+  },
+  "{0} deletions exceeded the safety threshold and were held back. Confirm to apply them.": {
+    "zh": "检测到 {0} 项删除，超过安全阈值，已暂停删除。确认后才会执行。",
+    "args": [
+      "count"
+    ]
+  },
+  "{0} deletions held back (nothing deleted)": {
+    "zh": "待确认删除 {0} 项（本次未删除）",
+    "args": [
+      "outcome.heldDeletionCount"
+    ]
+  },
+  "{0} devices": {
+    "zh": "{0} 台设备",
+    "args": [
+      "gc?.unackedDeviceCount ?? 0"
+    ]
+  },
+  "{0} encrypted objects · {1}": {
+    "zh": "{0} 个加密对象 · {1}",
+    "args": [
+      "rebuild.objectCount",
+      "AppFormat.bytes(rebuild.totalBytes)"
+    ]
+  },
+  "{0} items were changed on two devices. Choose which version to keep in Velock: Settings → Cloud backup.": {
+    "zh": "格间里有 {0} 项内容在两台设备上都被改过，需要你在格间选择保留哪一份：设置 → 云备份。",
+    "args": [
+      "status.pendingConflicts"
+    ]
+  },
+  "{0} items were not compared in this run (skipped by the direction setting, or too large for this pass). Nothing about them was changed.": {
+    "zh": "有 {0} 项这次没有比较（方向设置跳过，或文件较大需要下次继续），它们不会被改动。",
+    "args": [
+      "stats.skippedCount"
+    ]
+  },
+  "{0} locations have background sync on": {
+    "zh": "{0} 个配置已启用后台同步",
+    "args": [
+      "value.backgroundEligibleProfileCount"
+    ]
+  },
+  "{0} min ago": {
+    "zh": "{0} 分钟前",
+    "args": [
+      "difference.inMinutes"
+    ]
+  },
+  "{0} objects · {1}": {
+    "zh": "{0} 个 · {1}",
+    "args": [
+      "uploaded.length",
+      "AppFormat.bytes(bytesOf(uploaded))"
+    ]
+  },
+  "{0} objects; latest {1}": {
+    "zh": "共 {0} 个对象，最近 {1}",
+    "args": [
+      "widget.history.length",
+      "AppFormat.relativeTime(widget.history.first.completedAt, context: context)"
+    ]
+  },
+  "{0} remote objects": {
+    "zh": "远端 {0} 个对象",
+    "args": [
+      "kind.remoteCount"
+    ]
+  },
+  "{0} setup": {
+    "zh": "{0} 配置说明",
+    "args": [
+      "documents.single.title"
+    ]
+  },
+  "{0} transferred": {
+    "zh": "{0} 已传输",
+    "args": [
+      "AppFormat.bytes(transfer.completedBytes)"
+    ]
+  },
+  "{0} {1}": {
+    "zh": "{0}{1}",
+    "args": [
+      "merge",
+      "plaintext"
+    ]
+  },
+  "{0} · {1}": {
+    "zh": "{0} · {1}",
+    "args": [
+      "transfer.direction == TransferJobDirection.upload ? 'Upload' : 'Download'",
+      "transferStateLabel(transfer.state, context: context)"
+    ]
+  },
+  "{0} · {1} · {2} · {3}": {
+    "zh": "{0} · {1} · {2} · {3}",
+    "args": [
+      "_syncedKindLabel(remoteInventoryKind(transfer.logicalKey), context: context)",
+      "transfer.direction == TransferJobDirection.upload ? 'Upload' : 'Restore'",
+      "AppFormat.bytes(transfer.completedBytes)",
+      "AppFormat.stamp(transfer.completedAt)"
+    ]
+  },
+  "{0}-{1}-{2}": {
+    "zh": "{0}年{1}月{2}日",
+    "args": [
+      "local.year",
+      "_pad(local.month)",
+      "_pad(local.day)"
+    ]
+  },
+  "{0}/{1} {2}": {
+    "zh": "{0}月{1}日 {2}",
+    "args": [
+      "local.month",
+      "local.day",
+      "_time(local)"
+    ]
+  },
+  "{0}: {1}": {
+    "zh": "{0}：{1}",
+    "args": [
+      "widget.restoring ? 'Restore from' : 'Save to'",
+      "connection.name"
+    ]
+  },
+  "“Redirect address does not match”": {
+    "zh": "提示重定向地址不匹配"
+  },
+  "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": {
+    "zh": "“{0}”将从本机删除。远端同步空间和文件不会被删除。",
+    "args": [
+      "displayName"
+    ]
+  },
+  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": {
+    "zh": "“{0}”将从本机移除。已有同步配置可能需要重新选择远端连接。",
+    "args": [
+      "connection.name"
+    ]
+  }
+}

@@ -59,6 +59,8 @@ class AppBackButton extends StatelessWidget {
     return Tooltip(
       message: label,
       child: Semantics(
+        // Language-independent handle for UI automation.
+        identifier: 'app-back',
         label: label,
         button: true,
         enabled: enabled,

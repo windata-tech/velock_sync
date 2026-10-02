@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "سجّل الدخول بمفتاح تطبيق سجّلته على Google Cloud.",
+ "Sign in with an app key you registered on Microsoft Entra.": "سجّل الدخول بمفتاح تطبيق سجّلته على Microsoft Entra.",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "سجّل الدخول بمفتاح تطبيق سجّلته على منصة مطوّري Baidu Netdisk.",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "سجّل الدخول بمفتاح تطبيق سجّلته على منصة مطوّري Aliyun Drive.",
+ "or": "أو",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "تقوم مزامنة الملفات برفع كل ملف في المجلد المختار وتنزيله بل وحذفه كملف عادي، مما قد يُتلف نسخة Velock الاحتياطية المشفّرة، لذا لا يمكن استخدامه."
+}

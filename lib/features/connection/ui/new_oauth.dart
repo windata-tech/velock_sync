@@ -290,8 +290,10 @@ class NewOAuthConnection extends HookConsumerWidget {
         title: Text(
           syncText(
             context,
-            '${replacementConnectionId == null ? '连接' : '重新登录'} $provider',
-            '${replacementConnectionId == null ? 'Connect' : 'Sign in again to'} $provider',
+            replacementConnectionId == null ? '连接 $provider' : '重新登录 $provider',
+            replacementConnectionId == null
+                ? 'Connect $provider'
+                : 'Sign in again to $provider',
           ),
         ),
         trailingActions: [

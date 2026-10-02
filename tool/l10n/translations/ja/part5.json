@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "Google Cloudで登録したアプリキーでサインインします。",
+ "Sign in with an app key you registered on Microsoft Entra.": "Microsoft Entraで登録したアプリキーでサインインします。",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "Baidu Netdisk の開発者プラットフォームで登録したアプリキーでサインインします。",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "Aliyun Drive の開発者プラットフォームで登録したアプリキーでサインインします。",
+ "or": "または",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "ファイル同期は、選んだフォルダ内のすべてのファイルを通常のファイルとしてアップロード・ダウンロードし、削除もします。Velock の暗号化バックアップが壊れてしまうため、このフォルダは使えません。"
+}

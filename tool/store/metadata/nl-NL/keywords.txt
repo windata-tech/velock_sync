@@ -1,0 +1,1 @@
+synchronisatie,bestanden,webdav,map,back-up,tweerichtings,spiegelen,versleuteld,nextcloud,opslag

@@ -1,0 +1,1 @@
+synchronisierung,webdav,dateien,ordner,backup,nextcloud,zweiwege,spiegeln,verschlüsselt,laufwerk

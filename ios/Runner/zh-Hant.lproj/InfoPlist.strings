@@ -1,0 +1,2 @@
+"CFBundleDisplayName" = "格間同步";
+"NSLocalNetworkUsageDescription" = "格間同步需要連線到你新增的 WebDAV 伺服器，它可能位於你的區域網路中。";

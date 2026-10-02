@@ -1,0 +1,2 @@
+"CFBundleDisplayName" = "Velock Sync";
+"NSLocalNetworkUsageDescription" = "Velock Sync si collega al server WebDAV che aggiungi, che potrebbe trovarsi sulla tua rete locale.";

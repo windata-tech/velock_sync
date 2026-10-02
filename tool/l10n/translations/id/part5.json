@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "Masuk dengan kunci aplikasi yang Anda daftarkan di Google Cloud.",
+ "Sign in with an app key you registered on Microsoft Entra.": "Masuk dengan kunci aplikasi yang Anda daftarkan di Microsoft Entra.",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "Masuk dengan kunci aplikasi yang Anda daftarkan di platform developer Baidu Netdisk.",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "Masuk dengan kunci aplikasi yang Anda daftarkan di platform developer Aliyun Drive.",
+ "or": "atau",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "Sinkronisasi file mengunggah, mengunduh, bahkan menghapus setiap file di folder yang dipilih sebagai file biasa, sehingga cadangan Velock yang terenkripsi akan rusak. Karena itu folder ini tidak dapat digunakan."
+}

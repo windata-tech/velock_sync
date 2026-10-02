@@ -1,0 +1,1 @@
+sincronizzazione,file,webdav,cartella,backup,bidirezionale,mirror,cifrato,nextcloud,privato

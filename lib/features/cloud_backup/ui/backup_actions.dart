@@ -13,6 +13,43 @@ final velockAppLauncherProvider = Provider<Future<bool> Function()>(
   (ref) => ref.watch(velockBackupSettingsLauncherProvider),
 );
 
+/// Velock's App Store page. Velock Sync only backs up Velock, so when Velock
+/// is missing the useful next step is getting it. Injectable for tests.
+const velockAppStoreUrl = 'https://apps.apple.com/app/id6748689303';
+
+final velockAppStoreLauncherProvider = Provider<Future<bool> Function()>(
+  (ref) =>
+      () => launchUrl(
+        Uri.parse(velockAppStoreUrl),
+        mode: LaunchMode.externalApplication,
+      ),
+);
+
+/// Opens Velock's App Store page; says where to find it when that fails.
+Future<void> openVelockAppStore(BuildContext context, WidgetRef ref) async {
+  var opened = false;
+  try {
+    opened = await ref.read(velockAppStoreLauncherProvider)();
+  } on Object {
+    /* UI below */
+  }
+  if (!opened && context.mounted) {
+    await showAdaptiveNotice(
+      context: context,
+      title: syncText(
+        context,
+        '无法打开 App Store',
+        'Could not open the App Store',
+      ),
+      message: syncText(
+        context,
+        '请在 App Store 搜索「格间」安装。',
+        'Search for "Velock" in the App Store to install it.',
+      ),
+    );
+  }
+}
+
 /// Backup-settings deep link launcher for the recovery card and authorized
 /// devices entry. Injectable for tests; the fixed URI carries no query and no
 /// requestId, so this management entry never creates or reads pairing

@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "Google Cloud üzerinde kaydettiğin bir uygulama anahtarıyla oturum aç.",
+ "Sign in with an app key you registered on Microsoft Entra.": "Microsoft Entra üzerinde kaydettiğin bir uygulama anahtarıyla oturum aç.",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "Baidu Netdisk geliştirici platformu üzerinde kaydettiğin bir uygulama anahtarıyla oturum aç.",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "Aliyun Drive geliştirici platformu üzerinde kaydettiğin bir uygulama anahtarıyla oturum aç.",
+ "or": "veya",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "Dosya eşitleme, seçilen klasördeki her dosyayı sıradan bir dosya gibi yükler, indirir ve hatta siler. Bu, şifreli Velock yedeğine zarar verir, bu yüzden bu klasör kullanılamaz."
+}

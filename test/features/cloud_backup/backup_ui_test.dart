@@ -1,3 +1,4 @@
+import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
 import 'package:velock_sync/features/cloud_backup/application/velock_snapshot_providers.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
 import 'package:velock_sync/features/connection/repository/connection_repository.dart';
@@ -12,6 +13,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:hooks_riverpod/misc.dart' show Override;
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
@@ -62,8 +64,10 @@ void main() {
     ConnectionRepository? connections,
     Future<bool> Function(String)? continuationReady,
     VelockWizardAvailability readiness = VelockWizardAvailability.ready,
+    List<Override> extra = const [],
   }) => ProviderScope(
     overrides: [
+      ...extra,
       syncStateDatabaseProvider.overrideWithValue(database),
       if (continuationReady != null)
         snapshotContinuationReadyProvider.overrideWithValue(continuationReady),
@@ -290,6 +294,41 @@ void main() {
 
     expect(find.byKey(const Key('velock-cloud-restore')), findsOneWidget);
     expect(find.byKey(const Key('velock-gate-title')), findsNothing);
+  });
+
+  testWidgets('without Velock the home offers it on the App Store', (
+    tester,
+  ) async {
+    var launches = 0;
+    var opens = true;
+    await tester.pumpWidget(
+      app(
+        const SyncProfilesHome(),
+        readiness: VelockWizardAvailability.appNotInstalled,
+        extra: [
+          velockAppStoreLauncherProvider.overrideWithValue(() async {
+            launches++;
+            return opens;
+          }),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('velock-get-app-card')), findsOneWidget);
+    expect(find.byKey(const Key('velock-cloud-restore')), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('velock-get-app')));
+    await tester.tap(find.byKey(const Key('velock-get-app')));
+    await tester.pumpAndSettle();
+    expect(launches, 1);
+    expect(find.text('无法打开 App Store'), findsNothing);
+
+    // A launch that fails says where to look instead of doing nothing.
+    opens = false;
+    await tester.tap(find.byKey(const Key('velock-get-app')));
+    await tester.pumpAndSettle();
+    expect(launches, 2);
+    expect(find.text('无法打开 App Store'), findsOneWidget);
   });
 
   testWidgets(

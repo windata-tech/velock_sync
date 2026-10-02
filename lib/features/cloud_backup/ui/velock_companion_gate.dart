@@ -5,6 +5,7 @@ import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/wizard/velock_wizard_readiness.dart';
+import 'package:velock_sync/widgets/velock_brand_mark.dart';
 
 /// States in which Velock backup must not be offered at all: pairing would
 /// either succeed and then fail every backup (an old Velock), or can never
@@ -145,6 +146,134 @@ class VelockCompanionGateCard extends StatelessWidget {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown instead of the "start backup" card when Velock is not installed:
+/// Sync only backs up Velock, so the next step is getting Velock.
+class VelockGetAppCard extends StatelessWidget {
+  const VelockGetAppCard({
+    super.key,
+    required this.onGetVelock,
+    required this.onRecheck,
+    this.checking = false,
+  });
+
+  final VoidCallback onGetVelock;
+  final VoidCallback onRecheck;
+  final bool checking;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = [
+      syncText(
+        context,
+        '照片、视频、文件、账号密码、银行卡和备注，加密保存在手机上',
+        'Photos, videos, files, passwords, cards and notes, encrypted on your phone',
+      ),
+      syncText(
+        context,
+        '支持密码自动填充，离线也能用',
+        'Password AutoFill, and it works offline',
+      ),
+      syncText(context, '一次购买，长期使用，无需订阅', 'Buy once, keep it. No subscription'),
+    ];
+    return BackupCard(
+      key: const Key('velock-get-app-card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const VelockBrandMark(size: 56),
+          const SizedBox(height: 18),
+          Text(
+            syncText(
+              context,
+              '用格间守护你的私密数据',
+              'Keep your private data in Velock',
+            ),
+            style: TextStyle(
+              fontSize: 26,
+              height: 1.25,
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            syncText(
+              context,
+              '格间是本地加密的隐私保险箱。装上格间后，Sync 就能把它加密备份到你自己的 NAS 或网盘，换手机也能找回来。',
+              'Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.',
+            ),
+            style: TextStyle(
+              fontSize: 16,
+              height: 1.5,
+              color: context.appSecondaryLabel,
+            ),
+          ),
+          const SizedBox(height: 14),
+          for (final point in points)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(
+                      CupertinoIcons.checkmark_seal_fill,
+                      size: 17,
+                      color: AppColors.success,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      point,
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.4,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
+          BackupActionButton(
+            key: const Key('velock-get-app'),
+            label: syncText(
+              context,
+              '在 App Store 获取格间',
+              'Get Velock on the App Store',
+            ),
+            onPressed: onGetVelock,
+          ),
+          const SizedBox(height: 10),
+          BackupActionButton(
+            key: const Key('velock-get-app-recheck'),
+            label: syncText(context, '已经装好了，重新检查', 'Installed? Check again'),
+            secondary: true,
+            busy: checking,
+            onPressed: onRecheck,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            syncText(
+              context,
+              '「文件同步」不需要格间，现在就能用。',
+              'File sync does not need Velock and works right away.',
+            ),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.4,
+              color: context.appSecondaryLabel,
+            ),
+          ),
         ],
       ),
     );

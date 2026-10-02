@@ -1,0 +1,1 @@
+Sincronize as pastas do iPhone com seu NAS, WebDAV ou nuvem e dê ao Velock um backup com criptografia de ponta a ponta. Sem cadastro, intermediários ou coleta de dados.

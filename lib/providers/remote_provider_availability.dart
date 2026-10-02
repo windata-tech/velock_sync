@@ -60,15 +60,16 @@ class RemoteProviderAvailability {
       if (creatable.contains(type)) type,
   ];
 
-  /// Human-readable list such as "WebDAV, Google Drive, or OneDrive".
-  String describe({required bool chinese}) {
+  /// Human-readable list such as "WebDAV, Google Drive, or OneDrive". [or]
+  /// is the translated conjunction for languages other than English.
+  String describe({required bool chinese, String or = 'or'}) {
     final names = [for (final type in ordered) remoteProviderDisplayName(type)];
     if (names.length <= 1) return names.join();
     final head = names.sublist(0, names.length - 1);
     if (chinese) return '${head.join('、')} 或 ${names.last}';
     return names.length == 2
-        ? '${head.single} or ${names.last}'
-        : '${head.join(', ')}, or ${names.last}';
+        ? '${head.single} $or ${names.last}'
+        : '${head.join(', ')}, $or ${names.last}';
   }
 }
 

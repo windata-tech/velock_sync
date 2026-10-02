@@ -1,0 +1,22 @@
+O Velock Sync leva os dados do seu dispositivo para um armazenamento na nuvem que lhe pertence: o NAS de sua casa, qualquer serviço WebDAV ou o seu próprio Google Drive, OneDrive, Baidu Netdisk ou Aliyun Drive. Não existe nenhum servidor nosso pelo meio nem conta para criar.
+
+SINCRONIZAÇÃO DE FICHEIROS
+• Associe uma pasta do dispositivo a uma pasta na nuvem, quantas vezes quiser
+• Bidirecional, apenas enviar ou apenas receber, definido para cada localização
+• Quando o mesmo ficheiro é alterado nos dois lados, as duas cópias são mantidas por predefinição. Nada é substituído sem aviso
+• Eliminações grandes ficam em pausa e pedem confirmação primeiro, para que um erro não se propague
+• A cópia na nuvem são ficheiros comuns que qualquer computador, NAS ou app consegue abrir
+• Explore as suas pastas na nuvem dentro da app e crie novas
+
+CÓPIA DE SEGURANÇA ENCRIPTADA DO VELOCK
+• Cópia de segurança na nuvem para a app Velock: ficheiros, fotografias, contas, cartões, notas e documentos
+• O Velock encripta tudo no dispositivo antes de o Sync os transportar. Nem o Sync nem o serviço na nuvem os conseguem ler
+• Restaure num telemóvel novo ou reposto com o seu cartão de recuperação do Velock
+• Os envios são relidos e verificados, e cada transferência fica registada no histórico
+
+PRIVACIDADE
+• Sem recolha de dados, sem anúncios, sem análises, sem rastreio
+• Palavras-passe e tokens de início de sessão ficam guardados no porta-chaves do sistema
+• A sincronização de ficheiros guarda ficheiros não encriptados na nuvem, e a app avisa disso antes de criar uma localização
+
+Precisa de um serviço WebDAV (como um NAS ou Nextcloud) ou de uma conta de armazenamento na nuvem com sessão iniciada através da sua própria chave de app de programador. A cópia de segurança do Velock requer a app Velock.

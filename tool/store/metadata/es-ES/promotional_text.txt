@@ -1,0 +1,1 @@
+Sincroniza las carpetas del iPhone con tu NAS, WebDAV o nube, y dale a Velock una copia cifrada de extremo a extremo. Sin cuenta, sin intermediarios, sin recopilar datos.

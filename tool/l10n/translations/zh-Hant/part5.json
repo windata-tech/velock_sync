@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "使用你自己在 Google Cloud 註冊的 App 金鑰登入。",
+ "Sign in with an app key you registered on Microsoft Entra.": "使用你自己在 Microsoft Entra 註冊的 App 金鑰登入。",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "使用你自己在百度網盤開放平台註冊的 App 金鑰登入。",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "使用你自己在阿里雲盤開放平台註冊的 App 金鑰登入。",
+ "or": "或",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "檔案同步會把選取資料夾裡的所有檔案當成一般檔案來上傳、下載甚至刪除，格間的加密備份會因此損壞，所以不能選它。"
+}

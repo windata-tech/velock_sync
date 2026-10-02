@@ -1,0 +1,1 @@
+sincronizar,ficheiros,webdav,pasta,cópia de segurança,bidirecional,espelho,encriptação,nextcloud

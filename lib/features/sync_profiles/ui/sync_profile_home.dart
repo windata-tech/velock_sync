@@ -235,7 +235,8 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
               VelockWizardAvailability.temporarilyUnavailable,
             ),
           );
-      if (isVelockBackupGated(ready.availability)) {
+      if (isVelockBackupGated(ready.availability) ||
+          ready.availability == VelockWizardAvailability.appNotInstalled) {
         availability = ready.availability;
       }
     }
@@ -298,6 +299,9 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
           _checkAfterVelock.add(profile.profileId);
         }
         await openVelockForBackup(context, ref, profileId: profile.profileId);
+        return;
+      case BackupAction.getVelock:
+        await openVelockAppStore(context, ref);
         return;
       case BackupAction.checkStorage:
         final saved = await ref
@@ -441,6 +445,13 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
                   onOpenVelock: () => openVelockForBackup(context, ref),
                   onRecheck: _recheck,
                 )
+              else if (data.profiles.isEmpty &&
+                  data.availability == VelockWizardAvailability.appNotInstalled)
+                VelockGetAppCard(
+                  checking: _rechecking,
+                  onGetVelock: () => openVelockAppStore(context, ref),
+                  onRecheck: _recheck,
+                )
               else if (data.profiles.isEmpty)
                 BackupWelcomeCard(
                   onStart: () => _open(AppRoutes.velockDatasetWizard.path),
@@ -462,7 +473,9 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
                 ),
               // Restoring needs the same Velock support as backing up.
               if (!(data.profiles.isEmpty &&
-                  isVelockBackupGated(data.availability)))
+                  (isVelockBackupGated(data.availability) ||
+                      data.availability ==
+                          VelockWizardAvailability.appNotInstalled)))
                 AdaptiveListSection(
                   children: [
                     AdaptiveListTile(

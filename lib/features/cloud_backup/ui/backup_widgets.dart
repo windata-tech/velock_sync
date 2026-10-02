@@ -363,6 +363,7 @@ class BackupStatusCard extends StatelessWidget {
         actionLabel ??
         switch (presentation.action) {
           BackupAction.openVelock => syncText(context, '打开格间', 'Open Velock'),
+          BackupAction.getVelock => syncText(context, '获取格间', 'Get Velock'),
           BackupAction.resume => syncText(context, '继续', 'Resume'),
           BackupAction.reviewHistory => syncText(
             context,

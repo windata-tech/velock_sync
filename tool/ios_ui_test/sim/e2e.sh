@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # One-command source-side E2E for Sync + 格间 on one simulator.
 #
-#   e2e.sh                     full run: build → reset → seed six kinds → verify → backup
+#   e2e.sh                     full run: build → reset → seed six kinds → verify → backup → app
 #   e2e.sh --from backup       resume the current run at a stage
 #   e2e.sh --only verify       run a single stage of the current run
 #   e2e.sh --list              print the stages
 #   e2e.sh --record ...        also record the simulator screen to <run>/e2e-<time>.mp4
-#                              (starts after the build stage, stops on exit, pass or fail)
+#                              (starts after the build stage, so the uninstall is
+#                              on film; stops on exit, pass or fail)
 #
 # Stages (in order):
 #   build    flutter builds of both apps; skipped when sources are unchanged
@@ -17,6 +18,9 @@
 #   photo    add the HostApp proof .png to Photos and import it into 相册
 #   verify   read 格间's database: all six kinds persisted with encrypted payloads
 #   backup   pair Sync, add the local WebDAV connection, back up, check the remote
+#   app      whole-app tour of Sync (app_tour.sh): backup details/manage, plain
+#            two-way file sync end to end on a second local WebDAV, connections,
+#            every settings entry, a final backup; checks the files on both sides
 #
 # A full run starts a fresh run directory (logs + WebDAV root) and points
 # $OUT_DIR/runs/current at it; --from/--only reuse that directory, since the
@@ -30,7 +34,7 @@ set -euo pipefail
 SIM="$(cd "$(dirname "$0")" && pwd)"
 source "$SIM/common.sh"
 VELOCK_ROOT="${VELOCK_ROOT:-$(cd "$ROOT_DIR/../velock_codex" && pwd)}"
-STAGES=(build reset init document file photo verify backup)
+STAGES=(build reset init document file photo verify backup app)
 
 from=build only="" record=0
 while [[ $# -gt 0 ]]; do
@@ -178,6 +182,8 @@ if wants build; then
   done_
 fi
 
+start_recording
+
 if wants reset; then
   begin reset
   if [[ -z "${E2E_RESET_ALLOWED_UDID:-}" || "$E2E_RESET_ALLOWED_UDID" != "$E2E_SIMULATOR_UDID" ]]; then
@@ -203,7 +209,6 @@ if wants reset; then
 fi
 
 run() { "$SIM/run_test.sh" "$@"; }
-start_recording
 
 if wants init; then
   begin "init (space + password, credit card, note)"
@@ -252,6 +257,11 @@ if wants backup; then
   begin "backup (pair + WebDAV + remote checks)"
   E2E_PLAINTEXT_MARKERS="E2E Password,e2e-secret,E2E Credit Card,4111111111111111,E2E note content,E2E document recovery content,VELOCK SYNC REAL DATA E2E" \
     "$SIM/backup_smoke.sh"
+  done_
+fi
+if wants app; then
+  begin "app (whole-app tour of Sync)"
+  "$SIM/app_tour.sh"
   done_
 fi
 echo "ALL STAGES PASSED  (logs: $run_dir)"

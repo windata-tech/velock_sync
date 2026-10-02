@@ -207,19 +207,28 @@ String _ownKeySubtitle(BuildContext context, RemoteProviderType type) {
       'Sign in with your own Google app key. Currently iPhone and iPad only.',
     );
   }
-  final (zh, en) = switch (type) {
-    RemoteProviderType.googleDrive => (' Google Cloud ', 'Google Cloud'),
-    RemoteProviderType.oneDrive => (' Microsoft Entra ', 'Microsoft Entra'),
-    _ => (
-      '${localizedRemoteProviderName(context, type)}开放平台',
-      'the ${localizedRemoteProviderName(context, type)} developer platform',
+  return switch (type) {
+    RemoteProviderType.googleDrive => syncText(
+      context,
+      '使用你自己在 Google Cloud 注册的应用密钥登录。',
+      'Sign in with an app key you registered on Google Cloud.',
+    ),
+    RemoteProviderType.oneDrive => syncText(
+      context,
+      '使用你自己在 Microsoft Entra 注册的应用密钥登录。',
+      'Sign in with an app key you registered on Microsoft Entra.',
+    ),
+    RemoteProviderType.baiduNetdisk => syncText(
+      context,
+      '使用你自己在百度网盘开放平台注册的应用密钥登录。',
+      'Sign in with an app key you registered on the Baidu Netdisk developer platform.',
+    ),
+    _ => syncText(
+      context,
+      '使用你自己在阿里云盘开放平台注册的应用密钥登录。',
+      'Sign in with an app key you registered on the Aliyun Drive developer platform.',
     ),
   };
-  return syncText(
-    context,
-    '使用你自己在$zh注册的应用密钥登录。',
-    'Sign in with an app key you registered on $en.',
-  );
 }
 
 String _signInSubtitle(BuildContext context, RemoteProviderType type) =>

@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "Google Cloud पर रजिस्टर की गई ऐप कुंजी से साइन इन करें।",
+ "Sign in with an app key you registered on Microsoft Entra.": "Microsoft Entra पर रजिस्टर की गई ऐप कुंजी से साइन इन करें।",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "Baidu Netdisk डेवलपर प्लेटफ़ॉर्म पर रजिस्टर की गई ऐप कुंजी से साइन इन करें।",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "Aliyun Drive डेवलपर प्लेटफ़ॉर्म पर रजिस्टर की गई ऐप कुंजी से साइन इन करें।",
+ "or": "या",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "फ़ाइल सिंक चुने गए फ़ोल्डर की हर फ़ाइल को सामान्य फ़ाइल मानकर अपलोड, डाउनलोड और यहाँ तक कि डिलीट भी करता है, जिससे Velock का एन्क्रिप्टेड बैकअप खराब हो जाएगा, इसलिए इसका उपयोग नहीं किया जा सकता।"
+}

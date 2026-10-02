@@ -5,6 +5,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile.dart';
 import 'package:velock_sync/features/cloud_backup/application/backup_destination_service.dart';
+import 'package:velock_sync/features/cloud_backup/application/webdav_backup_folder_browser.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
@@ -200,6 +202,12 @@ void main() {
           velockWizardReadinessServiceProvider.overrideWithValue(_Ready()),
           connectionRepositoryProvider.overrideWithValue(connections),
           backupDestinationServiceProvider.overrideWithValue(destination),
+          backupFolderLoaderProvider.overrideWithValue(
+            ({required protocol, required relativeSegments}) async =>
+                relativeSegments.length == 2
+                ? const [WebDavBackupFolder(name: '可写')]
+                : const [],
+          ),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -244,7 +252,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BackupStorageHelp), findsOneWidget);
-      expect(find.text('检查云端位置'), findsOneWidget);
+      expect(find.text('云端保存位置'), findsOneWidget);
       expect(find.byType(BackupStatusCard), findsNothing);
       expect(find.text('查看并处理'), findsNothing);
       expect(find.text('生成恢复包'), findsNothing);
@@ -269,7 +277,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BackupStorageHelp), findsOneWidget);
-      expect(find.text('检查云端位置'), findsOneWidget);
+      expect(find.text('云端保存位置'), findsOneWidget);
       expect(find.byType(BackupStatusCard), findsNothing);
       expect(find.text('查看并处理'), findsNothing);
       expect(find.text('生成恢复包'), findsNothing);
@@ -287,7 +295,10 @@ void main() {
       final profileBefore = (await repository.read('p'))!.toJson();
       await mount(tester, BackupStorageHelp(profile: profile));
 
-      expect(find.text('检查云端位置'), findsOneWidget);
+      expect(find.text('云端保存位置'), findsOneWidget);
+      // Why the page opened comes from the recorded run, not a new probe.
+      expect(find.text('这个文件夹不能写入。请换一个这个账号有写入权限的文件夹。'), findsOneWidget);
+      expect(find.byKey(const Key('storage-change-folder')), findsOneWidget);
       expect(find.byKey(const Key('storage-check')), findsOneWidget);
       expect(find.byKey(const Key('storage-sync')), findsNothing);
       expect(destination.checkCalls, 0);
@@ -304,7 +315,7 @@ void main() {
       expect(destination.lastRestoring, isFalse);
       expect(destination.lastRemoteRootSegments, ['共享给我', 'new folder']);
       expect(runner.calls, 0);
-      expect(find.text('位置检查通过，尚未同步'), findsOneWidget);
+      expect(find.text('可以写入，还没有开始备份'), findsOneWidget);
       expect(find.byKey(const Key('storage-sync')), findsOneWidget);
       await expectOldFailurePreserved(profileBefore);
 
@@ -329,11 +340,11 @@ void main() {
     expect(destination.checkCalls, 1);
     expect(runner.calls, 0);
     expect(find.byKey(const Key('storage-sync')), findsNothing);
+    expect(find.text('这个文件夹不能写入。请换一个这个账号有写入权限的文件夹。'), findsOneWidget);
+    // The fix is offered right there, ahead of checking again.
     expect(
-      find.text(
-        '当前选中的位置无法创建文件夹。请进入服务里一个真实存在、且这个账号有权限写入的文件夹；只读入口、共享入口或聚合视图都不行。',
-      ),
-      findsOneWidget,
+      tester.getTopLeft(find.byKey(const Key('storage-change-folder'))).dy,
+      lessThan(tester.getTopLeft(find.byKey(const Key('storage-check'))).dy),
     );
     await tester.pump(const Duration(seconds: 5));
     expect(find.byKey(const Key('storage-feedback')), findsOneWidget);
@@ -370,24 +381,58 @@ void main() {
     expect(runner.calls, 0);
   });
 
-  testWidgets('browse opens the read-only connection route without a check', (
+  testWidgets('a Velock backup moves to another folder from here', (
+    tester,
+  ) async {
+    final profile = _velockProfile();
+    await seedFailedRun(profile, errorCode: _collectionFailure);
+    destination.failureCode = _collectionFailure;
+    await mount(tester, BackupStorageHelp(profile: profile));
+
+    await tester.tap(find.byKey(const Key('storage-check')));
+    await tester.pumpAndSettle();
+    destination.failureCode = null;
+
+    await tester.tap(find.byKey(const Key('storage-change-folder')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('new-backup-folder')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('backup-folder-可写')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('use-backup-folder')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('backup-location-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已改用新文件夹。先检查一下，再开始备份。'), findsOneWidget);
+    expect(find.text('/base/backup/共享给我/new folder/可写'), findsOneWidget);
+    expect(
+      VelockSyncProfile.fromEnvelope(
+        (await repository.read('p'))!,
+      ).remoteRootSegments,
+      ['共享给我', 'new folder', '可写'],
+    );
+    // Saving is not backing up, and the next check uses the new folder.
+    expect(runner.calls, 0);
+    expect(find.byKey(const Key('storage-sync')), findsNothing);
+    await tester.tap(find.byKey(const Key('storage-check')));
+    await tester.pumpAndSettle();
+    expect(destination.lastRemoteRootSegments, ['共享给我', 'new folder', '可写']);
+    expect(find.byKey(const Key('storage-sync')), findsOneWidget);
+  });
+
+  testWidgets('a rejected sign-in offers editing the connection', (
     tester,
   ) async {
     final profile = _velockProfile();
     await repository.save(profile);
-    final router = await mount(tester, BackupStorageHelp(profile: profile));
+    destination.failureCode = 'provider.http.401';
+    await mount(tester, BackupStorageHelp(profile: profile));
 
-    await tester.ensureVisible(find.byKey(const Key('storage-browse')));
-    await tester.tap(find.byKey(const Key('storage-browse')));
+    await tester.tap(find.byKey(const Key('storage-check')));
     await tester.pumpAndSettle();
 
-    expect(
-      GoRouterState.of(tester.element(find.text('browse:cloud'))).uri.path,
-      '/connections/connection/cloud',
-    );
-    expect(find.text('browse:cloud'), findsOneWidget);
-    expect(router.canPop(), isTrue);
-    expect(destination.checkCalls, 0);
-    expect(runner.calls, 0);
+    expect(find.byKey(const Key('storage-fix-connection')), findsOneWidget);
+    expect(find.text('修改连接'), findsOneWidget);
+    expect(find.byKey(const Key('storage-change-folder')), findsNothing);
   });
 }

@@ -1,0 +1,8 @@
+{
+ "Sign in with an app key you registered on Google Cloud.": "Google Cloud에 등록한 앱 키로 로그인해요.",
+ "Sign in with an app key you registered on Microsoft Entra.": "Microsoft Entra에 등록한 앱 키로 로그인해요.",
+ "Sign in with an app key you registered on the Baidu Netdisk developer platform.": "Baidu Netdisk 개발자 플랫폼에 등록한 앱 키로 로그인해요.",
+ "Sign in with an app key you registered on the Aliyun Drive developer platform.": "Aliyun Drive 개발자 플랫폼에 등록한 앱 키로 로그인해요.",
+ "or": "또는",
+ "File sync uploads, downloads and even deletes every file in the chosen folder as an ordinary file, which would damage the encrypted Velock backup, so it cannot be used.": "파일 동기화는 선택한 폴더의 모든 파일을 일반 파일로 업로드, 다운로드하고 삭제까지 합니다. Velock의 암호화된 백업이 손상되므로 이 폴더는 사용할 수 없어요."
+}

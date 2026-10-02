@@ -5,11 +5,11 @@
 ## 一键全流程：`e2e.sh`（用户说“测试”就跑这个）
 
 ```bash
-tool/ios_ui_test/sim/e2e.sh                 # 全新：构建 → 重装两 App → 格间造六类 → 校验 → Sync 配对备份 → 远端校验
+tool/ios_ui_test/sim/e2e.sh                 # 全新：构建 → 重装两 App → 格间造六类 → 校验 → Sync 配对备份 → 远端校验 → Sync 全功能巡检
 tool/ios_ui_test/sim/e2e.sh --from backup   # 从某一步续跑（沿用本轮目录与 WebDAV 根）
 tool/ios_ui_test/sim/e2e.sh --only verify   # 只跑一步
 tool/ios_ui_test/sim/e2e.sh --list
-tool/ios_ui_test/sim/e2e.sh --record       # 同时录屏到本轮目录 e2e-<时间>.mp4（build 之后开始，成功或失败退出都会收尾）
+tool/ios_ui_test/sim/e2e.sh --record       # 同时录屏到本轮目录 e2e-<时间>.mp4（build 之后、卸载之前开始，成功或失败退出都会收尾）
 ```
 
 | 阶段 | 做什么 | 判定 |
@@ -22,6 +22,29 @@ tool/ios_ui_test/sim/e2e.sh --record       # 同时录屏到本轮目录 e2e-<�
 | photo | `simctl addmedia` HostApp 的 proof.png → `testProbeVelockMediaImport` | 相册出现图片 |
 | verify | 只读格间 SQLite + App Group：六类（REQUIRED_KINDS）各有加密正文 | `source-evidence.json` |
 | backup | `backup_smoke.sh`：本机 WsgiDAV → `testBackupSmoke`（首次配对/建连接/选目录/备份）→ 远端有签名 commit、7 个明文标记都不在 | `PASS remote` |
+| app | `app_tour.sh`：Sync 全功能巡检 `testSyncAppTour`（见下节） | `PASS tour files` |
+
+## Sync 全功能巡检（`app` 阶段，`app_tour.sh` → `testSyncAppTour`）
+
+在 backup 之后跑，起两个匿名 WsgiDAV：18991 是格间备份所在的服务器（备份用连接根目录），18992 是文件同步用的第二台服务器
+（`<run>/plain-webdav-root`）——明文位置不允许与格间备份目录重叠，同一连接根目录下的任何文件夹都会被拒绝，这是产品规则，测试不绕过。
+本机文件夹是 HostApp `Documents/PlainSync-E2E`（脚本造 `hello.txt`、`docs/readme.md`、`photos/proof.png`），在系统文件选择器里可见。
+
+| 段 | 覆盖 |
+| --- | --- |
+| A 格间备份 | 立即备份；详情 → 云端保存位置（图标/列表切换、连接说明）→ 传输记录（打开一条运行明细）→ 管理 → 更换保存位置（新建文件夹但不使用）→ 暂停/继续备份 → 详细记录与诊断 → 从云端恢复入口（只进入，恢复需第二台设备） |
+| B 文件同步 | 向导三步：系统选择器选本机文件夹 → 向导内新建 WebDAV 连接（18992，命名 E2E Files）→ 远端新建文件夹 → 创建并自动首次同步（上传本机三个文件、下载远端独有文件）→ 双向增量 → 两边同时改 `hello.txt` 产生冲突并保留两份 → 详情：打开远端文件夹、打开本机文件夹（系统文件 App）→ 方向草稿离开时保存、改回双向点保存 → 暂停/继续 → 冲突记录清除 → 本机删除传播到远端 → 删除同步位置（两边文件保留） |
+| C 设置 | 云端账号与保存位置：菜单「连接说明」「修改连接」（把备份连接改名 E2E Backup）→ 浏览文件同步连接（视图切换、新建文件夹、进入同步目录、刷新）→ 检查连接状态 → 新建连接协议列表（WebDAV/Google Drive/OneDrive/百度网盘/阿里云盘）→ 所有传输记录 → 语言切英文再切回 → 全局后台同步开关 → 导出脱敏诊断 → 关于与开源许可 |
+| D | 改名后的连接再备份一次 |
+
+脚本最后核对真实文件：两边 `diff -r` 完全一致（含冲突副本）、`hello.txt` 是服务器版本且本机版本另存、被删文件两边都不在、
+App 里新建的两个文件夹在服务器上、明文内容没有进入格间备份目录。`E2E_TOUR_FROM=B|C|D` 可从某一段续跑
+（B 会先删除上次失败留下的同步位置；C/D 不重造文件，所以末尾的文件核对只在完整巡检时有意义）。
+
+iOS 27 运行时上 axe 的点击（含 `--tap-style physical`）提示成功但 App 收不到，`tap.sh` 不可用；探查界面用
+`run_test.sh testProbeSyncSteps E2E_PROBE='exact:设置;id:manage-cloud-locations' E2E_PROBE_OUT=/tmp/sync-probe`
+（步骤：`id:` `label:` `begins:` `exact:` `back` `type:` `wait:` `xy:`），输出 `tree.txt`（类型 | 标签 | identifier | 中心点）和 `screen.png`。
+注意不少行没有发布 identifier（`PlainOptionRow`、文件夹 tile、详情页「打开/更改」、页头「保存」、新建文件夹名称输入框），巡检按标签定位它们。
 
 - 每次全新运行建 `ui_test_results/sim/runs/<时间>/`（日志、`webdav-root`、证据），`runs/current` 指向它；
   失败时打印 `FAILED at stage: X — … e2e.sh --from X`，修好后续跑即可，不用从头。

@@ -377,12 +377,13 @@ class WDShellPage extends StatelessWidget {
           ),
           label: syncText(context, '格间', "Velock"),
         ),
+        // All three tabs use filled glyphs, matching the solid Velock mark.
         BottomNavigationBarItem(
-          icon: Icon(CupertinoIcons.folder),
+          icon: Icon(CupertinoIcons.folder_fill),
           label: syncText(context, '文件同步', "Files"),
         ),
         BottomNavigationBarItem(
-          icon: Icon(CupertinoIcons.gear_alt),
+          icon: Icon(CupertinoIcons.gear_alt_fill),
           label: syncText(context, '设置', "Settings"),
         ),
       ],

@@ -1,0 +1,1 @@
+synchronizacja,pliki,webdav,folder,kopia zapasowa,dwukierunkowa,lustro,szyfrowanie,nextcloud,dysk

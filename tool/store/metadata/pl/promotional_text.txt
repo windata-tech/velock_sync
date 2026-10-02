@@ -1,0 +1,1 @@
+Synchronizuj foldery iPhone'a z NAS, WebDAV lub dyskiem w chmurze i daj Velock kopię szyfrowaną end-to-end. Bez rejestracji, bez pośredników, bez zbierania danych.

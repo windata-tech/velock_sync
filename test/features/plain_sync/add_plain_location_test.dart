@@ -185,6 +185,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a local folder another location owns is refused at step 1', (
+    tester,
+  ) async {
+    final world = await openWizard(tester);
+    await world.seedPlainProfile(
+      profileId: 'owner',
+      displayName: '相册',
+      localRootReference: testLocalFolder.path,
+    );
+
+    await tapVisible(tester, find.byKey(const Key('plain-pick-local')));
+
+    // The pick is refused right away, naming the location that owns it.
+    expect(world.authorizer.calls, 1);
+    expect(find.text('还没有选择'), findsOneWidget);
+    final error = tester.widget<Text>(
+      find.byKey(const Key('plain-wizard-error')),
+    );
+    expect(error.data, contains('已经属于同步位置「相册」'));
+    expect(error.data, contains('一个本机文件夹只能属于一个同步位置'));
+    expect(
+      tester
+          .widget<BackupActionButton>(
+            find.byKey(const Key('plain-wizard-next-1')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(await world.listProfiles(), hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('step 2 explains when there is no usable remote connection', (
     tester,
   ) async {

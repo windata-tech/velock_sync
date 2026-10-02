@@ -31,6 +31,7 @@ import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'plain_sync_test_support.dart';
 
 const _profileId = 'plain-1';
+const _remoteName = 'Home NAS';
 
 final _cjk = RegExp(r'[\u4e00-\u9fff]');
 
@@ -61,6 +62,42 @@ void main() {
     final seen = await _scanPages(tester);
     expect(seen, contains('Details'));
     expect(seen, contains('This device'));
+  });
+
+  testWidgets('the card labels stay on one line and the paths line up', (
+    tester,
+  ) async {
+    // The label column used to be a fixed 34pt: enough for 本机/远端, but
+    // English broke it into "This devi / ce" and "Rem / ote".
+    final world = await pumpPlainSyncApp(
+      tester,
+      locale: const Locale('en'),
+      connections: [webDavConnection(name: _remoteName)],
+    );
+    await world.seedPlainProfile(
+      profileId: _profileId,
+      displayName: 'Phone photos',
+      localDisplayName: 'Photos',
+    );
+    await world.refreshListView();
+
+    for (final label in const ['This device', 'Remote']) {
+      final line = tester.getSize(find.text(label));
+      final style = tester.widget<Text>(find.text(label)).style!;
+      expect(
+        line.height,
+        lessThan(style.fontSize! * 2),
+        reason: '"$label" wrapped onto more than one line',
+      );
+    }
+    final local = tester.getTopLeft(find.text('Photos')).dx;
+    final remote = tester
+        .getTopLeft(
+          find.textContaining(RegExp('^${RegExp.escape(_remoteName)}')),
+        )
+        .dx;
+    expect(local, closeTo(remote, 0.5));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('the location detail page paints no Chinese in English', (

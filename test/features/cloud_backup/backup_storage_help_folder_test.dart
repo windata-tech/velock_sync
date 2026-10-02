@@ -157,7 +157,7 @@ void main() {
   testWidgets('opening the page performs no remote check', (tester) async {
     await mount(tester);
 
-    expect(find.text('检查云端位置'), findsOneWidget);
+    expect(find.text('云端保存位置'), findsOneWidget);
     expect(find.text('/base/entry'), findsOneWidget);
     expect(find.byKey(const Key('storage-change-folder')), findsOneWidget);
     expect(find.byKey(const Key('storage-check')), findsOneWidget);
@@ -165,23 +165,15 @@ void main() {
     expect(find.byKey(const Key('storage-sync')), findsNothing);
   });
 
-  testWidgets('long explanations wait until the user asks for them', (
+  testWidgets('the page is short: location, result, two actions, one note', (
     tester,
   ) async {
     await mount(tester);
 
-    // Before a check the page states only what is needed to act.
-    expect(find.textContaining('只写入并清理一个临时测试文件'), findsOneWidget);
+    expect(find.byKey(const Key('storage-footnote')), findsOneWidget);
+    expect(find.byKey(const Key('storage-browse')), findsNothing);
+    expect(find.byKey(const Key('storage-detail-toggle')), findsNothing);
     expect(find.textContaining('不会改动后台同步'), findsNothing);
-    expect(find.byKey(const Key('storage-fix-hint')), findsNothing);
-    expect(find.textContaining('要检查的是云端能否安全写入'), findsNothing);
-
-    await tester.tap(find.byKey(const Key('storage-detail-toggle')));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('不会改动后台同步'), findsOneWidget);
-    expect(find.textContaining('不代表文件已经备份成功'), findsOneWidget);
-    expect(find.text('收起'), findsOneWidget);
   });
 
   testWidgets(
@@ -193,13 +185,8 @@ void main() {
       await tester.tap(find.byKey(const Key('storage-check')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('用下面的“选择可写入文件夹”换一个这个账号能写入的文件夹'),
-        findsOneWidget,
-      );
+      expect(find.text('这个文件夹不能写入。请换一个这个账号有写入权限的文件夹。'), findsOneWidget);
       expect(find.textContaining('尚不支持直接迁移'), findsNothing);
-      // The long explanation is not repeated next to the actionable hint.
-      expect(find.textContaining('不会改动后台同步'), findsNothing);
 
       await tester.tap(find.byKey(const Key('storage-change-folder')));
       await tester.pumpAndSettle();

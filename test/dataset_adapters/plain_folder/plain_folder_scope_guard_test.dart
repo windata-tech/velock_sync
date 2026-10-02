@@ -167,10 +167,9 @@ void main() {
       ),
     );
 
-    // The same local folder bound twice to an overlapping remote scope is what
-    // the guard exists for.
+    // A remote scope above or below another location's is what the guard
+    // exists for. (The same local folder twice is refused by the local guard.)
     for (final scope in <List<String>>[
-      const ['USB', '111'],
       const ['USB'],
       const ['USB', '111', 'inner'],
     ]) {
@@ -179,7 +178,6 @@ void main() {
           profiles: profiles,
           connectionId: 'cloud',
           segments: scope,
-          localRootReference: '/tmp/photos',
         ),
         throwsA(
           isA<PlainLocationOverlapException>().having(
@@ -196,26 +194,14 @@ void main() {
       profiles: profiles,
       connectionId: 'cloud',
       segments: const ['USB', '222'],
-      localRootReference: '/tmp/photos',
     );
-    // Exactly the same remote folder from a DIFFERENT local folder stays
-    // allowed: that is the documented multi-device / two-local-folders usage.
+    // Exactly the same remote folder stays allowed: the local folders differ
+    // (the local guard makes sure), which is the documented multi-device /
+    // two-local-folders usage.
     await assertPlainScopeAvoidsOtherLocations(
       profiles: profiles,
       connectionId: 'cloud',
       segments: const ['USB', '111'],
-      localRootReference: '/tmp/other-device',
-    );
-    // One scope inside another is refused even when the local folders differ:
-    // both locations would mirror each other's files.
-    await expectLater(
-      assertPlainScopeAvoidsOtherLocations(
-        profiles: profiles,
-        connectionId: 'cloud',
-        segments: const ['USB', '111', 'inner'],
-        localRootReference: '/tmp/other-device',
-      ),
-      throwsA(isA<PlainLocationOverlapException>()),
     );
     await assertPlainScopeAvoidsOtherLocations(
       profiles: profiles,

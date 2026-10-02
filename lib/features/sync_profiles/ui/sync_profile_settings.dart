@@ -246,7 +246,9 @@ class _SyncSettingsState extends ConsumerState<SyncSettings> {
                     ? syncText(
                         context,
                         '${value.backgroundEligibleProfileCount} 个配置已启用后台同步',
-                        '${value.backgroundEligibleProfileCount} profiles have background sync on',
+                        value.backgroundEligibleProfileCount == 1
+                            ? '1 location has background sync on'
+                            : '${value.backgroundEligibleProfileCount} locations have background sync on',
                       )
                     : syncText(
                         context,

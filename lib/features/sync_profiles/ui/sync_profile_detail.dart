@@ -451,6 +451,8 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
           ref,
           profileId: widget.profile.profileId,
         );
+      case BackupAction.getVelock:
+        await openVelockAppStore(context, ref);
       case BackupAction.resume:
         await _toggleState();
       case BackupAction.resolve:

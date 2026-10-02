@@ -1,0 +1,1 @@
+Houd iPhone-mappen gelijk met je NAS, WebDAV of clouddrive en geef Velock een end-to-end versleutelde back-up. Geen account, geen tussenserver, geen dataverzameling.

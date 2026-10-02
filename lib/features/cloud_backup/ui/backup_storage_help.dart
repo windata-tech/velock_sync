@@ -1,7 +1,6 @@
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:velock_sync/appearance/design_tokens.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_sync_profile.dart';
@@ -16,7 +15,9 @@ import 'package:velock_sync/sync_core/model/sync_failure.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
+import 'backup_connection_fix.dart';
 import 'backup_folder_picker.dart';
+import 'velock_backup_location.dart';
 import 'backup_widgets.dart';
 
 Future<void> showBackupStorageHelp(
@@ -39,7 +40,7 @@ class BackupStorageHelp extends ConsumerStatefulWidget {
 }
 
 class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
-  late final Future<ConnectionModel?> connection = ref
+  late Future<ConnectionModel?> connection = ref
       .read(connectionRepositoryProvider)
       .getConnectionById(widget.profile.connectionId);
   late final bool fileSync =
@@ -49,10 +50,13 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
   bool busy = false;
   bool checked = false;
   bool checkFailed = false;
-  bool locationSaved = false;
 
-  /// The long "what the check does" text stays collapsed until asked for.
-  bool showDetails = false;
+  /// Error code of the last failed check; decides which fix is offered first.
+  String? failureCode;
+
+  /// The Velock profile as last saved here, so a new folder takes effect at
+  /// once without leaving the page.
+  late SyncProfileEnvelope velockProfile = widget.profile;
   String? feedback;
 
   bool get canRelocate =>
@@ -62,6 +66,34 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
   void initState() {
     super.initState();
     if (fileSync) _loadFileSyncProfile();
+    _showLastFailure();
+  }
+
+  /// Says up front why the page was opened, from the last recorded run only:
+  /// nothing is sent to the server until the user asks for a check.
+  Future<void> _showLastFailure() async {
+    try {
+      final run = await ref
+          .read(syncStateDatabaseProvider)
+          .latestSyncRun(widget.profile.profileId);
+      final code = run?.state == 'failed' ? run?.errorCode : null;
+      if (code == null || !mounted || feedback != null || busy) return;
+      setState(() => _showFailure(code));
+    } on Object {
+      // Without a record the page simply starts at the location.
+    }
+  }
+
+  void _showFailure(String code) {
+    checkFailed = true;
+    failureCode = code;
+    feedback = _unwritable(code)
+        ? syncText(
+            context,
+            '这个文件夹不能写入。请换一个这个账号有写入权限的文件夹。',
+            'This folder cannot be written. Choose a folder this account can write to.',
+          )
+        : backupFailureMessage(context, code);
   }
 
   Future<void> _loadFileSyncProfile() async {
@@ -88,7 +120,7 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
 
   List<String> get segments => fileSync
       ? (fileSyncProfile?.remoteRootSegments ?? const [])
-      : VelockSyncProfile.fromEnvelope(widget.profile).remoteRootSegments;
+      : VelockSyncProfile.fromEnvelope(velockProfile).remoteRootSegments;
 
   String location(ConnectionModel value) {
     final protocol = RemoteObjectStoreFactory.scopeProtocol(
@@ -112,6 +144,7 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
       busy = true;
       checked = false;
       checkFailed = false;
+      failureCode = null;
       feedback = null;
     });
     try {
@@ -129,8 +162,10 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
           checked = true;
           feedback = syncText(
             context,
-            '位置检查通过，尚未同步',
-            'Location check passed. No sync has started.',
+            fileSync ? '位置检查通过，尚未同步' : '可以写入，还没有开始备份',
+            fileSync
+                ? 'Location check passed. No sync has started.'
+                : 'This folder can be written. No backup has started.',
           );
         });
       }
@@ -139,16 +174,7 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
       final code = error is BackupDestinationException
           ? error.code
           : SyncFailureClassifier.classify(error).errorCode;
-      checkFailed = true;
-      setState(
-        () => feedback = code == 'provider.webdav.atomic_create_unsupported'
-            ? syncText(
-                context,
-                '此位置仍未通过安全写入检查。Sync 无法自动修复服务器权限或兼容性；已停止，未开始同步。',
-                'This location still fails the safe-write check. Sync cannot automatically repair server permissions or compatibility. No sync has started.',
-              )
-            : backupFailureMessage(context, code),
-      );
+      setState(() => _showFailure(code));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -210,9 +236,9 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
       if (!mounted) return;
       setState(() {
         fileSyncProfile = updated;
-        locationSaved = true;
         checked = false;
         checkFailed = false;
+        failureCode = null;
         feedback = syncText(
           context,
           '保存位置已更新，请重新检查；本次只保存目录，尚未同步。',
@@ -228,6 +254,76 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
             'Location not saved. Make sure this task is not running, reopen this page and try again.',
           ),
         );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  /// Points this Velock backup at another folder of the same connection,
+  /// through the same picker and confirmation as the manage tab. Saving is not
+  /// backing up: the new folder still has to pass a check first.
+  Future<void> relocateBackup(ConnectionModel connection) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = await changeVelockBackupLocation(
+        context,
+        ref,
+        profile: velockProfile,
+        connection: connection,
+      );
+      if (!mounted) return;
+      final updated = result.profile;
+      if (updated != null) {
+        setState(() {
+          velockProfile = updated;
+          checked = false;
+          checkFailed = false;
+          failureCode = null;
+          feedback = syncText(
+            context,
+            '已改用新文件夹。先检查一下，再开始备份。',
+            'Now using the new folder. Check it, then start the backup.',
+          );
+        });
+      } else if (result.saveFailed) {
+        setState(
+          () => feedback = syncText(
+            context,
+            '位置未保存。请确认备份没有正在运行，再试一次。',
+            'The location was not saved. Make sure no backup is running, then try again.',
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  /// The server refused the saved sign-in: the fix is the connection itself.
+  Future<void> fixConnection() async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final retry = await editBackupConnection(
+        context,
+        ref,
+        widget.profile.connectionId,
+      );
+      if (!mounted) return;
+      setState(() {
+        connection = ref
+            .read(connectionRepositoryProvider)
+            .getConnectionById(widget.profile.connectionId);
+        checked = false;
+        checkFailed = false;
+        failureCode = null;
+        feedback = null;
+      });
+      if (retry) {
+        setState(() => busy = false);
+        await check();
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -282,11 +378,19 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
     };
   }
 
+  static bool _unwritable(String code) =>
+      code == 'provider.webdav.atomic_create_unsupported' ||
+      code == 'provider.webdav.collection_not_writable';
+
+  /// Same rule the home card uses to offer "edit connection".
+  static bool _signInRejected(String? code) =>
+      code != null && (code.contains('unauthor') || code.contains('401'));
+
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: !busy,
     child: AdaptiveScaffold(
-      title: syncText(context, '检查云端位置', 'Check cloud location'),
+      title: syncText(context, '云端保存位置', 'Cloud location'),
       body: FutureBuilder<ConnectionModel?>(
         future: connection,
         builder: (context, snapshot) {
@@ -299,6 +403,30 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
               path = null;
             }
           }
+          final webDav = value?.protocol is WebDavProtocolModel;
+          // Velock backups move through the shared manage-tab flow; the retired
+          // file-sync task keeps its own picker.
+          final canMove =
+              value != null &&
+              webDav &&
+              (fileSync ? fileSyncProfile != null : true);
+          final signIn = _signInRejected(failureCode);
+          final fixLabel = signIn
+              ? syncText(context, '修改连接', 'Edit connection')
+              : syncText(context, '更换保存位置', 'Change location');
+          final VoidCallback? fix = value == null || busy
+              ? null
+              : signIn
+              ? fixConnection
+              : canMove
+              ? () => fileSync ? relocate(value) : relocateBackup(value)
+              : null;
+          final checkLabel = syncText(
+            context,
+            checked || checkFailed ? '重新检查' : '检查此位置',
+            checked || checkFailed ? 'Check again' : 'Check this location',
+          );
+
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 12),
             children: [
@@ -306,20 +434,27 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      syncText(context, '保存位置', 'Save location'),
-                      style: const TextStyle(
-                        fontSize: 23,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                     if (value != null) ...[
-                      Text(
-                        value.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.cloud,
+                            size: 22,
+                            color: context.appPrimary,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              value.name,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
                         path ??
                             syncText(
@@ -328,6 +463,10 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
                               'The saved location is incomplete and cannot be displayed.',
                             ),
                         key: const Key('storage-location'),
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: context.appSecondaryLabel,
+                        ),
                       ),
                       if (fileSync && fileSyncProfile == null) ...[
                         const SizedBox(height: 8),
@@ -358,182 +497,97 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
                               : 'Could not read the connection. Go back and retry. No settings were changed.',
                         ),
                       ),
-                    // Result first: the reason only matters after a real check.
                     if (feedback != null) ...[
                       const SizedBox(height: 16),
                       Semantics(
                         liveRegion: true,
-                        child: Text(
-                          feedback!,
-                          key: const Key('storage-feedback'),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: checkFailed ? context.appDanger : null,
-                          ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1),
+                              child: Icon(
+                                checkFailed
+                                    ? CupertinoIcons.exclamationmark_circle_fill
+                                    : checked
+                                    ? CupertinoIcons.checkmark_circle_fill
+                                    : CupertinoIcons.info_circle_fill,
+                                size: 20,
+                                color: checkFailed
+                                    ? context.appDanger
+                                    : checked
+                                    ? AppColors.success
+                                    : context.appPrimary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                feedback!,
+                                key: const Key('storage-feedback'),
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  height: 1.4,
+                                  fontWeight: FontWeight.w500,
+                                  color: checkFailed ? context.appDanger : null,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                    if (checkFailed && fileSync && !locationSaved) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        syncText(
-                          context,
-                          fileSyncProfile != null
-                              ? '用下面的“选择可写入文件夹”换一个这个账号能写入的文件夹。'
-                              : '请返回任务页重新进入，再换一个这个账号能写入的文件夹。',
-                          fileSyncProfile != null
-                              ? 'Use “Choose a writable folder” below to pick a folder this account can write to.'
-                              : 'Go back, reopen this page from the task, and choose a folder this account can write to.',
-                        ),
-                        key: const Key('storage-fix-hint'),
                       ),
                     ],
                     const SizedBox(height: 20),
-                    BackupActionButton(
-                      key: const Key('storage-check'),
-                      secondary: checked,
-                      label: syncText(
-                        context,
-                        busy
-                            ? '请稍候…'
-                            : (checked
-                                  ? '重新检查此位置'
-                                  : (checkFailed ? '重新检查此位置' : '检查此位置')),
-                        busy
-                            ? 'Please wait…'
-                            : (checked || checkFailed
-                                  ? 'Check this location again'
-                                  : 'Check this location'),
-                      ),
-                      onPressed: busy || value == null ? null : check,
-                    ),
                     if (checked) ...[
-                      const SizedBox(height: 12),
                       BackupActionButton(
                         key: const Key('storage-sync'),
-                        label: syncText(context, '开始同步', 'Start sync'),
+                        label: syncText(
+                          context,
+                          fileSync ? '开始同步' : '开始备份',
+                          fileSync ? 'Start sync' : 'Start backup',
+                        ),
                         busy: busy,
                         onPressed: busy ? null : sync,
                       ),
+                      const SizedBox(height: 10),
+                    ] else if (fix != null || (value != null && signIn)) ...[
+                      BackupActionButton(
+                        key: Key(
+                          signIn
+                              ? 'storage-fix-connection'
+                              : 'storage-change-folder',
+                        ),
+                        label: fixLabel,
+                        onPressed: fix,
+                      ),
+                      const SizedBox(height: 10),
                     ],
+                    BackupActionButton(
+                      key: const Key('storage-check'),
+                      secondary:
+                          checked || fix != null || (value != null && signIn),
+                      label: busy && !checked
+                          ? syncText(context, '请稍候…', 'Please wait…')
+                          : checkLabel,
+                      onPressed: busy || value == null ? null : check,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      syncText(
+                        context,
+                        '检查只写入并删除一个临时测试文件，不会上传你的数据；更换位置不会移动或删除旧文件夹里的内容。',
+                        'Checking writes and deletes one temporary test file and uploads none of your data. Changing the location does not move or delete anything in the old folder.',
+                      ),
+                      key: const Key('storage-footnote'),
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: context.appSecondaryLabel,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              if (value != null)
-                AdaptiveListSection(
-                  children: [
-                    if (fileSync &&
-                        value.protocol is WebDavProtocolModel &&
-                        fileSyncProfile != null)
-                      AdaptiveListTile(
-                        widgetKey: const Key('storage-change-folder'),
-                        title: Text(
-                          syncText(
-                            context,
-                            canRelocate ? '更改可写入文件夹' : '选择可写入文件夹',
-                            canRelocate
-                                ? 'Change the writable folder'
-                                : 'Choose a writable folder',
-                          ),
-                        ),
-                        subtitle: Text(
-                          syncText(
-                            context,
-                            '只改这个任务的云端文件夹；不改连接，不删除旧数据，不自动同步',
-                            'Changes only this task’s cloud folder. Keeps the connection and old data, and does not start syncing.',
-                          ),
-                        ),
-                        showChevron: true,
-                        enabled: !busy,
-                        onTap: () => relocate(value),
-                      ),
-                    AdaptiveListTile(
-                      widgetKey: const Key('storage-browse'),
-                      title: Text(
-                        syncText(
-                          context,
-                          '浏览此连接的文件夹',
-                          'Browse folders in this connection',
-                        ),
-                      ),
-                      subtitle: Text(
-                        syncText(
-                          context,
-                          '仅查看；不会自动选择目录或开始同步',
-                          'Viewing only; does not select a location or start syncing',
-                        ),
-                      ),
-                      showChevron: true,
-                      enabled: !busy,
-                      onTap: () async {
-                        setState(() {
-                          checked = false;
-                          feedback = null;
-                        });
-                        await context.push(
-                          '/connections/connection/${widget.profile.connectionId}',
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              if (value != null)
-                BackupCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        syncText(context, '关于这次检查', 'About this check'),
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        showDetails
-                            ? syncText(
-                                context,
-                                '检查只写入、读回并清理一个临时测试文件，不上传你的文件，也不改变保存位置。\n\n它只测试这个任务当前的保存位置能否安全写入，不会改动后台同步、蜂窝网络或恢复包，也不会修改格间共用的连接。\n\n结果不代表文件已经备份成功。检查通过后仍需另行开始同步，最终结果由同步本身决定。',
-                                'The check only writes, reads back and cleans up one temporary test file. It does not upload your files or change the location.\n\nIt tests only whether this task’s current location can be written safely. It does not change background sync, cellular data or recovery packages, and it does not modify a connection shared with Velock.\n\nA pass does not mean your files are backed up. Sync still has to be started separately, and the sync itself decides the final result.',
-                              )
-                            : syncText(
-                                context,
-                                '只写入并清理一个临时测试文件。',
-                                'Writes and cleans up one temporary test file.',
-                              ),
-                        key: const Key('storage-detail-text'),
-                      ),
-                      const SizedBox(height: 8),
-                      TextButton(
-                        key: const Key('storage-detail-toggle'),
-                        onPressed: busy
-                            ? null
-                            : () => setState(() => showDetails = !showDetails),
-                        child: Text(
-                          showDetails
-                              ? syncText(context, '收起', 'Show less')
-                              : syncText(
-                                  context,
-                                  '它具体做什么？',
-                                  'What exactly does it do?',
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              if (checkFailed && (!fileSync || locationSaved))
-                BackupCard(
-                  child: Text(
-                    syncText(
-                      context,
-                      fileSync
-                          ? '已保存新的位置。若这里仍不可写，请再换一个文件夹；不要修改格间共用的连接，也不需要删除旧数据。'
-                          : '请确认这是服务里一个真实存在、且这个账号有权限写入的文件夹，而不只是只读入口或共享入口。检查失败不会删除旧数据或更换目录。',
-                      fileSync
-                          ? 'The new location is saved. If it still cannot be written, choose another folder. Do not change a connection shared with Velock or delete old data.'
-                          : 'Confirm that this is a real folder in the service that this account may write to, not just a read-only or share entry. A failed check does not delete old data or change the location.',
-                    ),
-                  ),
-                ),
             ],
           );
         },

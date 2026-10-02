@@ -196,10 +196,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         // Toasts are drawn above the whole app on both platforms.
         return FToastBuilder()(context, themed);
       },
-      // Unset preferences keep Chinese; an explicit system choice uses Flutter
-      // locale resolution and updates with the device language.
+      // “Follow system” (also the default) picks the device's first shipped
+      // language, Traditional Chinese for Hant/TW/HK/MO, else English.
       locale: ref.watch(syncLanguageProvider).locale,
-      supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+      supportedLocales: SyncLanguage.supportedLocales,
+      localeListResolutionCallback: (preferred, _) =>
+          resolveSyncLocale(preferred),
       localizationsDelegates: <LocalizationsDelegate<dynamic>>[
         ...GlobalMaterialLocalizations.delegates,
       ],

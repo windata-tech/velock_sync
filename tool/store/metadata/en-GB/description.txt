@@ -1,0 +1,22 @@
+Velock Sync moves the data on your device to cloud storage that you own: your home NAS, any WebDAV service, or your own Google Drive, OneDrive, Baidu Netdisk or Aliyun Drive. There is no server of ours in between and no account to sign up for.
+
+FILE SYNC
+• Pair a folder on your device with a folder in the cloud, as many times as you like
+• Two-way, upload only or download only, set per location
+• When both sides changed the same file, both copies are kept by default. Nothing is silently overwritten
+• Large deletions pause and ask first, so a mistake doesn't spread
+• The cloud copy is ordinary files that any computer, NAS or app can open
+• Browse your cloud folders inside the app and create new ones
+
+ENCRYPTED VELOCK BACKUP
+• Cloud backup for the Velock app: files, photos, accounts, cards, notes and documents
+• Velock encrypts everything on your device before Sync carries it. Neither Sync nor the cloud service can read it
+• Restore on a new or reset phone with your Velock recovery card
+• Uploads are read back and checked, and every transfer is listed in the history
+
+PRIVACY
+• No data collection, no ads, no analytics, no tracking
+• Passwords and sign-in tokens are kept in the system Keychain
+• File sync stores plain files in the cloud, and the app says so before you create a location
+
+You need a WebDAV service (such as a NAS or Nextcloud), or a cloud drive account signed in with your own developer app key. Velock backup requires the Velock app.

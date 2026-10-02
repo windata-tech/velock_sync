@@ -5,20 +5,11 @@ import 'package:uuid/uuid.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/mirror_models.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_scope_guard.dart';
 import 'package:velock_sync/dataset_adapters/plain_folder/plain_folder_sync_profile.dart';
+import 'package:velock_sync/dataset_adapters/plain_folder/plain_local_folder_guard.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/apple_security_scoped_folder_access.dart';
 import 'package:velock_sync/dataset_adapters/selected_folder/selected_folder_access_authorizer.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_summary.dart';
 import 'package:velock_sync/sync_profiles/repository/sync_profile_repository.dart';
-
-/// Raised when the exact same binding already exists.
-class DuplicatePlainLocationException implements Exception {
-  const DuplicatePlainLocationException(this.existingDisplayName);
-
-  final String existingDisplayName;
-
-  @override
-  String toString() => 'Sync location already exists: $existingDisplayName';
-}
 
 /// Creates one plain folder sync location after the user picked both halves.
 ///
@@ -89,26 +80,17 @@ class PlainFolderProvisioner {
       connectionId: connectionId,
       segments: canonicalSegments,
     );
-    // The exact same binding twice would run the same transfer twice and fight
-    // over the same files, so it is refused instead of silently duplicated.
-    for (final existing in await _profiles.list()) {
-      if (!existing.isActive) continue;
-      if (existing.localRootReference == grant.rootReference &&
-          existing.connectionId == connectionId &&
-          _sameSegments(existing.remoteRootSegments, canonicalSegments)) {
-        throw DuplicatePlainLocationException(existing.displayName);
-      }
-    }
-    // Two locations that share a folder (equal, above or below) mirror the same
+    // One local folder belongs to exactly one location, whatever the remote:
+    // two locations over the same files replay each other's deletions and
+    // conflict copies. Checked before the remote overlap so the user hears
+    // about the folder they just picked.
+    await assertLocalFolderUnused(grant);
+    // Two locations whose remote folders contain one another mirror the same
     // files through two independent baselines and then fight over the result.
     await assertPlainScopeAvoidsOtherLocations(
       profiles: _profiles,
       connectionId: connectionId,
       segments: canonicalSegments,
-      // Two local folders may feed the same remote folder (multi-device), but
-      // the same local folder twice on one remote is a duplicate binding and
-      // is refused here as well as by the duplicate check above.
-      localRootReference: grant.rootReference,
     );
     final profile = PlainFolderSyncProfile(
       profileId: _uuid.v4(),
@@ -134,13 +116,19 @@ class PlainFolderProvisioner {
     return profile;
   }
 
-  static bool _sameSegments(List<String> a, List<String> b) {
-    if (a.length != b.length) return false;
-    for (var index = 0; index < a.length; index++) {
-      if (a[index] != b[index]) return false;
-    }
-    return true;
-  }
+  /// Refuses a local folder another location already owns (same, containing,
+  /// or inside). Callers run it right after the pick so the user hears about
+  /// it immediately; [create] repeats it before writing anything.
+  Future<void> assertLocalFolderUnused(
+    FolderAccessGrant grant, {
+    String? selfProfileId,
+  }) => assertPlainLocalFolderUnused(
+    profiles: _profiles,
+    kind: grant.kind,
+    rootReference: grant.rootReference,
+    appleFolders: _appleFolders,
+    selfProfileId: selfProfileId,
+  );
 
   /// Human-readable folder name for the picked folder, or an empty string when
   /// the platform cannot derive one.

@@ -1,0 +1,776 @@
+{
+ "zh": {
+  "photos": "照片",
+  "documents": "文档",
+  "work": "工作资料",
+  "music": "音乐",
+  "server_photo": "来自电脑的照片",
+  "home_nas": "家里的 NAS",
+  "my_velock": "我的格间",
+  "captions": {
+   "2-file-sync": [
+    "文件夹自动同步",
+    "本机文件夹与 NAS、网盘保持一致"
+   ],
+   "1-velock-home": [
+    "格间加密备份",
+    "备份到你自己的云端，只有你能解密"
+   ],
+   "3-wizard": [
+    "三步添加同步位置",
+    "双向、仅上传、仅下载，冲突时两份都保留"
+   ],
+   "4-location-detail": [
+    "每个位置单独设置",
+    "随时打开本机或远端文件夹"
+   ],
+   "5-browser": [
+    "直接浏览云端文件",
+    "远端是普通文件，任何设备都能打开"
+   ],
+   "7-protocols": [
+    "支持 WebDAV 与主流网盘",
+    "Google Drive、OneDrive、百度网盘、阿里云盘"
+   ],
+   "8-velock-detail": [
+    "备份状态一目了然",
+    "传输记录、保存位置、暂停与继续"
+   ],
+   "6-connections": [
+    "连接统一管理",
+    "NAS、Nextcloud 等任何 WebDAV 服务"
+   ]
+  }
+ },
+ "en": {
+  "photos": "Photos",
+  "documents": "Documents",
+  "work": "Work",
+  "music": "Music",
+  "server_photo": "From the laptop",
+  "home_nas": "Home NAS",
+  "my_velock": "My Velock",
+  "captions": {
+   "2-file-sync": [
+    "Keep folders in sync",
+    "Your folders, mirrored to your NAS or cloud drive"
+   ],
+   "1-velock-home": [
+    "Encrypted Velock backup",
+    "Saved to storage you own. Only you can decrypt it"
+   ],
+   "3-wizard": [
+    "Set up in three steps",
+    "Two-way, upload or download only. Conflicts keep both"
+   ],
+   "4-location-detail": [
+    "Tune every location",
+    "Open the local or the remote folder any time"
+   ],
+   "5-browser": [
+    "Browse your cloud files",
+    "Plain files that any device can open"
+   ],
+   "7-protocols": [
+    "WebDAV and cloud drives",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Backup status at a glance",
+    "History, location, pause and resume"
+   ],
+   "6-connections": [
+    "All connections in one place",
+    "NAS, Nextcloud or any WebDAV server"
+   ]
+  }
+ },
+ "zh-Hant": {
+  "photos": "照片",
+  "documents": "文件",
+  "work": "工作資料",
+  "music": "音樂",
+  "server_photo": "來自電腦的照片",
+  "home_nas": "家裡的 NAS",
+  "my_velock": "我的格間",
+  "captions": {
+   "2-file-sync": [
+    "資料夾自動同步",
+    "本機資料夾與 NAS、雲端硬碟保持一致"
+   ],
+   "1-velock-home": [
+    "格間加密備份",
+    "備份到你自己的雲端，只有你能解密"
+   ],
+   "3-wizard": [
+    "三步新增同步位置",
+    "雙向、僅上傳、僅下載，衝突時兩份都保留"
+   ],
+   "4-location-detail": [
+    "每個位置個別設定",
+    "隨時開啟本機或遠端資料夾"
+   ],
+   "5-browser": [
+    "直接瀏覽雲端檔案",
+    "遠端是一般檔案，任何裝置都能開啟"
+   ],
+   "7-protocols": [
+    "WebDAV 與雲端硬碟",
+    "Google Drive、OneDrive、百度網盤、阿里雲盤"
+   ],
+   "8-velock-detail": [
+    "備份狀態一目了然",
+    "傳輸紀錄、儲存位置、暫停與繼續"
+   ],
+   "6-connections": [
+    "連線統一管理",
+    "NAS、Nextcloud 等任何 WebDAV 服務"
+   ]
+  }
+ },
+ "ar": {
+  "photos": "صور",
+  "documents": "مستندات",
+  "work": "العمل",
+  "music": "موسيقى",
+  "server_photo": "من اللابتوب",
+  "home_nas": "NAS المنزل",
+  "my_velock": "Velock الخاص بي",
+  "captions": {
+   "2-file-sync": [
+    "مجلدات متزامنة دائمًا",
+    "مجلداتك منسوخة طبق الأصل على NAS أو التخزين السحابي"
+   ],
+   "1-velock-home": [
+    "Velock بنسخ احتياطي مشفّر",
+    "على تخزين تملكه. أنت وحدك من يستطيع فك تشفيره"
+   ],
+   "3-wizard": [
+    "الإعداد في ثلاث خطوات",
+    "اتجاهان، أو رفع أو تنزيل فقط. عند التعارض تبقى النسختان"
+   ],
+   "4-location-detail": [
+    "اضبط كل موقع على حدة",
+    "افتح المجلد المحلي أو البعيد في أي وقت"
+   ],
+   "5-browser": [
+    "تصفّح ملفاتك السحابية",
+    "ملفات عادية يفتحها أي جهاز"
+   ],
+   "7-protocols": [
+    "WebDAV والتخزين السحابي",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "حالة النسخ الاحتياطي بلمحة",
+    "السجل والموقع والإيقاف المؤقت والاستئناف"
+   ],
+   "6-connections": [
+    "كل الاتصالات في مكان واحد",
+    "NAS أو Nextcloud أو أي خادم WebDAV"
+   ]
+  }
+ },
+ "de": {
+  "photos": "Fotos",
+  "documents": "Dokumente",
+  "work": "Arbeit",
+  "music": "Musik",
+  "server_photo": "Vom Laptop",
+  "home_nas": "NAS zu Hause",
+  "my_velock": "Mein Velock",
+  "captions": {
+   "2-file-sync": [
+    "Ordner synchron halten",
+    "Deine Ordner, gespiegelt auf NAS oder Cloud-Speicher"
+   ],
+   "1-velock-home": [
+    "Verschlüsseltes Backup",
+    "Velock auf eigenem Speicher. Nur du entschlüsselst es"
+   ],
+   "3-wizard": [
+    "In drei Schritten bereit",
+    "2-Wege, nur Upload/Download. Konflikte: beide bleiben"
+   ],
+   "4-location-detail": [
+    "Jeden Ort feinjustieren",
+    "Lokalen oder entfernten Ordner jederzeit öffnen"
+   ],
+   "5-browser": [
+    "Cloud-Dateien ansehen",
+    "Normale Dateien, die jedes Gerät öffnen kann"
+   ],
+   "7-protocols": [
+    "WebDAV und Cloud-Speicher",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Backup-Status im Blick",
+    "Verlauf, Speicherort, Pausieren und Fortsetzen"
+   ],
+   "6-connections": [
+    "Alle Verbindungen zentral",
+    "NAS, Nextcloud oder jeder WebDAV-Server"
+   ]
+  }
+ },
+ "es": {
+  "photos": "Fotos",
+  "documents": "Documentos",
+  "work": "Trabajo",
+  "music": "Música",
+  "server_photo": "Desde el portátil",
+  "home_nas": "NAS de casa",
+  "my_velock": "Mi Velock",
+  "captions": {
+   "2-file-sync": [
+    "Carpetas sincronizadas",
+    "Tus carpetas, reflejadas en tu NAS o tu nube"
+   ],
+   "1-velock-home": [
+    "Copia cifrada de Velock",
+    "En un almacenamiento tuyo. Solo tú puedes descifrarla"
+   ],
+   "3-wizard": [
+    "Listo en tres pasos",
+    "Doble sentido o solo subir/bajar. Conflicto: dos copias"
+   ],
+   "4-location-detail": [
+    "Ajusta cada ubicación",
+    "Abre la carpeta local o remota cuando quieras"
+   ],
+   "5-browser": [
+    "Explora tu nube",
+    "Archivos normales que cualquier dispositivo puede abrir"
+   ],
+   "7-protocols": [
+    "WebDAV y discos en la nube",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Tu copia, de un vistazo",
+    "Historial, ubicación, pausar y reanudar"
+   ],
+   "6-connections": [
+    "Todas tus conexiones",
+    "NAS, Nextcloud o cualquier servidor WebDAV"
+   ]
+  }
+ },
+ "fr": {
+  "photos": "Photos",
+  "documents": "Documents",
+  "work": "Travail",
+  "music": "Musique",
+  "server_photo": "Depuis le portable",
+  "home_nas": "NAS de la maison",
+  "my_velock": "Mon Velock",
+  "captions": {
+   "2-file-sync": [
+    "Dossiers synchronisés",
+    "Vos dossiers, en miroir sur votre NAS ou votre cloud"
+   ],
+   "1-velock-home": [
+    "Sauvegarde Velock chiffrée",
+    "Sur un stockage à vous. Vous seul pouvez la déchiffrer"
+   ],
+   "3-wizard": [
+    "Prêt en trois étapes",
+    "Envoi, réception ou les deux. En conflit, on garde tout"
+   ],
+   "4-location-detail": [
+    "Réglez chaque emplacement",
+    "Ouvrez le dossier local ou distant à tout moment"
+   ],
+   "5-browser": [
+    "Parcourez votre cloud",
+    "Des fichiers ordinaires, lisibles sur tout appareil"
+   ],
+   "7-protocols": [
+    "WebDAV et stockage cloud",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Sauvegarde d'un coup d'œil",
+    "Historique, emplacement, pause et reprise"
+   ],
+   "6-connections": [
+    "Toutes vos connexions",
+    "NAS, Nextcloud ou tout serveur WebDAV"
+   ]
+  }
+ },
+ "hi": {
+  "photos": "फ़ोटो",
+  "documents": "दस्तावेज़",
+  "work": "काम",
+  "music": "संगीत",
+  "server_photo": "लैपटॉप से",
+  "home_nas": "घर का NAS",
+  "my_velock": "मेरा Velock",
+  "captions": {
+   "2-file-sync": [
+    "फ़ोल्डर हमेशा सिंक में",
+    "आपके फ़ोल्डर, NAS या क्लाउड ड्राइव पर हूबहू"
+   ],
+   "1-velock-home": [
+    "एन्क्रिप्टेड Velock बैकअप",
+    "आपके अपने स्टोरेज में। सिर्फ़ आप डिक्रिप्ट कर सकते हैं"
+   ],
+   "3-wizard": [
+    "तीन चरणों में सेटअप",
+    "दोनों तरफ़ या सिर्फ़ अपलोड/डाउनलोड। टकराव पर दोनों बचें"
+   ],
+   "4-location-detail": [
+    "हर लोकेशन अलग से सेट करें",
+    "लोकल या रिमोट फ़ोल्डर कभी भी खोलें"
+   ],
+   "5-browser": [
+    "क्लाउड फ़ाइलें देखें",
+    "आम फ़ाइलें, जिन्हें कोई भी डिवाइस खोल सकता है"
+   ],
+   "7-protocols": [
+    "WebDAV और क्लाउड ड्राइव",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "बैकअप एक नज़र में",
+    "इतिहास, लोकेशन, रोकें और फिर से शुरू करें"
+   ],
+   "6-connections": [
+    "सभी कनेक्शन एक जगह",
+    "NAS, Nextcloud या कोई भी WebDAV सर्वर"
+   ]
+  }
+ },
+ "id": {
+  "photos": "Foto",
+  "documents": "Dokumen",
+  "work": "Kerja",
+  "music": "Musik",
+  "server_photo": "Dari laptop",
+  "home_nas": "NAS Rumah",
+  "my_velock": "Velock Saya",
+  "captions": {
+   "2-file-sync": [
+    "Folder selalu sinkron",
+    "Folder Anda dicerminkan ke NAS atau drive cloud"
+   ],
+   "1-velock-home": [
+    "Backup Velock terenkripsi",
+    "Di penyimpanan milik Anda. Hanya Anda bisa mendekripsi"
+   ],
+   "3-wizard": [
+    "Siap dalam tiga langkah",
+    "Dua arah, hanya unggah/unduh. Konflik: simpan keduanya"
+   ],
+   "4-location-detail": [
+    "Atur tiap lokasi",
+    "Buka folder lokal atau jarak jauh kapan saja"
+   ],
+   "5-browser": [
+    "Jelajahi file cloud Anda",
+    "File biasa yang bisa dibuka perangkat apa pun"
+   ],
+   "7-protocols": [
+    "WebDAV dan drive cloud",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Status backup sekilas",
+    "Riwayat, lokasi, jeda, dan lanjutkan"
+   ],
+   "6-connections": [
+    "Semua koneksi terpusat",
+    "NAS, Nextcloud, atau server WebDAV apa pun"
+   ]
+  }
+ },
+ "it": {
+  "photos": "Foto",
+  "documents": "Documenti",
+  "work": "Lavoro",
+  "music": "Musica",
+  "server_photo": "Dal portatile",
+  "home_nas": "NAS di casa",
+  "my_velock": "Il mio Velock",
+  "captions": {
+   "2-file-sync": [
+    "Cartelle sincronizzate",
+    "Le tue cartelle, replicate su NAS o cloud"
+   ],
+   "1-velock-home": [
+    "Backup cifrato di Velock",
+    "Salvato su uno spazio tuo. Solo tu puoi decifrarlo"
+   ],
+   "3-wizard": [
+    "Pronto in tre passaggi",
+    "Invio, ricezione o entrambi. Nei conflitti, due copie"
+   ],
+   "4-location-detail": [
+    "Ogni posizione su misura",
+    "Apri la cartella locale o remota quando vuoi"
+   ],
+   "5-browser": [
+    "Sfoglia i file nel cloud",
+    "File normali che qualsiasi dispositivo può aprire"
+   ],
+   "7-protocols": [
+    "WebDAV e archivi cloud",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Il backup a colpo d'occhio",
+    "Cronologia, posizione, pausa e ripresa"
+   ],
+   "6-connections": [
+    "Tutte le tue connessioni",
+    "NAS, Nextcloud o qualsiasi server WebDAV"
+   ]
+  }
+ },
+ "ja": {
+  "photos": "写真",
+  "documents": "書類",
+  "work": "仕事",
+  "music": "音楽",
+  "server_photo": "ノートPCから",
+  "home_nas": "自宅のNAS",
+  "my_velock": "マイ Velock",
+  "captions": {
+   "2-file-sync": [
+    "フォルダを自動で同期",
+    "フォルダをNASやクラウドドライブにミラーリング"
+   ],
+   "1-velock-home": [
+    "Velock暗号化バックアップ",
+    "自分のストレージに保存。復号できるのはあなただけ"
+   ],
+   "3-wizard": [
+    "3ステップで設定",
+    "双方向・送信のみ・受信のみ。競合は両方残す"
+   ],
+   "4-location-detail": [
+    "場所ごとに細かく設定",
+    "ローカルとリモートのフォルダをいつでも開ける"
+   ],
+   "5-browser": [
+    "クラウドのファイルを閲覧",
+    "どのデバイスでも開ける普通のファイル"
+   ],
+   "7-protocols": [
+    "WebDAVとクラウドドライブ",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "バックアップを一目で確認",
+    "履歴・保存先・一時停止と再開"
+   ],
+   "6-connections": [
+    "接続をまとめて管理",
+    "NAS、Nextcloudなど、あらゆるWebDAVサーバー"
+   ]
+  }
+ },
+ "ko": {
+  "photos": "사진",
+  "documents": "문서",
+  "work": "업무",
+  "music": "음악",
+  "server_photo": "노트북에서",
+  "home_nas": "우리 집 NAS",
+  "my_velock": "내 Velock",
+  "captions": {
+   "2-file-sync": [
+    "폴더 자동 동기화",
+    "폴더를 NAS나 클라우드 드라이브에 미러링"
+   ],
+   "1-velock-home": [
+    "Velock 암호화 백업",
+    "내가 소유한 저장소에 보관. 나만 복호화 가능"
+   ],
+   "3-wizard": [
+    "세 단계로 간편 설정",
+    "양방향, 업로드만, 다운로드만. 충돌 시 둘 다 보존"
+   ],
+   "4-location-detail": [
+    "위치별 개별 설정",
+    "로컬 또는 원격 폴더를 언제든 열기"
+   ],
+   "5-browser": [
+    "클라우드 파일 바로 보기",
+    "어느 기기에서나 열리는 일반 파일"
+   ],
+   "7-protocols": [
+    "WebDAV와 클라우드 지원",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "백업 상태 한눈에",
+    "기록, 보관 위치, 일시정지와 재개"
+   ],
+   "6-connections": [
+    "모든 연결을 한곳에서",
+    "NAS, Nextcloud 등 모든 WebDAV 서버"
+   ]
+  }
+ },
+ "nl": {
+  "photos": "Foto's",
+  "documents": "Documenten",
+  "work": "Werk",
+  "music": "Muziek",
+  "server_photo": "Van de laptop",
+  "home_nas": "NAS thuis",
+  "my_velock": "Mijn Velock",
+  "captions": {
+   "2-file-sync": [
+    "Mappen altijd in sync",
+    "Je mappen gespiegeld naar je NAS of clouddrive"
+   ],
+   "1-velock-home": [
+    "Versleutelde back-up",
+    "Velock op je eigen opslag. Alleen jij kunt ontsleutelen"
+   ],
+   "3-wizard": [
+    "In drie stappen klaar",
+    "Upload, download of beide. Bij conflict blijven beide"
+   ],
+   "4-location-detail": [
+    "Elke locatie op maat",
+    "Open de lokale of externe map wanneer je wilt"
+   ],
+   "5-browser": [
+    "Blader door je cloud",
+    "Gewone bestanden die elk apparaat kan openen"
+   ],
+   "7-protocols": [
+    "WebDAV en clouddrives",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Back-up in één oogopslag",
+    "Geschiedenis, locatie, pauzeren en hervatten"
+   ],
+   "6-connections": [
+    "Alle verbindingen centraal",
+    "NAS, Nextcloud of elke WebDAV-server"
+   ]
+  }
+ },
+ "pl": {
+  "photos": "Zdjęcia",
+  "documents": "Dokumenty",
+  "work": "Praca",
+  "music": "Muzyka",
+  "server_photo": "Z laptopa",
+  "home_nas": "Domowy NAS",
+  "my_velock": "Mój Velock",
+  "captions": {
+   "2-file-sync": [
+    "Synchronizacja folderów",
+    "Twoje foldery odwzorowane na NAS lub dysku w chmurze"
+   ],
+   "1-velock-home": [
+    "Szyfrowana kopia Velock",
+    "We własnej przestrzeni. Tylko Ty możesz ją odszyfrować"
+   ],
+   "3-wizard": [
+    "Gotowe w trzech krokach",
+    "Wysyłanie, pobieranie lub oba. Konflikt? Zostają obie"
+   ],
+   "4-location-detail": [
+    "Każde miejsce po swojemu",
+    "Otwórz folder lokalny lub zdalny w dowolnej chwili"
+   ],
+   "5-browser": [
+    "Przeglądaj pliki w chmurze",
+    "Zwykłe pliki, które otworzy każde urządzenie"
+   ],
+   "7-protocols": [
+    "WebDAV i dyski w chmurze",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Stan kopii od razu widać",
+    "Historia, lokalizacja, wstrzymanie i wznowienie"
+   ],
+   "6-connections": [
+    "Wszystkie połączenia razem",
+    "NAS, Nextcloud lub dowolny serwer WebDAV"
+   ]
+  }
+ },
+ "pt": {
+  "photos": "Fotos",
+  "documents": "Documentos",
+  "work": "Trabalho",
+  "music": "Música",
+  "server_photo": "Do notebook",
+  "home_nas": "NAS de casa",
+  "my_velock": "Meu Velock",
+  "captions": {
+   "2-file-sync": [
+    "Pastas sincronizadas",
+    "Suas pastas espelhadas no seu NAS ou na nuvem"
+   ],
+   "1-velock-home": [
+    "Backup cifrado do Velock",
+    "No seu próprio armazenamento. Só você consegue decifrar"
+   ],
+   "3-wizard": [
+    "Pronto em três passos",
+    "Upload, download ou ambos. Conflitos: ficam as duas"
+   ],
+   "4-location-detail": [
+    "Ajuste cada local",
+    "Abra a pasta local ou remota quando quiser"
+   ],
+   "5-browser": [
+    "Navegue pela sua nuvem",
+    "Arquivos comuns que qualquer dispositivo abre"
+   ],
+   "7-protocols": [
+    "WebDAV e drives na nuvem",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Seu backup num relance",
+    "Histórico, local, pausar e retomar"
+   ],
+   "6-connections": [
+    "Todas as conexões juntas",
+    "NAS, Nextcloud ou qualquer servidor WebDAV"
+   ]
+  }
+ },
+ "ru": {
+  "photos": "Фото",
+  "documents": "Документы",
+  "work": "Работа",
+  "music": "Музыка",
+  "server_photo": "С ноутбука",
+  "home_nas": "Домашний NAS",
+  "my_velock": "Мой Velock",
+  "captions": {
+   "2-file-sync": [
+    "Папки всегда синхронны",
+    "Зеркало ваших папок на NAS или облачном диске"
+   ],
+   "1-velock-home": [
+    "Зашифрованный бэкап Velock",
+    "В вашем хранилище. Расшифровать можете только вы"
+   ],
+   "3-wizard": [
+    "Настройка в три шага",
+    "Отправка, получение или оба. При конфликте — обе копии"
+   ],
+   "4-location-detail": [
+    "Настройка каждого места",
+    "Открыть локальную или удалённую папку в любой момент"
+   ],
+   "5-browser": [
+    "Просмотр файлов в облаке",
+    "Обычные файлы, которые откроет любое устройство"
+   ],
+   "7-protocols": [
+    "WebDAV и облачные диски",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Бэкап с одного взгляда",
+    "История, расположение, пауза и продолжение"
+   ],
+   "6-connections": [
+    "Все подключения вместе",
+    "NAS, Nextcloud или любой сервер WebDAV"
+   ]
+  }
+ },
+ "tr": {
+  "photos": "Fotoğraflar",
+  "documents": "Belgeler",
+  "work": "İş",
+  "music": "Müzik",
+  "server_photo": "Dizüstünden",
+  "home_nas": "Evdeki NAS",
+  "my_velock": "Velock'um",
+  "captions": {
+   "2-file-sync": [
+    "Klasörler hep eşitlenir",
+    "Klasörleriniz NAS'ınızda ya da bulut sürücünüzde"
+   ],
+   "1-velock-home": [
+    "Şifreli Velock yedeği",
+    "Size ait depolamada. Şifresini yalnızca siz çözersiniz"
+   ],
+   "3-wizard": [
+    "Üç adımda kurulum",
+    "Yükleme, indirme ya da ikisi. Çakışmada ikisi de kalır"
+   ],
+   "4-location-detail": [
+    "Her konuma ayrı ayar",
+    "Yerel ya da uzak klasörü istediğiniz an açın"
+   ],
+   "5-browser": [
+    "Bulut dosyalarında gezinin",
+    "Her cihazın açabildiği sıradan dosyalar"
+   ],
+   "7-protocols": [
+    "WebDAV ve bulut sürücüler",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Yedek durumu tek bakışta",
+    "Geçmiş, konum, duraklatma ve sürdürme"
+   ],
+   "6-connections": [
+    "Tüm bağlantılar tek yerde",
+    "NAS, Nextcloud veya herhangi bir WebDAV sunucusu"
+   ]
+  }
+ },
+ "vi": {
+  "photos": "Ảnh",
+  "documents": "Tài liệu",
+  "work": "Công việc",
+  "music": "Nhạc",
+  "server_photo": "Từ laptop",
+  "home_nas": "NAS ở nhà",
+  "my_velock": "Velock của tôi",
+  "captions": {
+   "2-file-sync": [
+    "Đồng bộ thư mục",
+    "Thư mục của bạn, phản chiếu lên NAS hoặc ổ đám mây"
+   ],
+   "1-velock-home": [
+    "Sao lưu Velock mã hóa",
+    "Lưu trên bộ nhớ của bạn. Chỉ bạn giải mã được"
+   ],
+   "3-wizard": [
+    "Thiết lập trong ba bước",
+    "Hai chiều, chỉ tải lên/tải xuống. Xung đột giữ cả hai"
+   ],
+   "4-location-detail": [
+    "Tùy chỉnh từng vị trí",
+    "Mở thư mục cục bộ hoặc từ xa bất cứ lúc nào"
+   ],
+   "5-browser": [
+    "Duyệt tệp trên đám mây",
+    "Tệp thông thường, thiết bị nào cũng mở được"
+   ],
+   "7-protocols": [
+    "WebDAV và ổ đám mây",
+    "Google Drive, OneDrive, Baidu Netdisk, Aliyun Drive"
+   ],
+   "8-velock-detail": [
+    "Trạng thái sao lưu rõ ràng",
+    "Lịch sử, vị trí, tạm dừng và tiếp tục"
+   ],
+   "6-connections": [
+    "Mọi kết nối ở một nơi",
+    "NAS, Nextcloud hoặc mọi máy chủ WebDAV"
+   ]
+  }
+ }
+}
