@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Raw App Store screenshots on a simulator that already ran e2e.sh (iPhone) or
-# only has Sync installed (iPad, E2E_SHOT_VELOCK=0).
+# Raw App Store screenshots on a simulator that already ran e2e.sh. Set
+# E2E_SHOT_VELOCK=0 for a simulator that only has Sync installed; the Velock
+# backup screens are then skipped.
 #
 #   E2E_SIMULATOR_UDID=<udid> tool/store/store_shots.sh <lang> <out-dir>
 #

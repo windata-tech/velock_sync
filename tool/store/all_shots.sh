@@ -2,15 +2,20 @@
 # Raw + framed App Store screenshots for many app languages on one simulator,
 # then the deliver folder (tool/store/screenshots/<App Store locale>/).
 #
-#   tool/store/all_shots.sh iphone|ipad <udid>[,<udid>…] [lang ...]
+#   tool/store/all_shots.sh iphone <udid>[,<udid>…] [lang ...]
 #
 # Several comma-separated simulators run in parallel (UI automation is mostly
 # waiting, so one simulator per language group cuts the wall time).
 #
-# iPhone needs a simulator that already ran e2e.sh (paired Velock backup);
-# iPad runs with E2E_SHOT_VELOCK=0. Without languages it does all 18.
+# Needs a simulator that already ran e2e.sh (paired Velock backup). Without
+# languages it does all 18.
+#
+# Only reach for this when the app's own screens changed. If it is just the
+# framing, recompose.sh re-renders from the raw captures already on disk in a
+# couple of minutes without a simulator. `ipad` still works but the app is
+# iPhone-only since 1.0.1, so the store has no iPad screenshots to fill.
 set -euo pipefail
-device="${1:?iphone|ipad}" udids="${2:?simulator udid[,udid…]}"; shift 2
+device="${1:?iphone}" udids="${2:?simulator udid[,udid…]}"; shift 2
 here="$(cd "$(dirname "$0")" && pwd)" root="$(cd "$here/../.." && pwd)"
 langs=("$@")
 [[ ${#langs[@]} -gt 0 ]] || langs=(zh zh-Hant en ar de es fr hi id it ja ko nl pl pt ru tr vi)
@@ -26,6 +31,11 @@ shoot() { # udid lang
   local expected=8; [[ $device == ipad ]] && expected=6
   [[ $(ls "$raw"/*.png 2>/dev/null | wc -l) -eq $expected ]] || return 1
   rm -rf "$framed"; python3 "$here/compose.py" "$raw" "$framed" "$lang" >/dev/null || return 1
+  # Keep the committed captures current so recompose.sh works from a clone.
+  if [[ $device == iphone ]]; then
+    rm -rf "$here/raw/$lang"; mkdir -p "$here/raw/$lang"
+    cp "$raw"/*.png "$here/raw/$lang/"
+  fi
   # App Store locales that show this app language.
   local locales locale f
   case $lang in
