@@ -179,7 +179,6 @@
   "Velock has prepared your backup": "O Velock preparou o seu backup",
   "Velock identity verification failed": "Falha na verificação de identidade do Velock",
   "Velock is already connected": "O Velock já está conectado",
-  "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "O Velock é um cofre criptografado que fica no seu celular. Depois que você o tiver, o Sync faz o backup dele, ainda criptografado, no seu próprio NAS ou na sua nuvem, para que um celular novo recupere tudo.",
   "Velock is connected": "O Velock está conectado",
   "Velock is not installed; disconnected": "O Velock não está instalado; desconectado",
   "Velock is not on this device yet. Install and open it, then come back.": "O Velock ainda não está neste dispositivo. Instale-o, abra-o e volte.",
@@ -304,5 +303,7 @@
   "{0}: {1}": "{0}: {1}",
   "“Redirect address does not match”": "“O endereço de redirecionamento não corresponde”",
   "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "“{0}” será excluído deste dispositivo. O espaço de sincronização remoto e os arquivos dele não serão excluídos.",
-  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "“{0}” será removido deste dispositivo. Os perfis de sincronização existentes podem precisar de uma nova conexão remota."
+  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "“{0}” será removido deste dispositivo. Os perfis de sincronização existentes podem precisar de uma nova conexão remota.",
+  "Velock is not on this device": "O Velock não está neste dispositivo",
+  "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "Esta aba faz o backup do Velock, outro app do mesmo desenvolvedor. O Velock criptografa os dados no dispositivo, e o Sync apenas leva os dados criptografados para o seu próprio NAS ou armazenamento em nuvem. Instale o Velock e volte aqui para configurar o backup."
 }

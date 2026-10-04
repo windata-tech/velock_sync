@@ -14,9 +14,6 @@
   "Password": {
     "zh": "密码"
   },
-  "Password AutoFill, and it works offline": {
-    "zh": "支持密码自动填充，离线也能用"
-  },
   "Pause": {
     "zh": "暂停"
   },
@@ -43,9 +40,6 @@
   },
   "Pending transfers": {
     "zh": "等待传输"
-  },
-  "Photos, videos, files, passwords, cards and notes, encrypted on your phone": {
-    "zh": "照片、视频、文件、账号密码、银行卡和备注，加密保存在手机上"
   },
   "Pick a connection, then open a folder inside it. Existing files in that remote folder are kept: the first sync never deletes them.": {
     "zh": "选择一个连接，然后进入这个连接里的一个文件夹。远端文件夹里已有的文件会被保留，第一次同步不会删除它们。"
@@ -1004,5 +998,8 @@
   },
   "The remote server cannot be reached right now. Check your network and the server state, then try again.": {
     "zh": "暂时无法连接到远端服务器，请检查网络和服务器状态后重试。"
+  },
+  "The remote server cannot handle the request right now. Try again later.": {
+    "zh": "远端服务器暂时无法处理请求，请稍后重试。"
   }
 }

@@ -179,7 +179,6 @@
  "Velock has prepared your backup": "格間已準備好你的備份",
  "Velock identity verification failed": "格間身分驗證失敗",
  "Velock is already connected": "已經連接格間",
- "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "格間是存放在你手機上的加密保險箱。安裝格間後，Sync 會把它以加密狀態備份到你自己的 NAS 或雲端硬碟，換新手機也能全部找回。",
  "Velock is connected": "已連接格間",
  "Velock is not installed; disconnected": "未安裝格間，連線已中斷",
  "Velock is not on this device yet. Install and open it, then come back.": "這台裝置上還沒有格間。請先安裝並開啟格間，再回來繼續。",
@@ -304,5 +303,7 @@
  "{0}: {1}": "{0}：{1}",
  "“Redirect address does not match”": "「重新導向位址不相符」",
  "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "「{0}」將從本機刪除。遠端同步空間和檔案不會被刪除。",
- "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "「{0}」將從本機移除。已有的同步設定可能需要重新選擇遠端連線。"
+ "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "「{0}」將從本機移除。已有的同步設定可能需要重新選擇遠端連線。",
+ "Velock is not on this device": "這台裝置上還沒有格間",
+ "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "這裡用來備份「格間」，它是同一開發者的另一款 App。格間在裝置上加密資料，Sync 只把加密後的資料傳到你自己的 NAS 或雲端硬碟。安裝格間後回到這裡，就可以設定備份。"
 }

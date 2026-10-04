@@ -179,7 +179,6 @@
  "Velock has prepared your backup": "Velock przygotował twoją kopię",
  "Velock identity verification failed": "Weryfikacja tożsamości Velock nie powiodła się",
  "Velock is already connected": "Velock jest już połączony",
- "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "Velock to zaszyfrowany sejf na twoim telefonie. Gdy go masz, Sync tworzy jego kopię, nadal zaszyfrowaną, na twoim własnym NAS lub dysku w chmurze, dzięki czemu nowy telefon odzyska wszystko.",
  "Velock is connected": "Velock jest połączony",
  "Velock is not installed; disconnected": "Velock nie jest zainstalowany; rozłączono",
  "Velock is not on this device yet. Install and open it, then come back.": "Na tym urządzeniu nie ma jeszcze Velock. Zainstaluj go i otwórz, a potem wróć.",
@@ -304,5 +303,7 @@
  "{0}: {1}": "{0}: {1}",
  "“Redirect address does not match”": "„Adres przekierowania nie pasuje”",
  "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "„{0}” zostanie usunięte z tego urządzenia. Zdalna przestrzeń synchronizacji i pliki nie zostaną usunięte.",
- "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "„{0}” zostanie usunięte z tego urządzenia. Istniejące profile synchronizacji mogą wymagać nowego połączenia zdalnego."
+ "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "„{0}” zostanie usunięte z tego urządzenia. Istniejące profile synchronizacji mogą wymagać nowego połączenia zdalnego.",
+ "Velock is not on this device": "Velock nie jest zainstalowany na tym urządzeniu",
+ "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "Ta karta tworzy kopię zapasową aplikacji Velock – osobnej aplikacji tego samego twórcy. Velock szyfruje dane na urządzeniu, a Sync jedynie przesyła zaszyfrowane dane na Twój NAS lub dysk w chmurze. Zainstaluj Velock, a potem wróć tutaj, aby skonfigurować kopię zapasową."
 }

@@ -179,7 +179,6 @@
  "Velock has prepared your backup": "Velock telah menyiapkan cadangan Anda",
  "Velock identity verification failed": "Verifikasi identitas Velock gagal",
  "Velock is already connected": "Velock sudah terhubung",
- "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "Velock adalah brankas terenkripsi yang ada di ponsel Anda. Setelah Anda memilikinya, Sync mencadangkannya, tetap terenkripsi, ke NAS atau penyimpanan cloud Anda sendiri, sehingga ponsel baru bisa mendapatkan semuanya kembali.",
  "Velock is connected": "Velock terhubung",
  "Velock is not installed; disconnected": "Velock tidak terpasang; terputus",
  "Velock is not on this device yet. Install and open it, then come back.": "Velock belum ada di perangkat ini. Pasang dan buka Velock, lalu kembali.",
@@ -304,5 +303,7 @@
  "{0}: {1}": "{0}: {1}",
  "“Redirect address does not match”": "“Alamat pengalihan tidak cocok”",
  "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "“{0}” akan dihapus dari perangkat ini. Ruang sinkronisasi jarak jauh dan file tidak akan dihapus.",
- "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "“{0}” akan dihapus dari perangkat ini. Profil sinkronisasi yang ada mungkin memerlukan koneksi jarak jauh baru."
+ "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "“{0}” akan dihapus dari perangkat ini. Profil sinkronisasi yang ada mungkin memerlukan koneksi jarak jauh baru.",
+ "Velock is not on this device": "Velock belum ada di perangkat ini",
+ "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "Tab ini mencadangkan Velock, aplikasi terpisah dari pengembang yang sama. Velock mengenkripsi datanya di perangkat, dan Sync hanya membawa data terenkripsi itu ke NAS atau penyimpanan cloud milik Anda. Instal Velock, lalu kembali ke sini untuk menyiapkan cadangan."
 }

@@ -359,9 +359,6 @@
   "Bundle ID copied.": {
     "zh": "已复制软件包 ID。"
   },
-  "Buy once, keep it. No subscription": {
-    "zh": "一次购买，长期使用，无需订阅"
-  },
   "Cancel": {
     "zh": "取消"
   },
@@ -1455,9 +1452,6 @@
   "Keep your folders in sync": {
     "zh": "同步你的文件夹"
   },
-  "Keep your private data in Velock": {
-    "zh": "用格间守护你的私密数据"
-  },
   "Keeps syncing after you leave Wi-Fi.": {
     "zh": "离开 Wi-Fi 后仍可继续同步。"
   },
@@ -1959,9 +1953,6 @@
   "Password": {
     "zh": "密码"
   },
-  "Password AutoFill, and it works offline": {
-    "zh": "支持密码自动填充，离线也能用"
-  },
   "Pause": {
     "zh": "暂停"
   },
@@ -1988,9 +1979,6 @@
   },
   "Pending transfers": {
     "zh": "等待传输"
-  },
-  "Photos, videos, files, passwords, cards and notes, encrypted on your phone": {
-    "zh": "照片、视频、文件、账号密码、银行卡和备注，加密保存在手机上"
   },
   "Pick a connection, then open a folder inside it. Existing files in that remote folder are kept: the first sync never deletes them.": {
     "zh": "选择一个连接，然后进入这个连接里的一个文件夹。远端文件夹里已有的文件会被保留，第一次同步不会删除它们。"
@@ -3269,6 +3257,9 @@
   "This sync was cancelled before it finished. Start it again when you are ready.": {
     "zh": "这次同步被取消了，没有全部完成。需要时请重新同步。"
   },
+  "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": {
+    "zh": "这里用来备份「格间」，它是同一开发者的另一款 App。格间在设备上加密数据，Sync 只把加密后的数据传到你自己的 NAS 或网盘。安装格间后回到这里，就可以设置备份。"
+  },
   "This task’s folder configuration could not be read, so the location cannot be changed here. Go back and reopen this page from the task.": {
     "zh": "无法读取这个任务的文件夹配置，因此这里不能更改位置。请返回任务页重新进入。"
   },
@@ -3540,14 +3531,14 @@
   "Velock is already connected": {
     "zh": "这台设备已经连接格间"
   },
-  "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": {
-    "zh": "格间是本地加密的隐私保险箱。装上格间后，Sync 就能把它加密备份到你自己的 NAS 或网盘，换手机也能找回来。"
-  },
   "Velock is connected": {
     "zh": "已连接格间"
   },
   "Velock is not installed; disconnected": {
     "zh": "Velock 本体未安装，连接已断开"
+  },
+  "Velock is not on this device": {
+    "zh": "这台设备上还没有格间"
   },
   "Velock is not on this device yet. Install and open it, then come back.": {
     "zh": "这台设备上还没有格间。请先安装并打开格间，再回来继续。"

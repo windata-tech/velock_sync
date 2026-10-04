@@ -179,7 +179,6 @@
   "Velock has prepared your backup": "Velockがバックアップを準備しました",
   "Velock identity verification failed": "Velockの本人確認に失敗しました",
   "Velock is already connected": "Velockはすでに接続されています",
-  "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "Velockは、iPhone上にある暗号化された保管庫です。Syncは、それを暗号化されたまま、自分のNASやクラウドドライブにバックアップします。新しい電話でもすべてを取り戻せます。",
   "Velock is connected": "Velockは接続されています",
   "Velock is not installed; disconnected": "Velockがインストールされていないため、接続が解除されました",
   "Velock is not on this device yet. Install and open it, then come back.": "Velockはまだこのデバイスにありません。インストールして開いてから、戻ってきてください。",
@@ -304,5 +303,7 @@
   "{0}: {1}": "{0}：{1}",
   "“Redirect address does not match”": "「リダイレクトアドレスが一致しません」",
   "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "「{0}」はこのデバイスから削除されます。リモートの同期スペースとファイルは削除されません。",
-  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "「{0}」はこのデバイスから削除されます。既存の同期プロファイルには、新しいリモート接続が必要になる場合があります。"
+  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "「{0}」はこのデバイスから削除されます。既存の同期プロファイルには、新しいリモート接続が必要になる場合があります。",
+  "Velock is not on this device": "このデバイスにはVelockがありません",
+  "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "このタブでは、同じ開発元の別アプリVelockをバックアップします。Velockはデータをデバイス上で暗号化し、Syncは暗号化されたデータをあなた自身のNASやクラウドドライブに転送するだけです。Velockをインストールしてから、ここに戻ってバックアップを設定してください。"
 }

@@ -179,7 +179,6 @@
  "Velock has prepared your backup": "Velock yedeğini hazırladı",
  "Velock identity verification failed": "Velock kimlik doğrulaması başarısız oldu",
  "Velock is already connected": "Velock zaten bağlı",
- "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "Velock, telefonunda duran şifreli bir kasadır. Velock'u edindiğinde Sync onu yine şifreli olarak kendi NAS'ına veya bulut sürücüne yedekler; böylece yeni bir telefonda her şeyi geri alırsın.",
  "Velock is connected": "Velock bağlı",
  "Velock is not installed; disconnected": "Velock yüklü değil; bağlantı kesildi",
  "Velock is not on this device yet. Install and open it, then come back.": "Velock henüz bu cihazda yok. Yükleyip aç, sonra geri dön.",
@@ -304,5 +303,7 @@
  "{0}: {1}": "{0}: {1}",
  "“Redirect address does not match”": "“Yönlendirme adresi eşleşmiyor”",
  "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "“{0}” bu cihazdan silinecek. Uzak senkronizasyon alanı ve dosyalar silinmeyecek.",
- "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "“{0}” bu cihazdan kaldırılacak. Mevcut senkronizasyon profilleri yeni bir uzak bağlantı gerektirebilir."
+ "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "“{0}” bu cihazdan kaldırılacak. Mevcut senkronizasyon profilleri yeni bir uzak bağlantı gerektirebilir.",
+ "Velock is not on this device": "Velock bu cihazda yüklü değil",
+ "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "Bu sekme, aynı geliştiricinin ayrı bir uygulaması olan Velock’u yedekler. Velock verilerini cihazda şifreler; Sync ise yalnızca şifrelenmiş verileri kendi NAS’ınıza veya bulut depolama alanınıza taşır. Velock’u yükleyin, ardından yedeklemeyi ayarlamak için buraya dönün."
 }

@@ -80,7 +80,11 @@ void main() {
     ],
     child: MaterialApp(
       locale: Locale(locale),
-      supportedLocales: const [Locale('zh'), Locale('en')],
+      supportedLocales: {
+        const Locale('zh'),
+        const Locale('en'),
+        Locale(locale),
+      }.toList(),
       localizationsDelegates: const [...GlobalMaterialLocalizations.delegates],
       theme: ThemeData(
         platform: platform,
@@ -330,6 +334,55 @@ void main() {
     expect(launches, 2);
     expect(find.text('无法打开 App Store'), findsOneWidget);
   });
+
+  // App Review (2.1(b), 2026-10-03) read "buy once, no subscription" on this
+  // card as paid content inside Sync. The card states facts only: what the tab
+  // is for and that Velock is missing — no prices, purchases or selling points.
+  for (final language in const ['zh', 'en', 'ja', 'de', 'fr']) {
+    testWidgets('the get-Velock card has no purchase wording ($language)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        app(
+          const SyncProfilesHome(),
+          locale: language,
+          readiness: VelockWizardAvailability.appNotInstalled,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final card = find.byKey(const Key('velock-get-app-card'));
+      expect(card, findsOneWidget);
+      final text = tester
+          .widgetList<Text>(
+            find.descendant(of: card, matching: find.byType(Text)),
+          )
+          .map((t) => t.data ?? t.textSpan?.toPlainText() ?? '')
+          .join('\n');
+      expect(text, contains(language == 'zh' ? '同一开发者' : 'Velock'));
+      for (final word in const [
+        '购买',
+        '買',
+        '订阅',
+        '訂閱',
+        '付费',
+        '价格',
+        'buy',
+        'purchase',
+        'subscription',
+        'price',
+        'paid',
+        '購入',
+        'サブスク',
+        'kauf',
+        'abonnement',
+        'achat',
+        'acheter',
+      ]) {
+        expect(text.toLowerCase(), isNot(contains(word)), reason: word);
+      }
+    });
+  }
 
   testWidgets(
     'Velock and folder homes are separate destinations even with both profiles',

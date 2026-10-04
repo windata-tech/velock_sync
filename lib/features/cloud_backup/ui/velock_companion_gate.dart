@@ -153,7 +153,9 @@ class VelockCompanionGateCard extends StatelessWidget {
 }
 
 /// Shown instead of the "start backup" card when Velock is not installed:
-/// Sync only backs up Velock, so the next step is getting Velock.
+/// Sync only backs up Velock, so the card says what this tab is for and what
+/// is missing. It states facts only — no selling points, prices or purchase
+/// terms (App Review reads those as paid content inside Sync).
 class VelockGetAppCard extends StatelessWidget {
   const VelockGetAppCard({
     super.key,
@@ -168,19 +170,6 @@ class VelockGetAppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final points = [
-      syncText(
-        context,
-        '照片、视频、文件、账号密码、银行卡和备注，加密保存在手机上',
-        'Photos, videos, files, passwords, cards and notes, encrypted on your phone',
-      ),
-      syncText(
-        context,
-        '支持密码自动填充，离线也能用',
-        'Password AutoFill, and it works offline',
-      ),
-      syncText(context, '一次购买，长期使用，无需订阅', 'Buy once, keep it. No subscription'),
-    ];
     return BackupCard(
       key: const Key('velock-get-app-card'),
       child: Column(
@@ -189,11 +178,7 @@ class VelockGetAppCard extends StatelessWidget {
           const VelockBrandMark(size: 56),
           const SizedBox(height: 18),
           Text(
-            syncText(
-              context,
-              '用格间守护你的私密数据',
-              'Keep your private data in Velock',
-            ),
+            syncText(context, '这台设备上还没有格间', 'Velock is not on this device'),
             style: TextStyle(
               fontSize: 26,
               height: 1.25,
@@ -205,8 +190,8 @@ class VelockGetAppCard extends StatelessWidget {
           Text(
             syncText(
               context,
-              '格间是本地加密的隐私保险箱。装上格间后，Sync 就能把它加密备份到你自己的 NAS 或网盘，换手机也能找回来。',
-              'Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.',
+              '这里用来备份「格间」，它是同一开发者的另一款 App。格间在设备上加密数据，Sync 只把加密后的数据传到你自己的 NAS 或网盘。安装格间后回到这里，就可以设置备份。',
+              'This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.',
             ),
             style: TextStyle(
               fontSize: 16,
@@ -214,36 +199,7 @@ class VelockGetAppCard extends StatelessWidget {
               color: context.appSecondaryLabel,
             ),
           ),
-          const SizedBox(height: 14),
-          for (final point in points)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Icon(
-                      CupertinoIcons.checkmark_seal_fill,
-                      size: 17,
-                      color: AppColors.success,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      point,
-                      style: TextStyle(
-                        fontSize: 15,
-                        height: 1.4,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           BackupActionButton(
             key: const Key('velock-get-app'),
             label: syncText(

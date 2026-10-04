@@ -179,7 +179,6 @@
  "Velock has prepared your backup": "Velock heeft uw back-up voorbereid",
  "Velock identity verification failed": "Identiteitsverificatie van Velock mislukt",
  "Velock is already connected": "Velock is al verbonden",
- "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "Velock is een versleutelde kluis op uw telefoon. Zodra u die hebt, maakt Sync er een back-up van, nog steeds versleuteld, op uw eigen NAS of clouddrive, zodat een nieuwe telefoon alles terugkrijgt.",
  "Velock is connected": "Velock is verbonden",
  "Velock is not installed; disconnected": "Velock is niet geïnstalleerd; verbinding verbroken",
  "Velock is not on this device yet. Install and open it, then come back.": "Velock staat nog niet op dit apparaat. Installeer en open het en kom dan terug.",
@@ -304,5 +303,7 @@
  "{0}: {1}": "{0}: {1}",
  "“Redirect address does not match”": "‘Omleidingsadres komt niet overeen’",
  "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "‘{0}’ wordt van dit apparaat verwijderd. De externe synchronisatieruimte en bestanden worden niet verwijderd.",
- "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "‘{0}’ wordt van dit apparaat verwijderd. Bestaande synchronisatieprofielen hebben mogelijk een nieuwe externe verbinding nodig."
+ "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "‘{0}’ wordt van dit apparaat verwijderd. Bestaande synchronisatieprofielen hebben mogelijk een nieuwe externe verbinding nodig.",
+ "Velock is not on this device": "Velock staat niet op dit apparaat",
+ "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "Dit tabblad maakt een back-up van Velock, een aparte app van dezelfde ontwikkelaar. Velock versleutelt zijn gegevens op het apparaat en Sync brengt alleen de versleutelde gegevens naar je eigen NAS of cloudopslag. Installeer Velock en kom dan hier terug om de back-up in te stellen."
 }

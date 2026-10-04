@@ -179,7 +179,6 @@
   "Velock has prepared your backup": "Velock이 백업을 준비했어요",
   "Velock identity verification failed": "Velock 신원 확인에 실패했어요",
   "Velock is already connected": "Velock이 이미 연결되어 있어요",
-  "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "Velock은 휴대전화에 있는 암호화된 보관함이에요. Sync는 이를 암호화된 상태 그대로 내 NAS나 클라우드 드라이브에 백업하므로, 새 휴대전화에서도 모든 것을 되찾을 수 있어요.",
   "Velock is connected": "Velock이 연결되었어요",
   "Velock is not installed; disconnected": "Velock이 설치되어 있지 않아 연결이 해제되었어요",
   "Velock is not on this device yet. Install and open it, then come back.": "이 기기에 아직 Velock이 없어요. 설치하고 연 다음 돌아오세요.",
@@ -304,5 +303,7 @@
   "{0}: {1}": "{0}: {1}",
   "“Redirect address does not match”": "\"리디렉션 주소가 일치하지 않음\"",
   "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "\"{0}\"이(가) 이 기기에서 삭제돼요. 원격 동기화 공간과 파일은 삭제되지 않아요.",
-  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "\"{0}\"이(가) 이 기기에서 제거돼요. 기존 동기화 프로필에는 새 원격 연결이 필요할 수 있어요."
+  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "\"{0}\"이(가) 이 기기에서 제거돼요. 기존 동기화 프로필에는 새 원격 연결이 필요할 수 있어요.",
+  "Velock is not on this device": "이 기기에 Velock이 없습니다",
+  "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "이 탭은 같은 개발자가 만든 별도 앱인 Velock을 백업합니다. Velock은 기기에서 데이터를 암호화하고, Sync는 암호화된 데이터를 사용자의 NAS나 클라우드 드라이브로 옮기기만 합니다. Velock을 설치한 뒤 여기로 돌아와 백업을 설정하세요."
 }

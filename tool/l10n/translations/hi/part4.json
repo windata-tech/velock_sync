@@ -179,7 +179,6 @@
  "Velock has prepared your backup": "Velock ने आपका बैकअप तैयार कर लिया है",
  "Velock identity verification failed": "Velock की पहचान का सत्यापन विफल रहा",
  "Velock is already connected": "Velock पहले से कनेक्ट है",
- "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "Velock एक एन्क्रिप्टेड वॉल्ट है जो आपके फ़ोन पर रहता है। इसे इंस्टॉल करने के बाद, Sync इसका बैकअप, एन्क्रिप्टेड रूप में ही, आपके अपने NAS या क्लाउड ड्राइव पर लेता है, ताकि नए फ़ोन पर सब कुछ वापस मिल जाए।",
  "Velock is connected": "Velock कनेक्ट है",
  "Velock is not installed; disconnected": "Velock इंस्टॉल नहीं है; डिस्कनेक्ट किया गया",
  "Velock is not on this device yet. Install and open it, then come back.": "Velock अभी इस डिवाइस पर नहीं है। उसे इंस्टॉल करें और खोलें, फिर वापस आएँ।",
@@ -304,5 +303,7 @@
  "{0}: {1}": "{0}: {1}",
  "“Redirect address does not match”": "“रीडायरेक्ट पता मेल नहीं खाता”",
  "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "“{0}” इस डिवाइस से हटा दिया जाएगा। रिमोट सिंक स्पेस और फ़ाइलें नहीं हटाई जाएँगी।",
- "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "“{0}” इस डिवाइस से हटा दिया जाएगा। मौजूदा सिंक प्रोफ़ाइल को नए रिमोट कनेक्शन की ज़रूरत पड़ सकती है।"
+ "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "“{0}” इस डिवाइस से हटा दिया जाएगा। मौजूदा सिंक प्रोफ़ाइल को नए रिमोट कनेक्शन की ज़रूरत पड़ सकती है।",
+ "Velock is not on this device": "इस डिवाइस पर Velock नहीं है",
+ "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "यह टैब Velock का बैकअप लेता है, जो उसी डेवलपर का एक अलग ऐप है। Velock अपना डेटा डिवाइस पर ही एन्क्रिप्ट करता है, और Sync सिर्फ़ एन्क्रिप्ट किया हुआ डेटा आपके अपने NAS या क्लाउड ड्राइव तक पहुँचाता है। Velock इंस्टॉल करें, फिर बैकअप सेट करने के लिए यहाँ लौटें।"
 }

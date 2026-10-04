@@ -179,7 +179,6 @@
   "Velock has prepared your backup": "Velock ha preparado tu copia de seguridad",
   "Velock identity verification failed": "Falló la verificación de identidad de Velock",
   "Velock is already connected": "Velock ya está conectado",
-  "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": "Velock es una bóveda cifrada que vive en tu teléfono. Cuando lo tengas, Sync hace una copia de seguridad, todavía cifrada, en tu propio NAS o nube, para que un teléfono nuevo recupere todo.",
   "Velock is connected": "Velock está conectado",
   "Velock is not installed; disconnected": "Velock no está instalado; desconectado",
   "Velock is not on this device yet. Install and open it, then come back.": "Velock aún no está en este dispositivo. Instálalo, ábrelo y vuelve.",
@@ -304,5 +303,7 @@
   "{0}: {1}": "{0}: {1}",
   "“Redirect address does not match”": "«La dirección de redirección no coincide»",
   "“{0}” will be deleted from this device. The remote sync space and files will not be deleted.": "«{0}» se eliminará de este dispositivo. El espacio de sincronización remoto y sus archivos no se eliminarán.",
-  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "«{0}» se quitará de este dispositivo. Puede que los perfiles de sincronización existentes necesiten una conexión remota nueva."
+  "“{0}” will be removed from this device. Existing sync profiles may need a new remote connection.": "«{0}» se quitará de este dispositivo. Puede que los perfiles de sincronización existentes necesiten una conexión remota nueva.",
+  "Velock is not on this device": "Velock no está en este dispositivo",
+  "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": "Esta pestaña hace copias de seguridad de Velock, otra app del mismo desarrollador. Velock cifra sus datos en el dispositivo y Sync solo lleva los datos cifrados a tu propio NAS o almacenamiento en la nube. Instala Velock y vuelve aquí para configurar la copia de seguridad."
 }

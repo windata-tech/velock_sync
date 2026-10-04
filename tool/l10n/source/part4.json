@@ -1,7 +1,4 @@
 {
-  "The remote server cannot handle the request right now. Try again later.": {
-    "zh": "远端服务器暂时无法处理请求，请稍后重试。"
-  },
   "The remote server certificate could not be verified. Check the certificate configuration and try again.": {
     "zh": "无法验证远端服务器的安全证书，请检查服务器证书配置后重试。"
   },
@@ -318,6 +315,9 @@
   "This sync was cancelled before it finished. Start it again when you are ready.": {
     "zh": "这次同步被取消了，没有全部完成。需要时请重新同步。"
   },
+  "This tab backs up Velock, a separate app from the same developer. Velock encrypts its data on the device, and Sync only carries the encrypted data to your own NAS or cloud drive. Install Velock, then come back here to set up the backup.": {
+    "zh": "这里用来备份「格间」，它是同一开发者的另一款 App。格间在设备上加密数据，Sync 只把加密后的数据传到你自己的 NAS 或网盘。安装格间后回到这里，就可以设置备份。"
+  },
   "This task’s folder configuration could not be read, so the location cannot be changed here. Go back and reopen this page from the task.": {
     "zh": "无法读取这个任务的文件夹配置，因此这里不能更改位置。请返回任务页重新进入。"
   },
@@ -589,14 +589,14 @@
   "Velock is already connected": {
     "zh": "这台设备已经连接格间"
   },
-  "Velock is an encrypted vault that lives on your phone. Once you have it, Sync backs it up, still encrypted, to your own NAS or cloud drive, so a new phone gets everything back.": {
-    "zh": "格间是本地加密的隐私保险箱。装上格间后，Sync 就能把它加密备份到你自己的 NAS 或网盘，换手机也能找回来。"
-  },
   "Velock is connected": {
     "zh": "已连接格间"
   },
   "Velock is not installed; disconnected": {
     "zh": "Velock 本体未安装，连接已断开"
+  },
+  "Velock is not on this device": {
+    "zh": "这台设备上还没有格间"
   },
   "Velock is not on this device yet. Install and open it, then come back.": {
     "zh": "这台设备上还没有格间。请先安装并打开格间，再回来继续。"
