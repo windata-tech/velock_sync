@@ -6,6 +6,8 @@ import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
 import 'package:velock_sync/features/connection/remote_object_store_factory.dart';
 import 'package:velock_sync/features/cloud_backup/application/backup_destination_service.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_fix.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_transfer_progress.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
 import 'package:velock_sync/sync_core/model/sync_failure.dart';
@@ -156,6 +158,9 @@ enum _VelockReadinessAction { open, done }
 class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
     with WidgetsBindingObserver {
   bool _checkingVelock = false;
+
+  /// When the first backup run started; scopes the live progress to it.
+  DateTime? _firstBackupStartedAt;
   bool _continuingSetup = false;
   bool _inspectingPairing = false;
   bool _pairingProblemDialogVisible = false;
@@ -859,6 +864,7 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       // Creating the profile is not the user's goal. The user's goal is that
       // the first backup/recovery actually runs. Start it before leaving this
       // flow, so a successful setup always has a visible transfer result.
+      setState(() => _firstBackupStartedAt = DateTime.now().toUtc());
       final firstRun = await runSyncWithProgress(
         context,
         ref,
@@ -867,7 +873,22 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
       if (!mounted) return;
       ref.read(velockWizardSessionProvider.notifier).reset();
       if (context.mounted) {
-        await presentFirstSyncResult(context, firstRun);
+        final profileId = result.profile.profileId;
+        await presentFirstSyncResult(
+          context,
+          firstRun,
+          onFix: (action) => runBackupFix(
+            context,
+            ref,
+            profileId: profileId,
+            action: action,
+            retry: () async {
+              if (!mounted) return;
+              final again = await runSyncWithProgress(context, ref, profileId);
+              if (mounted) await presentFirstSyncResult(context, again);
+            },
+          ),
+        );
       }
       if (!mounted) return;
       // Setup is finished: return to the tabbed home, not a detached detail
@@ -1222,6 +1243,11 @@ class _VelockDatasetWizardState extends ConsumerState<VelockDatasetWizard>
                         '请保持 Sync 打开，完成后会显示结果。',
                         'Keep Sync open; the result appears when it finishes.',
                       ),
+                    ),
+                    const SizedBox(height: 20),
+                    BackupTransferProgress(
+                      profileId: result.profile.profileId,
+                      since: _firstBackupStartedAt ?? DateTime.now().toUtc(),
                     ),
                     const SizedBox(height: 20),
                     BackupActionButton(

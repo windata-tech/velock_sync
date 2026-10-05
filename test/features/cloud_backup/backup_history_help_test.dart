@@ -365,7 +365,9 @@ void main() {
       final before = (await repository.read('p'))!.toJson();
       expect(find.text('云端备份不完整'), findsOneWidget);
       expect(find.text('查看并处理'), findsNothing);
-      await tester.tap(find.byKey(const Key('backup-primary-action')));
+      // Both fixes sit on the card: a new full backup, or the old folder.
+      expect(find.text('完整备份到新文件夹'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('backup-use-original-folder')));
       await tester.pumpAndSettle();
       expect(find.text('找回备份位置'), findsOneWidget);
       expect(find.text('请选择原来的备份文件夹'), findsOneWidget);
@@ -602,7 +604,7 @@ void main() {
     'Done returns without starting sync; failed stale save never claims success',
     (tester) async {
       await mount(tester);
-      await tester.tap(find.byKey(const Key('backup-primary-action')));
+      await tester.tap(find.byKey(const Key('backup-use-original-folder')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('backup-history-browse-location')));
       await tester.pumpAndSettle();

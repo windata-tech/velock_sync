@@ -68,6 +68,43 @@ class VelockExchangeQueueProbe {
     );
   }
 
+  /// Bytes of the packages still waiting to be uploaded (Ready and Claimed),
+  /// or `null` when the exchange directory is not readable here.
+  ///
+  /// A claimed package stays on disk until it is fully published, so while it
+  /// uploads its bytes count both here and as uploaded: callers get a total
+  /// that is slightly too large, never one that runs out early. Only file
+  /// sizes are read, never contents.
+  Future<int?> pendingUploadBytes() async {
+    Directory root;
+    try {
+      root = await (_rootLocator ?? AppleExchangeRootLocator()).locate();
+    } on Object {
+      return null;
+    }
+    if (!root.existsSync()) return null;
+    var total = 0;
+    for (final name in const ['Ready', 'Claimed']) {
+      final directory = Directory('${root.path}/Outbox/$name');
+      if (!directory.existsSync()) continue;
+      try {
+        await for (final package in directory.list(followLinks: false)) {
+          if (package is! Directory || package.path.endsWith('.tmp')) continue;
+          await for (final entry in package.list(
+            recursive: true,
+            followLinks: false,
+          )) {
+            if (entry is File) total += await entry.length();
+          }
+        }
+      } on FileSystemException {
+        // A package published (and removed) while we were listing it.
+        continue;
+      }
+    }
+    return total;
+  }
+
   static int _countDirectories(Directory directory) {
     if (!directory.existsSync()) return 0;
     return directory

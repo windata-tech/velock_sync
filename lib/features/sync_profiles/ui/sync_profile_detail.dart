@@ -14,7 +14,9 @@ import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_connection_fix.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_history_help.dart';
 import 'package:velock_sync/features/cloud_backup/ui/velock_backup_location.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_transfer_progress.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
+import 'package:velock_sync/features/cloud_backup/ui/velock_backup_rebuild.dart';
 import 'package:velock_sync/features/sync_profiles/model/sync_run_outcome.dart';
 import 'dart:async';
 
@@ -370,7 +372,15 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
   bool get _offersRestoreCheck =>
       _presentation.stage == BackupStage.waitingForRestore;
 
+  /// History is missing: beside the new full backup, the other fix is going
+  /// back to the folder that holds the original.
+  bool get _offersOriginalFolder =>
+      _presentation.action == BackupAction.rebuildBackup;
+
   String? _secondaryLabel(BuildContext context) {
+    if (_offersOriginalFolder) {
+      return syncText(context, '改回原来的文件夹', 'Use the original folder');
+    }
     if (_offersRestoreCheck) {
       return syncText(context, '检查恢复进度', 'Check restore progress');
     }
@@ -396,13 +406,17 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
       if (mounted) {
         setState(() => _running = false);
         widget.onChanged();
-        await presentFirstSyncResult(context, result);
+        await presentFirstSyncResult(context, result, onFix: _perform);
       }
     } on Object catch (error) {
       if (mounted) {
         setState(() => _running = false);
         widget.onChanged();
-        await presentSyncFailureAlert(context: context, error: error);
+        await presentSyncFailureAlert(
+          context: context,
+          error: error,
+          onFix: _perform,
+        );
       }
     } finally {
       if (mounted) {
@@ -441,8 +455,10 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
     }
   }
 
-  Future<void> _primaryAction() async {
-    switch (_presentation.action) {
+  Future<void> _primaryAction() => _perform(_presentation.action);
+
+  Future<void> _perform(BackupAction action) async {
+    switch (action) {
       case BackupAction.transfer:
         await _runNow();
       case BackupAction.openVelock:
@@ -474,6 +490,9 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
       case BackupAction.reviewHistory:
         await showBackupHistoryHelp(context, widget.profile);
         if (mounted) widget.onChanged();
+      case BackupAction.rebuildBackup:
+        await showVelockBackupRebuild(context, ref, widget.profile);
+        if (mounted) widget.onChanged();
     }
   }
 
@@ -499,12 +518,26 @@ class _OverviewTabState extends ConsumerState<_OverviewTab> {
           presentation: _presentation,
           isVelock: _isVelock,
           onAction: _primaryAction,
+          progress: _isVelock
+              ? BackupTransferProgress.forRun(
+                  widget.profile.profileId,
+                  widget.latestRun,
+                )
+              : null,
           // A failure fixed outside the app (server back up, permission
           // granted) must never leave the card without a way to try again.
           secondaryLabel: _secondaryLabel(context),
-          onSecondary: _offersRestoreCheck || _offersRetry ? _runNow : null,
+          onSecondary: _offersOriginalFolder
+              ? () => _perform(BackupAction.reviewHistory)
+              : _offersRestoreCheck || _offersRetry
+              ? _runNow
+              : null,
           secondaryKey: Key(
-            _offersRestoreCheck ? 'backup-check-restore' : 'backup-retry',
+            _offersOriginalFolder
+                ? 'backup-use-original-folder'
+                : _offersRestoreCheck
+                ? 'backup-check-restore'
+                : 'backup-retry',
           ),
         ),
         if (widget.conflicts.isNotEmpty)

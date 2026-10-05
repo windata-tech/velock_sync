@@ -18,6 +18,11 @@ import 'package:velock_sync/widgets/adaptive_widgets.dart';
 import 'backup_connection_fix.dart';
 import 'backup_folder_picker.dart';
 import 'velock_backup_location.dart';
+import 'backup_actions.dart';
+import 'backup_history_help.dart';
+import 'backup_transfer_progress.dart';
+import 'velock_backup_rebuild.dart';
+import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'backup_widgets.dart';
 
 Future<void> showBackupStorageHelp(
@@ -49,6 +54,9 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
   bool fileSyncProfileLoaded = false;
   bool busy = false;
   bool checked = false;
+
+  /// Set while a backup started here runs; drives its live progress.
+  DateTime? syncStartedAt;
   bool checkFailed = false;
 
   /// Error code of the last failed check; decides which fix is offered first.
@@ -332,7 +340,11 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
 
   Future<void> sync() async {
     if (busy || !checked) return;
-    setState(() => busy = true);
+    Object? failure;
+    setState(() {
+      busy = true;
+      syncStartedAt = DateTime.now().toUtc();
+    });
     try {
       final result = await runSyncWithProgress(
         context,
@@ -346,7 +358,8 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
         checked = false;
         feedback = firstSyncResultMessage(result, context: context);
       });
-      await presentFirstSyncResult(context, result);
+      failure = result?.didFail == true ? result!.error : null;
+      if (failure == null) await presentFirstSyncResult(context, result);
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
@@ -356,9 +369,62 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
           SyncFailureClassifier.classify(error).errorCode,
         );
       });
-      await presentSyncFailureAlert(context: context, error: error);
+      failure = error;
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) {
+        setState(() {
+          busy = false;
+          syncStartedAt = null;
+        });
+      }
+    }
+    // After the run is released, so the chosen fix is free to act.
+    if (failure != null && mounted) {
+      await presentSyncFailureAlert(
+        context: context,
+        error: failure,
+        onFix: _fix,
+      );
+    }
+  }
+
+  /// Carries out the fix picked in a failure alert from this page.
+  Future<void> _fix(BackupAction action) async {
+    final saved =
+        await ref
+            .read(syncProfileRepositoryProvider)
+            .read(widget.profile.profileId) ??
+        velockProfile;
+    final value = await connection;
+    if (!mounted) return;
+    switch (action) {
+      case BackupAction.checkStorage:
+        if (value != null) {
+          await (fileSync ? relocate(value) : relocateBackup(value));
+        }
+      case BackupAction.fixConnection:
+        await fixConnection();
+      case BackupAction.rebuildBackup:
+        await showVelockBackupRebuild(context, ref, saved);
+      case BackupAction.reviewHistory:
+        await showBackupHistoryHelp(context, saved);
+      case BackupAction.openVelock:
+        await openVelockForBackup(
+          context,
+          ref,
+          profileId: widget.profile.profileId,
+        );
+      case BackupAction.getVelock:
+        await openVelockAppStore(context, ref);
+      case BackupAction.transfer:
+        // The run itself is the authority; a retry needs no second probe.
+        setState(() => checked = true);
+        await sync();
+      case BackupAction.manage:
+      case BackupAction.resolve:
+      case BackupAction.resume:
+        // The backup's own page holds these; this page sits on top of it.
+        if (Navigator.of(context).canPop()) Navigator.of(context).pop();
     }
   }
 
@@ -549,6 +615,14 @@ class _BackupStorageHelpState extends ConsumerState<BackupStorageHelp> {
                         busy: busy,
                         onPressed: busy ? null : sync,
                       ),
+                      if (syncStartedAt case final since? when !fileSync) ...[
+                        const SizedBox(height: 14),
+                        BackupTransferProgress(
+                          profileId: widget.profile.profileId,
+                          since: since,
+                        ),
+                        const SizedBox(height: 4),
+                      ],
                       const SizedBox(height: 10),
                     ] else if (fix != null || (value != null && signIn)) ...[
                       BackupActionButton(

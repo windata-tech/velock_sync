@@ -12,7 +12,13 @@ import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
 
+import 'backup_transfer_progress.dart';
+import 'backup_actions.dart';
+import 'backup_connection_fix.dart';
+import 'backup_storage_help.dart';
 import 'backup_widgets.dart';
+import 'package:velock_sync/core/state/common.dart';
+import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'velock_backup_location.dart';
 import 'velock_backup_rebuild.dart';
 import 'package:velock_sync/features/sync_profiles/ui/sync_profile_workspace_shared.dart';
@@ -37,6 +43,9 @@ class BackupHistoryHelp extends ConsumerStatefulWidget {
 class _BackupHistoryHelpState extends ConsumerState<BackupHistoryHelp> {
   late SyncProfileEnvelope profile = widget.profile;
   bool busy = false;
+
+  /// Set while a backup started here runs; drives its live progress.
+  DateTime? backupStartedAt;
   bool locationSaved = false;
   bool backupRequested = false;
   String? feedback;
@@ -95,17 +104,51 @@ class _BackupHistoryHelpState extends ConsumerState<BackupHistoryHelp> {
     }
   }
 
+  /// Carries out the fix picked in a failure alert from this page.
+  Future<void> _fix(BackupAction action) async {
+    switch (action) {
+      case BackupAction.rebuildBackup:
+        await showVelockBackupRebuild(context, ref, profile);
+      case BackupAction.reviewHistory:
+        final connection = await ref
+            .read(connectionRepositoryProvider)
+            .getConnectionById(profile.connectionId);
+        if (connection != null && mounted) {
+          setState(() => busy = false);
+          await selectFolder(connection);
+        }
+      case BackupAction.fixConnection:
+        await editBackupConnection(context, ref, profile.connectionId);
+      case BackupAction.openVelock:
+        await openVelockForBackup(context, ref, profileId: profile.profileId);
+      case BackupAction.transfer:
+        setState(() => busy = false);
+        await startBackup();
+      case BackupAction.checkStorage:
+        await showBackupStorageHelp(context, profile);
+      case BackupAction.getVelock:
+        await openVelockAppStore(context, ref);
+      case BackupAction.manage:
+      case BackupAction.resolve:
+      case BackupAction.resume:
+        if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+    }
+  }
+
   Future<void> startBackup() async {
     if (busy) return;
     setState(() {
       busy = true;
       backupRequested = true;
+      backupStartedAt = DateTime.now().toUtc();
       feedback = null;
     });
     try {
       final result = await runSyncWithProgress(context, ref, profile.profileId);
-      if (mounted && result != null) await presentSyncResult(context, result);
-    } on Object {
+      if (mounted && result != null) {
+        await presentSyncResult(context, result, onFix: _fix);
+      }
+    } on Object catch (error) {
       if (mounted) {
         setState(() {
           feedback = syncText(
@@ -114,9 +157,19 @@ class _BackupHistoryHelpState extends ConsumerState<BackupHistoryHelp> {
             'Backup did not complete. Go back to view its status.',
           );
         });
+        await presentSyncFailureAlert(
+          context: context,
+          error: error,
+          onFix: _fix,
+        );
       }
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) {
+        setState(() {
+          busy = false;
+          backupStartedAt = null;
+        });
+      }
     }
   }
 
@@ -243,6 +296,13 @@ class _BackupHistoryHelpState extends ConsumerState<BackupHistoryHelp> {
                         busy: busy,
                         onPressed: busy ? null : startBackup,
                       ),
+                      if (backupStartedAt case final since?) ...[
+                        const SizedBox(height: 14),
+                        BackupTransferProgress(
+                          profileId: profile.profileId,
+                          since: since,
+                        ),
+                      ],
                     ],
                   ),
                 ),

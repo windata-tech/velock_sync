@@ -53,57 +53,67 @@ class BackupActionButton extends StatelessWidget {
     final color = secondary
         ? context.appPrimary.withValues(alpha: .09)
         : context.appPrimary;
+    // A busy button is working, not unavailable: it keeps full colour. A
+    // disabled one keeps its colour too and only fades, like the rest of the
+    // app; CupertinoButton's default grey fill made the white label vanish.
+    final disabled = !busy && onPressed == null;
     return withAutomationId(
       key,
       SizedBox(
         width: double.infinity,
-        child: CupertinoButton(
-          color: color,
-          borderRadius: BorderRadius.circular(14),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          onPressed: busy ? null : onPressed,
-          // The idle button keeps its original single-Text layout: wrapping it in
-          // a Row unconditionally shifted the surrounding lists by a hair and
-          // broke hit tests on sibling rows.
-          child: busy
-              ? Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          secondary ? context.appPrimary : Colors.white,
+        child: Opacity(
+          opacity: disabled ? AppOpacity.disabled : 1,
+          child: CupertinoButton(
+            color: color,
+            disabledColor: color,
+            borderRadius: BorderRadius.circular(14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            onPressed: busy ? null : onPressed,
+            // The idle button keeps its original single-Text layout: wrapping it in
+            // a Row unconditionally shifted the surrounding lists by a hair and
+            // broke hit tests on sibling rows.
+            child: busy
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            secondary ? context.appPrimary : Colors.white,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: AppSpacing.xs),
-                    Flexible(
-                      child: Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: secondary ? context.appPrimary : Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
+                      const SizedBox(width: AppSpacing.xs),
+                      Flexible(
+                        child: Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: secondary
+                                ? context.appPrimary
+                                : Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
+                    ],
+                  )
+                : Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: secondary ? context.appPrimary : Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
-                )
-              : Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: secondary ? context.appPrimary : Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
                   ),
-                ),
+          ),
         ),
       ),
     );
@@ -184,6 +194,7 @@ class BackupStatusCard extends StatelessWidget {
     this.secondaryLabel,
     this.onSecondary,
     this.secondaryKey,
+    this.progress,
   });
   final BackupPresentation presentation;
   final String name;
@@ -195,6 +206,9 @@ class BackupStatusCard extends StatelessWidget {
   final String? secondaryLabel;
   final VoidCallback? onSecondary;
   final Key? secondaryKey;
+
+  /// Live transfer progress, shown only while the stage is transferring.
+  final Widget? progress;
 
   @override
   Widget build(BuildContext context) {
@@ -225,14 +239,14 @@ class BackupStatusCard extends StatelessWidget {
       ),
       BackupStage.needsAttention => syncText(
         context,
-        presentation.action == BackupAction.reviewHistory
+        presentation.action == BackupAction.rebuildBackup
             ? '云端备份不完整'
             : presentation.action == BackupAction.checkStorage
             ? '云端位置需要检查'
             : presentation.action == BackupAction.fixConnection
             ? '服务器拒绝了登录'
             : '有一件事需要你处理',
-        presentation.action == BackupAction.reviewHistory
+        presentation.action == BackupAction.rebuildBackup
             ? 'Cloud backup is incomplete'
             : presentation.action == BackupAction.checkStorage
             ? 'Cloud location needs checking'
@@ -287,11 +301,11 @@ class BackupStatusCard extends StatelessWidget {
         'Keep Sync open until it finishes. The system may pause transfers in the background.',
       ),
       BackupStage.needsAttention =>
-        presentation.action == BackupAction.reviewHistory
+        presentation.action == BackupAction.rebuildBackup
             ? syncText(
                 context,
-                '当前保存位置缺少以前的备份记录，这次备份未完成。先了解原因，再核对保存位置。',
-                'Earlier backup records are missing from this location. This backup did not finish. Review the next steps and check the location.',
+                '之前备份过的内容不在现在的文件夹里，所以没法接着备份。点下方按钮，格间会把现在的全部内容完整备份到一个新文件夹。',
+                'Content backed up earlier is not in the current folder, so the backup cannot continue. Tap below and Velock backs up everything it has now to a new folder.',
               )
             : presentation.action == BackupAction.resolve
             ? syncText(
@@ -365,6 +379,11 @@ class BackupStatusCard extends StatelessWidget {
           BackupAction.openVelock => syncText(context, '打开格间', 'Open Velock'),
           BackupAction.getVelock => syncText(context, '获取格间', 'Get Velock'),
           BackupAction.resume => syncText(context, '继续', 'Resume'),
+          BackupAction.rebuildBackup => syncText(
+            context,
+            '完整备份到新文件夹',
+            'Back up to a new folder',
+          ),
           BackupAction.reviewHistory => syncText(
             context,
             '查看原因和下一步',
@@ -467,6 +486,10 @@ class BackupStatusCard extends StatelessWidget {
               AppFormat.stamp(presentation.completedAt),
               style: TextStyle(fontSize: 14, color: color),
             ),
+          ],
+          if (stage == BackupStage.transferring && progress != null) ...[
+            const SizedBox(height: 20),
+            progress!,
           ],
           const SizedBox(height: 24),
           if (secondaryLabel == null)

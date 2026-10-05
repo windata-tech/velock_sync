@@ -153,7 +153,7 @@
 
 ## 历史缺失说明与详情返回兜底（2026-09-26）
 
-- `remote.velock_history_incomplete` 的消费者主操作为 `BackupAction.reviewHistory`，进入 `BackupHistoryHelp`，不能再丢进普通「管理」。首页/详情同义，运行/权限/冲突安全优先级不变。
+- （2026-10-04 起已被下方「报错必须带解决按钮」覆盖）`remote.velock_history_incomplete` 的主操作改为 `BackupAction.rebuildBackup`（直接进入建立完整备份），`BackupHistoryHelp` 改为详情卡次按钮「改回原来的文件夹」与失败弹窗第二个按钮。运行/权限/冲突安全优先级不变。
 - 说明显示实际选定目录（含profile子目录），只读查看不运行同步、不清错误、不改授权/目录。当前不能自动重建完整新备份的限制必须明说，不能用重试/重新连接或新建空目录冒充修复。
 - 配置完成回有底部导航的首页；`SyncProfileDetail` 所有状态始终提供统一返回。有历史pop，无历史回对应产品首页，系统返回一致。禁止在wizard结束时只go到无底栏又无返回兜底的独立详情。
 - 本轮452项相关回归通过；iOS/Android真实路由测试覆盖无历史返回，现有模拟器GUI覆盖详情/说明/首页三入口。见 `docs/verification/2026-09-26-history-help-and-detail-navigation.md`。仅入口/导航修复，历史缺失的完整重传能力仍未接通。
@@ -407,3 +407,12 @@
 - **并行出截图**：`all_shots.sh iphone <udid1>,<udid2>,…` 按语言轮流分给多台模拟器（每台独立端口 8080+i、DerivedData、日志）。截图慢是因为 UI 自动化在等动画/同步，CPU 很闲，单台每种语言约 4 分 20 秒；4 台并行 12 种语言约 14 分钟。⚠️ `simctl clone` 出来的模拟器**仍指向原模拟器的 App 数据目录**（`get_app_container` 返回原机路径），多台会互相覆盖；克隆后必须在克隆机上 `uninstall` 再 `install` Sync 与 `CrossAppUITestHost.app`（`ui_test_results/sim/DerivedData/Build/Products/Debug-iphonesimulator/`）。用完删除克隆（名字 `Velock Shots iPad N`）。
 - 上传截图：`~/.velock-release/sync-shots/fastlane/Deliverfile`（只传截图，`skip_metadata`，不提审）；文案用 `~/.velock-release/sync_push_meta.py`（ASC API 直推 tool/store/metadata 下 24 个地区）。
 
+
+## 报错必须带解决按钮；有历史的备份不能指向空文件夹（2026-10-04）
+
+- 用户原话：「这个错我以后永远也不想再看到了」「这里的按钮不要给个"知道了"就完事，你要给出具体的方法，给出具体的按钮，用户要能点了去解决问题」。
+- 现场根因：首次备份已向原文件夹发布 11 个批次，随后在「云端保存位置」把位置换成空文件夹 `sync1004`；Sync 本机记着 1–11 已发布，新文件夹没有，格间也已删掉那些批次，于是每次运行都 `remote.velock_history_incomplete`，且只能「知道了」。
+- **预防**：`changeVelockBackupLocation`（非恢复模式）若 `SyncStateDatabase.hasExchangedHistory`（已发布 outgoing 批次或 applied cursor>0），选完文件夹先只读发现：有这份备份才走原「保存位置」确认；没有则弹「在这里建立完整备份？」（key `backup-location-rebuild`）→ `showVelockBackupRebuild(destination:)`，**不保存位置**，切换由重建完成后的既有 CAS 完成；读不到给「重新选择」。没有历史的备份仍按原来只存位置。回归 `backup_storage_help_test.dart`「a backup with history is never just pointed at a folder without it」。
+- **失败弹窗**：`presentSyncFailureAlert(onFix:)` 按 `backupActionForFailure`（与状态卡同一映射，`backup_presentation.dart`）给按钮：缺历史→「完整备份到新文件夹」+「改回原来的文件夹」；不可写→「更换保存位置」；401→「修改连接」；需格间→「打开格间」；403/404 等→「查看并处理」；其余→「重试」；另有「稍后」。传了 `onFix` 就不再出现「知道了」。所有 Velock 运行入口（首页、详情、云端保存位置、历史说明、向导首跑 `runBackupFix`）都必须传 `onFix`，并在运行释放（`_running`/`busy` 清掉）之后再弹，否则用户选的修复会被当成「正在运行」拒绝。回归 `test/features/sync_profiles/failure_alert_fix_test.dart`。
+- 「建立新备份」页：上传失败给「重试」（从中断处继续）；文件夹非空/是当前位置给「换一个文件夹」。
+- 新增界面文字尚未进 18 语翻译表（运行时回落英文），下次跑 `tool/l10n` 流程补齐。

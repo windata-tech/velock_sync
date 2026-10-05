@@ -2,6 +2,7 @@
 /// by the sync-profiles pages (home, wizard, detail, settings).
 library;
 
+import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/features/cloud_backup/ui/velock_companion_gate.dart';
 import 'dart:async';
@@ -346,8 +347,9 @@ Future<bool> confirmSyncProfileRemoval(
 
 Future<void> presentSyncResult(
   BuildContext context,
-  SyncProfileDispatchResult result,
-) async {
+  SyncProfileDispatchResult result, {
+  Future<void> Function(BackupAction action)? onFix,
+}) async {
   final pending = result.run?.download.pendingBatchCount ?? 0;
   if (result.didRun && pending > 0) {
     await _offerOpenVelock(context, pending);
@@ -358,6 +360,7 @@ Future<void> presentSyncResult(
     await presentSyncFailureAlert(
       context: context,
       error: result.error ?? const Object(),
+      onFix: onFix,
     );
     return;
   }
@@ -366,8 +369,9 @@ Future<void> presentSyncResult(
 
 Future<void> presentFirstSyncResult(
   BuildContext context,
-  SyncProfileDispatchResult? result,
-) async {
+  SyncProfileDispatchResult? result, {
+  Future<void> Function(BackupAction action)? onFix,
+}) async {
   final pending = result?.run?.download.pendingBatchCount ?? 0;
   if (result?.didRun == true && pending > 0) {
     await _offerOpenVelock(context, pending);
@@ -378,6 +382,7 @@ Future<void> presentFirstSyncResult(
     await presentSyncFailureAlert(
       context: context,
       error: result!.error ?? const Object(),
+      onFix: onFix,
     );
     return;
   }
@@ -407,6 +412,7 @@ Future<void> presentSyncFailureAlert({
   required BuildContext context,
   required Object error,
   Key? okKey,
+  Future<void> Function(BackupAction action)? onFix,
 }) async {
   final failure = SyncFailureClassifier.classify(error);
   if (failure.errorCode == 'local.velock_snapshot_application_required') {
@@ -431,23 +437,83 @@ Future<void> presentSyncFailureAlert({
     }
     return;
   }
-  await showAdaptiveAlert<void>(
+  final historyMissing =
+      failure.errorCode == 'remote.velock_history_incomplete';
+  // Every failure offers the step that fixes it, not just an "OK".
+  final fixes = onFix == null
+      ? const <(BackupAction, String)>[]
+      : backupFixChoices(context, failure.errorCode);
+  final chosen = await showAdaptiveAlert<BackupAction>(
     context: context,
-    title: failure.errorCode == 'local.velock_snapshot_application_required'
-        ? _optionalSyncText(context, '请到格间完成恢复', 'Finish restoring in Velock')
-        // Every caller is the Velock domain, whose task is a backup.
+    // Every caller is the Velock domain, whose task is a backup.
+    title: historyMissing
+        ? _optionalSyncText(
+            context,
+            '这个文件夹里没有完整的备份',
+            'This folder has no complete backup',
+          )
         : _optionalSyncText(context, '备份失败', 'Backup failed'),
-    message: _syncFailureAlertMessage(failure, context: context),
+    message: historyMissing
+        ? _optionalSyncText(
+            context,
+            '之前备份过的内容不在这个文件夹里，所以没法接着备份。可以让格间把现在的全部内容完整备份到一个新文件夹，或者改回原来存放备份的文件夹。',
+            'Content backed up earlier is not in this folder, so the backup cannot continue. Let Velock back up everything it has now to a new folder, or switch back to the folder that holds the backup.',
+          )
+        : _syncFailureAlertMessage(failure, context: context),
     barrierDismissible: false,
     actions: [
-      AdaptiveAlertAction<void>(
-        label: _optionalSyncText(context, '知道了', 'OK'),
+      for (final (index, (action, label)) in fixes.indexed)
+        AdaptiveAlertAction<BackupAction>(
+          label: label,
+          value: action,
+          key: Key('sync-failure-fix-${action.name}'),
+          isDefault: index == 0,
+          emphasized: index == 0,
+        ),
+      AdaptiveAlertAction<BackupAction>(
+        label: fixes.isEmpty
+            ? _optionalSyncText(context, '知道了', 'OK')
+            : _optionalSyncText(context, '稍后', 'Later'),
         key: okKey ?? const Key('sync-failure-alert-ok'),
-        isDefault: true,
-        emphasized: true,
+        isDefault: fixes.isEmpty,
+        emphasized: fixes.isEmpty,
       ),
     ],
   );
+  if (chosen != null && onFix != null && context.mounted) {
+    await onFix(chosen);
+  }
+}
+
+/// The buttons a failure alert offers, most useful first. Each one leads
+/// straight to the fix; the card behind the alert offers the same action.
+List<(BackupAction, String)> backupFixChoices(
+  BuildContext context,
+  String? errorCode,
+) {
+  String t(String zh, String en) => _optionalSyncText(context, zh, en);
+  return switch (backupActionForFailure(errorCode)) {
+    BackupAction.rebuildBackup || BackupAction.reviewHistory => [
+      (
+        BackupAction.rebuildBackup,
+        t('完整备份到新文件夹', 'Back up everything to a new folder'),
+      ),
+      (BackupAction.reviewHistory, t('改回原来的文件夹', 'Use the original folder')),
+    ],
+    BackupAction.checkStorage => [
+      (BackupAction.checkStorage, t('更换保存位置', 'Change backup folder')),
+    ],
+    BackupAction.fixConnection => [
+      (BackupAction.fixConnection, t('修改连接', 'Edit connection')),
+    ],
+    BackupAction.openVelock => [
+      (BackupAction.openVelock, t('打开格间', 'Open Velock')),
+    ],
+    BackupAction.manage => [
+      (BackupAction.manage, t('查看并处理', 'Review and fix')),
+    ],
+    _ => [(BackupAction.transfer, t('重试', 'Try again'))],
+  };
 }
 
 /// Readable localized body of the failure alert: the human summary for the

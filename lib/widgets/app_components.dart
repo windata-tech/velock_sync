@@ -206,6 +206,7 @@ class AppPrimaryButton extends StatelessWidget {
             padding: EdgeInsets.zero,
             borderRadius: BorderRadius.circular(AppRadii.medium),
             color: context.appPrimary,
+            disabledColor: context.appPrimary,
             onPressed: onPressed,
             child: content,
           ),
@@ -242,6 +243,7 @@ class AppSecondaryButton extends StatelessWidget {
           minimumSize: const Size(0, AppSpacing.control),
           borderRadius: BorderRadius.circular(AppRadii.medium),
           color: context.appPrimary.withValues(alpha: 0.12),
+          disabledColor: context.appPrimary.withValues(alpha: 0.12),
           onPressed: onPressed,
           child: Row(
             mainAxisSize: MainAxisSize.min,

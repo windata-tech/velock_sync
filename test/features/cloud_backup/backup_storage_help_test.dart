@@ -435,4 +435,56 @@ void main() {
     expect(find.text('修改连接'), findsOneWidget);
     expect(find.byKey(const Key('storage-change-folder')), findsNothing);
   });
+
+  testWidgets(
+    'a backup with history is never just pointed at a folder without it',
+    (tester) async {
+      // The 2026-10-04 trap: the first backup published 11 batches, then the
+      // location was changed to an empty folder and every run after that
+      // stopped with "history missing". Moving now means a new full backup.
+      final profile = _velockProfile();
+      await seedFailedRun(profile, errorCode: _collectionFailure);
+      await database.recordOutgoingBatch(
+        profileId: 'p',
+        batchId: 'b1',
+        sequence: 1,
+        state: 'uploading',
+      );
+      await database.markOutgoingBatchPublished(
+        profileId: 'p',
+        batchId: 'b1',
+        publishedAt: DateTime.utc(2026, 9, 26),
+      );
+      destination.failureCode = _collectionFailure;
+      await mount(tester, BackupStorageHelp(profile: profile));
+      await tester.tap(find.byKey(const Key('storage-check')));
+      await tester.pumpAndSettle();
+      // The chosen folder holds no copy of this backup.
+      destination.failureCode = 'backup_not_found';
+
+      await tester.tap(find.byKey(const Key('storage-change-folder')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('backup-folder-可写')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('use-backup-folder')));
+      await tester.pumpAndSettle();
+
+      expect(destination.lastRestoring, isTrue);
+      expect(find.byKey(const Key('backup-location-confirm')), findsNothing);
+      expect(find.byKey(const Key('backup-location-rebuild')), findsOneWidget);
+      expect(find.text('建立完整备份'), findsOneWidget);
+
+      // "Choose another" goes back to the picker; nothing was saved.
+      await tester.tap(find.text('换一个文件夹'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('use-backup-folder')), findsOneWidget);
+      expect(
+        VelockSyncProfile.fromEnvelope(
+          (await repository.read('p'))!,
+        ).remoteRootSegments,
+        ['共享给我', 'new folder'],
+      );
+      expect(runner.calls, 0);
+    },
+  );
 }

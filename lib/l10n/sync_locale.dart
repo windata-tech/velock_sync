@@ -25,11 +25,7 @@ final Map<String, List<_Template>> _templates = {};
 /// Exact lookup first; otherwise the English text was built from a template
 /// with `{0}`-style placeholders, so match it against those and rebuild the
 /// translated template with the captured values.
-String translateFromEnglish(
-  String code,
-  Map<String, String> table,
-  String en,
-) {
+String translateFromEnglish(String code, Map<String, String> table, String en) {
   final exact = table[en];
   if (exact != null) return exact;
   final templates = _templates.putIfAbsent(code, () => _compile(table));

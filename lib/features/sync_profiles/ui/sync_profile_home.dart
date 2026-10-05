@@ -1,6 +1,7 @@
 /// The two product domains have separate destinations; they never share a list.
 library;
 
+import 'package:velock_sync/sync_profiles/execution/sync_profile_dispatcher.dart';
 import 'package:velock_sync/dataset_adapters/velock_exchange/velock_exchange_queue_probe.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_storage_help.dart';
 import 'package:velock_sync/features/cloud_backup/application/velock_snapshot_providers.dart';
@@ -16,7 +17,9 @@ import 'package:velock_sync/features/cloud_backup/model/backup_presentation.dart
 import 'package:velock_sync/features/cloud_backup/ui/backup_actions.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_connection_fix.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_history_help.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_transfer_progress.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
+import 'package:velock_sync/features/cloud_backup/ui/velock_backup_rebuild.dart';
 import 'package:velock_sync/infrastructure/database/sync_state_database.dart';
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/model/sync_dataset_kind.dart';
@@ -158,19 +161,47 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
 
   Future<void> _runOnce(String profileId) async {
     setState(() => _running.add(profileId));
+    SyncProfileDispatchResult? result;
+    Object? failure;
     try {
-      final result = await runSyncWithProgress(context, ref, profileId);
-      if (mounted) await presentFirstSyncResult(context, result);
+      result = await runSyncWithProgress(context, ref, profileId);
     } on Object catch (error) {
-      if (mounted) {
-        await presentSyncFailureAlert(context: context, error: error);
-      }
+      failure = error;
     } finally {
       if (mounted) {
         setState(() => _running.remove(profileId));
         _refresh();
       }
     }
+    // Presented after the run is released, so the fix the user picks in the
+    // alert (which may start another run) is not refused as "busy".
+    if (!mounted) return;
+    Future<void> fix(BackupAction action) => _fix(profileId, action);
+    if (failure != null) {
+      await presentSyncFailureAlert(
+        context: context,
+        error: failure,
+        onFix: fix,
+      );
+    } else {
+      await presentFirstSyncResult(context, result, onFix: fix);
+    }
+  }
+
+  /// Runs the fix the user picked in a failure alert, exactly as the card's
+  /// own button would.
+  Future<void> _fix(String profileId, BackupAction action) async {
+    final summaries = await ref
+        .read(syncProfileRepositoryProvider)
+        .listSummaries();
+    final summary = summaries
+        .where((candidate) => candidate.profileId == profileId)
+        .firstOrNull;
+    if (summary == null || !mounted) return;
+    await _action(
+      summary,
+      BackupPresentation(BackupStage.needsAttention, action),
+    );
   }
 
   VelockOutboxStatus? _velockStatus;
@@ -319,6 +350,14 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
         if (saved != null) await showBackupHistoryHelp(context, saved);
         if (mounted) _refresh();
         return;
+      case BackupAction.rebuildBackup:
+        final saved = await ref
+            .read(syncProfileRepositoryProvider)
+            .read(profile.profileId);
+        if (!mounted) return;
+        if (saved != null) await showVelockBackupRebuild(context, ref, saved);
+        if (mounted) _refresh();
+        return;
       case BackupAction.manage:
       case BackupAction.resolve:
         await _open('/sync-profiles/${profile.profileId}');
@@ -368,13 +407,21 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
           if (mounted) {
             setState(() => _running.remove(profile.profileId));
             _refresh();
-            await presentFirstSyncResult(context, result);
+            await presentFirstSyncResult(
+              context,
+              result,
+              onFix: (action) => _fix(profile.profileId, action),
+            );
           }
         } on Object catch (error) {
           if (mounted) {
             setState(() => _running.remove(profile.profileId));
             _refresh();
-            await presentSyncFailureAlert(context: context, error: error);
+            await presentSyncFailureAlert(
+              context: context,
+              error: error,
+              onFix: (action) => _fix(profile.profileId, action),
+            );
           }
         } finally {
           if (mounted) {
@@ -462,6 +509,10 @@ class _SyncProfilesHomeState extends ConsumerState<SyncProfilesHome>
                 BackupStatusCard(
                   name: profile.displayName ?? 'Velock',
                   presentation: _presentation(profile, data),
+                  progress: BackupTransferProgress.forRun(
+                    profile.profileId,
+                    profile.activity?.latestRun,
+                  ),
                   onAction: () =>
                       _action(profile, _presentation(profile, data)),
                   secondaryLabel: syncText(context, '详情', 'Details'),

@@ -30,6 +30,12 @@ enum BackupAction {
   reviewHistory,
   checkStorage,
 
+  /// The folder lacks history this device already published or applied. A
+  /// complete new backup from Velock always fixes that, so the action opens
+  /// that flow directly; going back to the original folder is the
+  /// alternative offered beside it.
+  rebuildBackup,
+
   /// The server rejected the saved login (401). Only the connection's
   /// username/password or authorization can fix it, so the action opens the
   /// connection editor rather than a page with nothing to change.
@@ -109,7 +115,7 @@ class BackupPresentation {
       return BackupPresentation(
         BackupStage.needsAttention,
         run?.errorCode == 'remote.velock_history_incomplete'
-            ? BackupAction.reviewHistory
+            ? BackupAction.rebuildBackup
             : _needsStorageCheck(run?.errorCode)
             ? BackupAction.checkStorage
             : _needsConnectionFix(run?.errorCode)
@@ -163,25 +169,9 @@ class BackupPresentation {
     }
     if (run?.state == 'failed') {
       final code = run?.errorCode ?? '';
-      final needsStorage =
-          code == 'remote.immutable_object_mismatch' ||
-          code.contains('atomic_create_unsupported') ||
-          code.contains('history_incomplete') ||
-          code.contains('unauthor') ||
-          code.contains('401') ||
-          code.contains('403') ||
-          code.contains('404');
       return BackupPresentation(
         BackupStage.needsAttention,
-        code == 'remote.velock_history_incomplete'
-            ? BackupAction.reviewHistory
-            : _needsStorageCheck(code)
-            ? BackupAction.checkStorage
-            : _needsConnectionFix(code)
-            ? BackupAction.fixConnection
-            : needsStorage
-            ? BackupAction.manage
-            : BackupAction.transfer,
+        backupActionForFailure(code),
         errorCode: code,
         failedAt: run?.completedAt ?? run?.startedAt,
       );
@@ -221,6 +211,29 @@ class BackupPresentation {
       BackupAction.transfer,
     );
   }
+}
+
+/// The one thing that fixes a failed run with [code]. Shared by the status
+/// card and the failure alert so both always offer the same way out.
+BackupAction backupActionForFailure(String? code) {
+  final value = code ?? '';
+  if (value == 'remote.velock_history_incomplete') {
+    return BackupAction.rebuildBackup;
+  }
+  if (_needsStorageCheck(value)) return BackupAction.checkStorage;
+  if (_needsConnectionFix(value)) return BackupAction.fixConnection;
+  if (value == 'local.velock_recovery_required' ||
+      value == 'local.velock_update_required' ||
+      value == 'local.velock_snapshot_application_required') {
+    return BackupAction.openVelock;
+  }
+  final needsStorage =
+      value == 'remote.immutable_object_mismatch' ||
+      value.contains('atomic_create_unsupported') ||
+      value.contains('history_incomplete') ||
+      value.contains('403') ||
+      value.contains('404');
+  return needsStorage ? BackupAction.manage : BackupAction.transfer;
 }
 
 bool _needsConnectionFix(String? code) =>

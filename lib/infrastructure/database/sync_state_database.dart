@@ -281,6 +281,21 @@ class SyncStateDatabase {
   Future<SyncRunRecord?> latestSyncRun(String profileId) async =>
       _runs.latestSyncRun(profileId);
 
+  /// Whether [profileId] already has backup history in its current folder:
+  /// a batch it published there, or one it downloaded and applied. Such a
+  /// backup cannot simply be pointed at an empty folder; the history check
+  /// would then fail on every run.
+  Future<bool> hasExchangedHistory(String profileId) async {
+    final rows = _database.select(
+      'SELECT EXISTS(SELECT 1 FROM outgoing_batches '
+      'WHERE profile_id = ? AND published_at IS NOT NULL) '
+      'OR EXISTS(SELECT 1 FROM sync_cursors '
+      'WHERE profile_id = ? AND applied_sequence > 0) AS present',
+      [profileId, profileId],
+    );
+    return rows.first['present'] == 1;
+  }
+
   Future<bool> hasRunningSyncRun(String profileId) async =>
       _runs.hasRunningSyncRun(profileId);
 
@@ -392,6 +407,16 @@ class SyncStateDatabase {
     from: from,
     to: to,
     limit: limit,
+  );
+
+  Future<int> transferredBytesSince({
+    required String profileId,
+    required DateTime since,
+    required TransferJobDirection direction,
+  }) async => _transfers.transferredBytesSince(
+    profileId: profileId,
+    since: since,
+    direction: direction,
   );
 
   Future<List<TransferJobRecord>> listTransferJobs({

@@ -9,7 +9,9 @@ import 'package:velock_sync/dataset_adapters/velock_exchange/velock_sync_profile
 import 'package:velock_sync/features/cloud_backup/application/velock_backup_rebuild_service.dart';
 import 'package:velock_sync/features/cloud_backup/application/velock_snapshot_providers.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_folder_picker.dart';
+import 'package:velock_sync/features/cloud_backup/ui/backup_transfer_progress.dart';
 import 'package:velock_sync/features/cloud_backup/ui/backup_widgets.dart';
+import 'package:velock_sync/core/state/common.dart';
 import 'package:velock_sync/features/cloud_backup/ui/velock_backup_location.dart';
 import 'package:velock_sync/features/connection/model/connection_model.dart';
 import 'package:velock_sync/features/connection/model/protocol_model.dart';
@@ -17,15 +19,45 @@ import 'package:velock_sync/features/sync_profiles/ui/sync_profile_providers.dar
 import 'package:velock_sync/l10n/sync_locale.dart';
 import 'package:velock_sync/sync_profiles/model/sync_profile_envelope.dart';
 import 'package:velock_sync/widgets/adaptive_widgets.dart';
+import 'package:velock_sync/widgets/app_format.dart';
+
+/// Opens the new-backup flow for [profile]. With [destination] the folder is
+/// already chosen and the flow goes straight to confirming it.
+Future<void> showVelockBackupRebuild(
+  BuildContext context,
+  WidgetRef ref,
+  SyncProfileEnvelope profile, {
+  List<String>? destination,
+}) async {
+  final connection = await ref
+      .read(connectionRepositoryProvider)
+      .getConnectionById(profile.connectionId);
+  if (connection == null || !context.mounted) return;
+  Widget page(BuildContext _) => VelockBackupRebuildPage(
+    profile: profile,
+    connection: connection,
+    initialDestination: destination,
+  );
+  await Navigator.of(context).push<void>(
+    isApplePlatform(context)
+        ? CupertinoPageRoute(builder: page)
+        : MaterialPageRoute(builder: page),
+  );
+}
 
 class VelockBackupRebuildPage extends ConsumerStatefulWidget {
   const VelockBackupRebuildPage({
     super.key,
     required this.profile,
     required this.connection,
+    this.initialDestination,
   });
   final SyncProfileEnvelope profile;
   final ConnectionModel connection;
+
+  /// A folder the user already picked (for example while changing the
+  /// backup location); skips the folder picker.
+  final List<String>? initialDestination;
   @override
   ConsumerState<VelockBackupRebuildPage> createState() =>
       _VelockBackupRebuildPageState();
@@ -79,7 +111,14 @@ class _VelockBackupRebuildPageState
     } finally {
       if (mounted && generation == epoch) setState(() => busy = false);
     }
-    if (mounted && generation == epoch && job != null) await _refresh();
+    if (mounted && generation == epoch && job != null) {
+      await _refresh();
+    } else {
+      final destination = widget.initialDestination;
+      if (mounted && generation == epoch && destination != null) {
+        await _startAt(destination);
+      }
+    }
   }
 
   Future<void> _failure() async {
@@ -168,6 +207,20 @@ class _VelockBackupRebuildPageState
             : MaterialPageRoute(builder: (_) => _picker(protocol, loader)),
       );
       if (selected == null || !mounted) return;
+      setState(() => busy = false);
+      await _startAt(selected);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  /// Confirms [selected] as the new backup folder and asks Velock to build
+  /// the complete backup for it.
+  Future<void> _startAt(List<String> selected) async {
+    if (busy) return;
+    var notEmpty = false;
+    setState(() => busy = true);
+    try {
       final label =
           '${widget.connection.name}\n${backupPathFor(widget.connection, selected) ?? selected.join('/')}';
       final confirmed = await showAdaptiveConfirmation(
@@ -192,10 +245,38 @@ class _VelockBackupRebuildPageState
         ready = false;
       });
       await api.open(created);
+    } on StateError catch (error) {
+      if (error.message.contains('not empty') ||
+          error.message.contains('new empty')) {
+        // A folder with other content (or the current one) cannot take a
+        // fresh backup; offer the fix, not an "OK".
+        notEmpty = true;
+      } else {
+        await _failure();
+      }
     } catch (_) {
       await _failure();
     } finally {
       if (mounted) setState(() => busy = false);
+    }
+    if (notEmpty && mounted) {
+      final choose = await showAdaptiveConfirmation(
+        context,
+        title: syncText(
+          context,
+          '这个文件夹不能放新备份',
+          'This folder cannot hold the new backup',
+        ),
+        message: syncText(
+          context,
+          '新备份要放在一个空文件夹里，而且不能是现在的保存位置。请选一个空文件夹，或在里面新建一个。',
+          'A new backup needs an empty folder other than the current location. Choose an empty folder or create one.',
+        ),
+        confirmLabel: syncText(context, '换一个文件夹', 'Choose another folder'),
+        confirmKey: const Key('backup-rebuild-choose-again'),
+        cancelLabel: syncText(context, '稍后', 'Later'),
+      );
+      if (choose && mounted) await _choose();
     }
   }
 
@@ -246,6 +327,7 @@ class _VelockBackupRebuildPageState
     if (busy || pending == null || !ready) return;
     setState(() => busy = true);
     var switched = false;
+    var failed = false;
     try {
       final api = await service;
       await api.finish(
@@ -267,9 +349,26 @@ class _VelockBackupRebuildPageState
       // completion record. Later edits are handled by the next normal backup;
       // do not immediately reread the snapshot in a second, incremental run.
     } catch (_) {
-      if (!switched) await _failure();
+      failed = !switched;
     } finally {
       if (mounted) setState(() => busy = false);
+    }
+    // Uploaded objects are verified and kept, so a retry continues where
+    // this one stopped: offer exactly that.
+    if (failed && mounted) {
+      final retry = await showAdaptiveConfirmation(
+        context,
+        title: syncText(context, '新备份尚未完成', 'New backup has not finished'),
+        message: syncText(
+          context,
+          '原备份位置未改变，已上传的部分会保留。网络或连接恢复后点重试，会从中断的地方继续。',
+          'The original backup location has not changed and what was uploaded is kept. Once the network or connection is back, retry to continue where it stopped.',
+        ),
+        confirmLabel: syncText(context, '重试', 'Try again'),
+        confirmKey: const Key('backup-rebuild-retry'),
+        cancelLabel: syncText(context, '稍后', 'Later'),
+      );
+      if (retry && mounted) await _upload();
     }
   }
 
@@ -335,9 +434,14 @@ class _VelockBackupRebuildPageState
                     Text(pending.request.destinationLabel),
                   ],
                   if (total > 0 && !complete) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      '${(done / total * 100).clamp(0, 100).toStringAsFixed(0)}%',
+                    const SizedBox(height: 16),
+                    BackupProgressBar(
+                      fraction: (done / total).clamp(0, 1).toDouble(),
+                      detail: syncText(
+                        context,
+                        '已上传 ${AppFormat.bytes(done)} / ${AppFormat.bytes(total)} · ${(done / total * 100).clamp(0, 100).floor()}%',
+                        '${AppFormat.bytes(done)} of ${AppFormat.bytes(total)} uploaded · ${(done / total * 100).clamp(0, 100).floor()}%',
+                      ),
                     ),
                   ],
                   const SizedBox(height: 24),

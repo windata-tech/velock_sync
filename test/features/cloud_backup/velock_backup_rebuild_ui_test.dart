@@ -265,7 +265,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(service.uploads, 1);
-      expect(find.text('50%'), findsOneWidget);
+      expect(find.textContaining('50%'), findsOneWidget);
       expect(find.text('已切换到新备份位置'), findsNothing);
       await tester.tap(find.byKey(const Key('backup-rebuild-primary')));
       await tester.pump();
@@ -275,7 +275,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('新备份尚未完成'), findsOneWidget);
       expect(find.textContaining('原备份位置未改变'), findsOneWidget);
-      await tester.tap(find.text('知道了'));
+      // The failure offers the fix, not just an acknowledgement.
+      expect(find.text('重试'), findsOneWidget);
+      await tester.tap(find.text('稍后'));
       await tester.pumpAndSettle();
       expect(find.text('上传新备份'), findsOneWidget);
       expect(find.text('已切换到新备份位置'), findsNothing);

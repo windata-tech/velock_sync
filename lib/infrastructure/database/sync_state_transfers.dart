@@ -168,6 +168,39 @@ final class TransferQueries {
     }
   }
 
+  /// Bytes moved in [direction] for [profileId] since [since]: finished
+  /// objects plus the partial bytes of objects started in this window.
+  ///
+  /// A retried object keeps its first `created_at`, so its partial bytes only
+  /// count once it completes: the figure may lag by one object, never run
+  /// ahead of what actually reached the remote.
+  Future<int> transferredBytesSince({
+    required String profileId,
+    required DateTime since,
+    required TransferJobDirection direction,
+  }) async {
+    final from = since.toUtc().millisecondsSinceEpoch;
+    try {
+      final rows = db.select(
+        'SELECT COALESCE(SUM(completed_bytes), 0) AS bytes FROM transfer_jobs '
+        'WHERE profile_id = ? AND direction = ? AND ('
+        '(state = ? AND completed_at >= ?) OR (state = ? AND created_at >= ?))',
+        [
+          profileId,
+          direction.name,
+          TransferJobState.completed.name,
+          from,
+          TransferJobState.running.name,
+          from,
+        ],
+      );
+      return rows.first['bytes']! as int;
+    } on Object {
+      // Databases that predate the transfer timestamp columns show no figure.
+      return 0;
+    }
+  }
+
   Future<List<TransferJobRecord>> listTransferJobs({
     String? profileId,
     bool includeCompleted = false,

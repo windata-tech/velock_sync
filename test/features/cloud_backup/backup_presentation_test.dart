@@ -86,7 +86,7 @@ void main() {
         error: 'remote.velock_history_incomplete',
         locationChangedAt: DateTime.utc(2026, 9, 24),
       ).action,
-      BackupAction.reviewHistory,
+      BackupAction.rebuildBackup,
     );
     expect(
       state(
@@ -180,7 +180,7 @@ void main() {
       incoming: 1,
     );
     expect(result.stage, BackupStage.needsAttention);
-    expect(result.action, BackupAction.reviewHistory);
+    expect(result.action, BackupAction.rebuildBackup);
     expect(result.errorCode, 'remote.velock_history_incomplete');
   });
   test('error and blocked profiles take the same history entry point', () {
@@ -200,7 +200,7 @@ void main() {
       );
       expect(
         result.action,
-        BackupAction.reviewHistory,
+        BackupAction.rebuildBackup,
         reason: profileState.name,
       );
       expect(
@@ -220,7 +220,7 @@ void main() {
       ]) {
         expect(
           state(run: 'failed', error: code).action,
-          isNot(BackupAction.reviewHistory),
+          isNot(BackupAction.rebuildBackup),
           reason: code,
         );
       }
@@ -232,7 +232,7 @@ void main() {
       error: 'remote.velock_history_incomplete',
     );
     expect(result.stage, BackupStage.lastTransferCompleted);
-    expect(result.action, isNot(BackupAction.reviewHistory));
+    expect(result.action, isNot(BackupAction.rebuildBackup));
   });
   test('running and conflicts keep priority over the history entry point', () {
     final runningResult = state(

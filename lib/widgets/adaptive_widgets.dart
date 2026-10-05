@@ -1452,12 +1452,16 @@ class AdaptiveElevatedButton extends StatelessWidget {
 
   Widget _build(BuildContext context) {
     if (isApplePlatform(context)) {
-      return CupertinoButton.filled(
-        padding: padding,
-        onPressed: onPressed,
-        child: onPressed == null
-            ? Opacity(opacity: AppOpacity.disabled, child: child)
-            : child,
+      // Disabled keeps the fill and fades the whole button; the default grey
+      // disabled fill left a white label on near-white.
+      return Opacity(
+        opacity: onPressed == null ? AppOpacity.disabled : 1,
+        child: CupertinoButton.filled(
+          padding: padding,
+          disabledColor: CupertinoTheme.of(context).primaryColor,
+          onPressed: onPressed,
+          child: child,
+        ),
       );
     }
     return ElevatedButton(
